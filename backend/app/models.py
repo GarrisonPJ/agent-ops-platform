@@ -1,0 +1,61 @@
+"""SQLAlchemy ORM models.
+
+Tables
+------
+- ``trajectories`` — Agent trajectories (session-level).
+- ``steps``       — Individual steps within a trajectory.
+"""
+
+from __future__ import annotations
+
+from datetime import datetime, timezone
+
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+class Trajectory(Base):
+    __tablename__ = "trajectories"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    task: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String, default="running")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+
+    score: Mapped[float | None] = mapped_column(nullable=True)
+    score_breakdown: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+
+    steps: Mapped[list[Step]] = relationship(back_populates="trajectory")
+    total_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    context_window_peak: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
+class Step(Base):
+    __tablename__ = "steps"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    trajectory_id: Mapped[str] = mapped_column(
+        String, ForeignKey("trajectories.id"), nullable=False
+    )
+    index: Mapped[int] = mapped_column(Integer, nullable=False)
+    thought: Mapped[str] = mapped_column(Text)
+    action: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    observation: Mapped[str] = mapped_column(Text)
+    latency_ms: Mapped[int] = mapped_column(Integer)
+    container_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    context_window: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    token_prompt: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    token_completion: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+
+    trajectory: Mapped[Trajectory] = relationship(back_populates="steps")
+
