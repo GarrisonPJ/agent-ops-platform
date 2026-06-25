@@ -1,0 +1,241 @@
+@import "tailwindcss";
+
+@theme inline {
+  /* ── Background depths ─────────────────────────────── */
+  --color-bg-root: #030303;
+  --color-bg-card: #0c0c0c;
+  --color-bg-card-raised: #161616;
+  --color-bg-hover: #1a1a1a;
+
+  /* ── Foreground ────────────────────────────────────── */
+  --color-fg-primary: #fafafa;
+  --color-fg-muted: #878d96;
+  --color-fg-subtle: #52525b;
+
+  /* ── Borders ────────────────────────────────────────── */
+  --color-border: rgb(255 255 255 / 0.1);
+  --color-border-strong: rgb(255 255 255 / 0.15);
+  --color-border-glow: rgb(75 140 247 / 0.3);
+
+  /* ── Brand — Cobalt Blue ───────────────────────────── */
+  --color-accent: #4b8cf7;
+  --color-accent-glow: rgb(75 140 247 / 0.25);
+  --color-accent-amber: #f5a623;
+  --color-accent-amber-glow: rgb(245 166 35 / 0.25);
+  --color-info: #7ab8f7;
+
+  /* ── Status Colors ─────────────────────────────────── */
+  --color-success: #2dd4bf;
+  --color-error: #ef4444;
+
+  /* ── Type ──────────────────────────────────────────── */
+  --font-family-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, monospace;
+
+  /* ── Radii (Locked to md) ──────────────────────────── */
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.5rem;
+  --radius-2xl: 0.5rem;
+
+  /* ── Shadows (Inner Glow vs Drop) ──────────────────── */
+  --shadow-inner-glow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  --shadow-inner-glow-accent: inset 0 1px 0 rgba(255, 255, 255, 0.2), 0 0 0 1px rgba(75, 140, 247, 0.5);
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.5), 0 4px 12px rgb(0 0 0 / 0.4);
+  --shadow-card-raised: 0 2px 4px rgb(0 0 0 / 0.6), 0 8px 24px rgb(0 0 0 / 0.5);
+  --shadow-glow-accent: 0 0 24px rgb(75 140 247 / 0.12);
+  --shadow-glow-info: 0 0 20px rgb(122 184 247 / 0.10);
+
+  /* ── Easing ─────────────────────────────────────────── */
+  --ease-spring: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out-expo: cubic-bezier(0.87, 0, 0.13, 1);
+  --ease-elastic: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/*
+  ── Body defaults ─────────────────────────────────────
+*/
+body {
+  margin: 0;
+  font-family: var(--font-family-sans);
+  background-color: var(--color-bg-root);
+  color: var(--color-fg-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Ambient glow (mounted by Layout) ────────────────── */
+.ambient-glow {
+  position: fixed;
+  top: 40%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 70vw;
+  height: 70vw;
+  background: radial-gradient(circle, rgb(75 140 247 / 0.08) 0%, transparent 60%);
+  pointer-events: none;
+  z-index: 0;
+  transition: all 0.8s var(--ease-spring);
+}
+.ambient-glow.active,
+body.is-executing .ambient-glow {
+  top: -10%;
+  width: 100vw;
+  height: 40vw;
+  background: radial-gradient(ellipse, rgb(75 140 247 / 0.06) 0%, transparent 70%);
+}
+
+/* ── Scrollbar ───────────────────────────────────────── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgb(255 255 255 / 0.06); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgb(255 255 255 / 0.12); }
+
+/* Schema inline scrollbar — zero white border, dark-only, cross-browser */
+.schema-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(255 255 255 / 0.22) transparent;
+}
+.schema-scroll::-webkit-scrollbar { height: 4px; border: none; background: transparent; }
+.schema-scroll::-webkit-scrollbar-track { background: transparent; border: none; box-shadow: none; }
+.schema-scroll::-webkit-scrollbar-thumb { background: rgb(255 255 255 / 0.22); border-radius: 2px; border: none; }
+.schema-scroll::-webkit-scrollbar-thumb:hover { background: rgb(255 255 255 / 0.35); border: none; }
+.schema-scroll::-webkit-scrollbar-thumb:active { background: rgb(255 255 255 / 0.45); border: none; }
+.schema-scroll::-webkit-scrollbar-corner { background: transparent; border: none; }
+
+/* ── Focus ───────────────────────────────────────────── */
+*:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+/* ── Selection ───────────────────────────────────────── */
+::selection {
+  background: rgb(75 140 247 / 0.25);
+  color: var(--color-fg-primary);
+}
+
+/* ── Skeleton ────────────────────────────────────────── */
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--color-bg-card) 25%,
+    rgb(255 255 255 / 0.02) 50%,
+    var(--color-bg-card) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.8s infinite;
+  border-radius: var(--radius-md);
+}
+
+/* ── Perf ────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  .skeleton { animation: none; }
+}
+
+/* ── Playback: timeline flow animation ─────────────── */
+@keyframes timeline-flow {
+  0%   { background-position: 0 0; }
+  100% { background-position: 0 200%; }
+}
+
+.step-card-timeline::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: transparent;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.step-card-timeline.flow-active::before {
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    rgb(75 140 247 / 0.4) 20%,
+    rgb(75 140 247 / 0.6) 50%,
+    rgb(75 140 247 / 0.4) 80%,
+    transparent 100%
+  );
+  background-size: 100% 200%;
+  animation: timeline-flow 1.5s linear infinite;
+}
+
+.step-card-timeline.flow-active.step-current::before {
+  background: linear-gradient(
+    to bottom,
+    rgb(75 140 247 / 0.1) 0%,
+    rgb(75 140 247 / 0.8) 30%,
+    rgb(75 140 247 / 1) 50%,
+    rgb(75 140 247 / 0.8) 70%,
+    rgb(75 140 247 / 0.1) 100%
+  );
+  background-size: 100% 200%;
+  animation: timeline-flow 1s linear infinite;
+  width: 2px;
+}
+
+/* ── Playback: mini overview dot pulse ─────────────── */
+@keyframes mini-dot-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgb(75 140 247 / 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 4px rgb(75 140 247 / 0.3), 0 0 8px rgb(75 140 247 / 0.5);
+  }
+}
+
+.mini-dot-current {
+  animation: mini-dot-pulse 2s ease-in-out infinite;
+}
+
+/* ── Playback: progress bar glow dot ───────────────── */
+.progress-glow-dot {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  transform: translate(50%, -50%);
+  width: 12px;
+  height: 12px;
+  border-radius: 9999px;
+  background: var(--color-accent);
+  box-shadow:
+    0 0 6px rgb(75 140 247 / 0.4),
+    0 0 16px rgb(75 140 247 / 0.3),
+    0 0 30px rgb(75 140 247 / 0.2);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.progress-bar-container:hover .progress-glow-dot,
+.progress-bar-container.is-playing .progress-glow-dot {
+  opacity: 1;
+}
+
+/* ── JSON View dark theme overrides ────────────────── */
+.json-view-container {
+  background: transparent !important;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.json-view-container [role="button"] {
+  color: var(--color-fg-muted);
+}
+

@@ -1,0 +1,121 @@
+import { useState } from "react";
+import { Wrench, ChevronDown } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { JsonView, darkStyles, allExpanded } from "react-json-view-lite";
+import "react-json-view-lite/dist/index.css";
+import { useGetToolsQuery, useToggleToolMutation } from "../services/api";
+import type { ToolInfo } from "../types";
+import EmptyState from "../components/EmptyState";
+import LoadingSkeleton from "../components/LoadingSkeleton";
+
+function ToolCard({ tool }: { tool: ToolInfo }) {
+  const [expanded, setExpanded] = useState(false);
+  const [toggleTool] = useToggleToolMutation();
+  const enabled = tool.enabled;
+
+  return (
+    <div
+      className={`bg-bg-card border shadow-inner-glow rounded-md p-5 flex flex-col transition-all duration-150 ease-out ${
+        enabled
+          ? "border-border hover:bg-white/[0.02] hover:border-border-strong"
+          : "border-white/[0.03]"
+      }`}
+    >
+      <div className="flex justify-between items-start">
+        <div className="flex items-center gap-3">
+          <div className={`w-8 h-8 rounded-md bg-accent/10 border border-accent/20 flex items-center justify-center ${enabled ? "text-accent" : "text-fg-subtle"}`}>
+            <Wrench className={`w-4 h-4 ${enabled ? "" : "opacity-40"}`} strokeWidth={1.5} />
+          </div>
+          <span className={`font-mono text-sm font-semibold ${enabled ? "text-fg-primary" : "text-fg-subtle"}`}>{tool.name}</span>
+        </div>
+        {/* Toggle switch — calls API */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            toggleTool(tool.name);
+          }}
+          className={`relative w-9 h-5 rounded-full transition-all duration-300 flex-shrink-0 ${
+            enabled ? "bg-accent" : "bg-white/[0.08]"
+          }`}
+          title={enabled ? "Disable tool" : "Enable tool"}
+        >
+          <span
+            className={`absolute top-[2px] w-4 h-4 bg-white rounded-full shadow-sm transition-all duration-300 ${
+              enabled ? "left-[18px]" : "left-[2px]"
+            }`}
+          />
+        </button>
+      </div>
+
+      <p className={`text-[13px] leading-relaxed mt-3 ${enabled ? "text-fg-muted" : "text-fg-subtle"}`}>{tool.description}</p>
+
+      {/* Expand chevron */}
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          setExpanded((v) => !v);
+        }}
+        className={`flex items-center gap-1.5 mt-3 text-xs transition-colors self-start ${enabled ? "text-fg-muted hover:text-fg-primary" : "text-fg-subtle"}`}
+      >
+        <ChevronDown
+          className={`w-3.5 h-3.5 transition-transform duration-200 ${expanded ? "rotate-180" : ""}`}
+        />
+        {expanded ? "Hide schema" : "View schema"}
+      </button>
+
+      {/* Expandable schema */}
+      <AnimatePresence>
+        {expanded && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.2, ease: "easeOut" }}
+            className="mt-3 bg-black/20 rounded-lg p-3 overflow-x-auto overflow-hidden schema-scroll"
+          >
+            <JsonView data={tool.parameters} shouldExpandNode={allExpanded} style={darkStyles} />
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+export default function ToolsPage() {
+  const { data: tools, isLoading } = useGetToolsQuery();
+
+  return (
+    <motion.main
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+      className="max-w-5xl mx-auto px-6 py-8"
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between mb-8">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight text-fg-primary">Tools</h1>
+          <p className="text-sm text-fg-muted mt-1">Manage active agent capabilities.</p>
+        </div>
+      </div>
+
+      {/* Loading state */}
+      {isLoading ? (
+        <LoadingSkeleton variant="cards" />
+      ) : tools && tools.length > 0 ? (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5 items-start">
+          {tools.map((tool) => (
+            <ToolCard key={tool.name} tool={tool} />
+          ))}
+        </div>
+      ) : (
+        <EmptyState
+          icon={Wrench}
+          message="No Tools Registered"
+          description="Register a tool to give the agent new capabilities."
+        />
+      )}
+
+    </motion.main>
+  );
+}
