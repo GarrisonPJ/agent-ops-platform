@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: agentops-config
+  namespace: agentops
+data:
+  LLM_BASE_URL:  "https://api.deepseek.com"
+  LLM_MODEL:      "deepseek-v4-flash"
+  DATABASE_URL:   "postgresql+asyncpg://agentops:$(POSTGRES_PASSWORD)@agentops-db:5432/agentops"
+  CONTEXT_WINDOW_LIMIT: "128000"
+  EXECUTOR_MODE:  "k8s"
+  LOG_LEVEL:      "info"
+  ENVIRONMENT:    "production"

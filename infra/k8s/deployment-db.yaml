@@ -1,0 +1,79 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agentops-db
+  namespace: agentops
+  labels:
+    app: agentops
+    component: db
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agentops
+      component: db
+  template:
+    metadata:
+      labels:
+        app: agentops
+        component: db
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          ports:
+            - containerPort: 5432
+              protocol: TCP
+          env:
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: agentops-secret
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: agentops-secret
+                  key: POSTGRES_PASSWORD
+            - name: POSTGRES_DB
+              value: agentops
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - name: pgdata
+              mountPath: /var/lib/postgresql/data
+          livenessProbe:
+            exec:
+              command: ["pg_isready", "-U", "agentops"]
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "agentops"]
+            initialDelaySeconds: 5
+            periodSeconds: 10
+      volumes:
+        - name: pgdata
+          emptyDir: {}  # Replace with PersistentVolumeClaim for production
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: agentops-db
+  namespace: agentops
+  labels:
+    app: agentops
+    component: db
+spec:
+  selector:
+    app: agentops
+    component: db
+  ports:
+    - port: 5432
+      targetPort: 5432
+      protocol: TCP

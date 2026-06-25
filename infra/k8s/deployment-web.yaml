@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: agentops-web
+  namespace: agentops
+  labels:
+    app: agentops
+    component: web
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: agentops
+      component: web
+  template:
+    metadata:
+      labels:
+        app: agentops
+        component: web
+    spec:
+      containers:
+        - name: web
+          image: agentops-web:prod
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 80
+              protocol: TCP
+          resources:
+            requests:
+              cpu: 100m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 10
