@@ -33,6 +33,9 @@ target/
 # Stale test results
 test-results/
 
+# Local test database
+*.db
+
 # TypeScript incremental build
 *.tsbuildinfo
 
