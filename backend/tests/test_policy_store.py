@@ -30,8 +30,8 @@ class TestPolicyStore:
             confidence="low",
             source_trajectories=[],
         )
-        assert policy["version_display"] == "v1"
-        assert policy["status"] == "pending_review"
+        assert policy.version_display == "v1"
+        assert policy.status == "pending_review"
 
     @pytest.mark.asyncio
     async def test_create_sequential_versions(self, store: PolicyStore) -> None:
@@ -54,8 +54,8 @@ class TestPolicyStore:
             confidence="low",
             source_trajectories=[],
         )
-        assert p1["version_display"] == "v1"
-        assert p2["version_display"] == "v2"
+        assert p1.version_display == "v1"
+        assert p2.version_display == "v2"
 
     @pytest.mark.asyncio
     async def test_get_active_policy_returns_latest_active(
@@ -75,16 +75,16 @@ class TestPolicyStore:
             source_trajectories=[],
         )
         # Activate p2
-        await store.update_policy_status(p2["version_id"], "active")
+        await store.update_policy_status(p2.version_id, "active")
         await store.session.flush()
 
         active = await store.get_active_policy()
         assert active is not None
-        assert active["version_id"] == p2["version_id"]
+        assert active.version_id == p2.version_id
 
         # No active policies yet before activation
         # Deactivate p2
-        await store.update_policy_status(p2["version_id"], "reverted")
+        await store.update_policy_status(p2.version_id, "reverted")
         await store.session.flush()
         active = await store.get_active_policy()
         assert active is None
@@ -100,17 +100,17 @@ class TestPolicyStore:
             expected_impact=None, confidence="low",
             source_trajectories=[],
         )
-        assert policy["status"] == "pending_review"
+        assert policy.status == "pending_review"
 
         await store.update_policy_status(
-            policy["version_id"], "active", score_delta=0.15,
+            policy.version_id, "active", score_delta=0.15,
         )
         await store.session.flush()
 
-        updated = await store.get_policy(policy["version_id"])
+        updated = await store.get_policy(policy.version_id)
         assert updated is not None
-        assert updated["status"] == "active"
-        assert updated["score_delta"] == 0.15
+        assert updated.status == "active"
+        assert updated.score_delta == 0.15
 
     @pytest.mark.asyncio
     async def test_create_policy_retry_on_integrity_error(
@@ -124,7 +124,7 @@ class TestPolicyStore:
             expected_impact=None, confidence="low",
             source_trajectories=[],
         )
-        assert p1["version_display"] == "v1"
+        assert p1.version_display == "v1"
 
         # Try creating with same version_display — should trigger retry
         # Under the hood the session.add will fail on flush, retry with next_version
@@ -137,4 +137,4 @@ class TestPolicyStore:
         )
         assert p2 is not None
         # The retry gave it a new version_display
-        assert p2["version_display"] != p1["version_display"]
+        assert p2.version_display != p1.version_display

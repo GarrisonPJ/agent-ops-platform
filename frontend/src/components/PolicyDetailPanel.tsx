@@ -13,6 +13,7 @@ import {
 import type { PolicyVersion } from "../types";
 import LoadingSkeleton from "./LoadingSkeleton";
 import EmptyState from "./EmptyState";
+import { usePolicyActions } from "../hooks/usePolicyActions";
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
@@ -34,11 +35,12 @@ const STATUS_BADGE: Record<string, { bg: string; text: string; label: string }> 
     text: "text-red-400",
     label: "Reverted",
   },
-  archived: {
-    bg: "bg-zinc-500/10 border-zinc-500/20",
-    text: "text-zinc-400",
-    label: "Archived",
-  },
+};
+
+const STATUS_FALLBACK = {
+  bg: "bg-zinc-500/10 border-zinc-500/20",
+  text: "text-zinc-400",
+  label: "Unknown",
 };
 
 const CONFIDENCE_BADGE: Record<
@@ -77,9 +79,6 @@ function formatDateTime(iso: string): string {
 interface PolicyDetailPanelProps {
   policy: PolicyVersion | null;
   loading: boolean;
-  onApprove?: (versionId: string) => void;
-  onReject?: (versionId: string) => void;
-  approving?: boolean;
 }
 
 /* ------------------------------------------------------------------ */
@@ -147,10 +146,9 @@ function PatchRow({
 export default function PolicyDetailPanel({
   policy,
   loading,
-  onApprove,
-  onReject,
-  approving,
 }: PolicyDetailPanelProps) {
+  const { approvePolicy, rejectWithReason, isApproving, rejectingId } =
+    usePolicyActions();
   if (loading) {
     return (
       <motion.div
@@ -178,7 +176,7 @@ export default function PolicyDetailPanel({
     );
   }
 
-  const statusStyle = STATUS_BADGE[policy.status];
+  const statusStyle = STATUS_BADGE[policy.status] || STATUS_FALLBACK;
   const confidenceStyle = CONFIDENCE_BADGE[policy.confidence];
   const patch = policy.patch;
 
@@ -298,28 +296,24 @@ export default function PolicyDetailPanel({
       )}
 
       {/* Approve / Reject buttons (only for pending_review) */}
-      {policy.status === "pending_review" && (onApprove || onReject) && (
+      {policy.status === "pending_review" && (
         <div className="flex items-center gap-3 pt-2 border-t border-border">
-          {onApprove && (
-            <button
-              onClick={() => onApprove(policy.version_id)}
-              disabled={approving}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-mono font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20 active:scale-[0.97] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <TrendingUp className="w-3.5 h-3.5" />
-              Approve
-            </button>
-          )}
-          {onReject && (
-            <button
-              onClick={() => onReject(policy.version_id)}
-              disabled={approving}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-mono font-semibold bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 active:scale-[0.97] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <TrendingDown className="w-3.5 h-3.5" />
-              Reject
-            </button>
-          )}
+          <button
+            onClick={() => approvePolicy(policy.version_id)}
+            disabled={isApproving}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-mono font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20 active:scale-[0.97] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <TrendingUp className="w-3.5 h-3.5" />
+            Approve
+          </button>
+          <button
+            onClick={() => rejectWithReason(policy.version_id)}
+            disabled={rejectingId === policy.version_id}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-mono font-semibold bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 active:scale-[0.97] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <TrendingDown className="w-3.5 h-3.5" />
+            Reject
+          </button>
         </div>
       )}
     </motion.div>

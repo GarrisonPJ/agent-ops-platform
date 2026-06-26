@@ -21,8 +21,9 @@ from app.event_bus import event_bus, stream_events
 from app.failure_analyzer import analyze_trajectory
 from app.orchestrator import AgentOrchestrator
 from app.policy_store import PolicyStore
-from app.policy_compiler import compile_policy
+from app.policy_compiler import Policy, compile_policy
 from app.serializer import (
+    render_scoring_view,
     render_step,
     render_trajectory,
 )
@@ -398,15 +399,7 @@ async def eval_score(
     if trajectory is None:
         raise HTTPException(status_code=404, detail="Trajectory not found")
 
-    # Build trajectory dict from DB data
-    steps_dict = [render_step(s, view="scoring") for s in trajectory.steps]
-
-    traj_dict = {
-        "steps": steps_dict,
-        "status": trajectory.status,
-        "total_tokens": trajectory.total_tokens or 0,
-        "total_latency_ms": sum(s.latency_ms for s in trajectory.steps),
-    }
+    traj_dict = render_scoring_view(trajectory, settings.llm_max_steps)
 
     result = compute_score(traj_dict, weights)
     await repo.set_score(trajectory_id, result["score"], result["breakdown"])
@@ -449,9 +442,7 @@ async def eval_analyze(
 
     from app.config import settings
 
-    # Build trajectory dict + include max_steps from config
-    traj_dict = render_trajectory(trajectory)
-    traj_dict["max_steps"] = settings.llm_max_steps
+    traj_dict = render_scoring_view(trajectory, settings.llm_max_steps)
 
     report = analyze_trajectory(traj_dict)
 
@@ -803,7 +794,8 @@ async def list_policies(
 ) -> list[dict]:
     """List policy versions, optionally filtered by status."""
     store = PolicyStore(db)
-    return await store.list_policies(status=status)
+    policies = await store.list_policies(status=status)
+    return [p.to_dict() for p in policies]
 
 
 @app.get("/api/eval/policies/active")
@@ -812,7 +804,8 @@ async def get_active_policy(
 ) -> dict | None:
     """Return the currently active policy, or null."""
     store = PolicyStore(db)
-    return await store.get_active_policy()
+    policy = await store.get_active_policy()
+    return policy.to_dict() if policy else None
 
 
 @app.get("/api/eval/policies/{version_id}")
@@ -827,7 +820,7 @@ async def get_policy(
     policy = await store.get_policy(version_id)
     if policy is None:
         raise HTTPException(status_code=404, detail="Policy not found")
-    return policy
+    return policy.to_dict()
 
 
 @app.post("/api/eval/policies/{version_id}/approve")
@@ -842,16 +835,16 @@ async def approve_policy(
     policy = await store.get_policy(version_id)
     if policy is None:
         raise HTTPException(status_code=404, detail="Policy not found")
-    if policy["status"] not in ("pending_review", "active"):
+    if policy.status not in ("pending_review", "active"):
         raise HTTPException(
             status_code=400,
-            detail=f"Cannot approve policy with status '{policy['status']}'",
+            detail=f"Cannot approve policy with status '{policy.status}'",
         )
 
-    await store.archive_active_policy()
+    await store.deactivate_active_policy()
     result = await store.update_policy_status(version_id, "active")
     await db.commit()
-    return result
+    return result.to_dict() if result else {"status": "ok"}
 
 
 @app.post("/api/eval/policies/{version_id}/reject")
@@ -873,7 +866,7 @@ async def reject_policy(
         version_id, "reverted", reject_reason=reason
     )
     await db.commit()
-    return result
+    return result.to_dict() if result else {"status": "ok"}
 
 
 @app.get("/api/eval/policies/warmup-status")
@@ -902,7 +895,6 @@ async def compile_and_store_policy(
     from fastapi import HTTPException
 
     from app.failure_analyzer import FailureReport
-    from app.serializer import render_step
 
     trajectory_id: str = body.get("trajectory_id", "")
     if not trajectory_id:
@@ -913,15 +905,7 @@ async def compile_and_store_policy(
     if trajectory is None:
         raise HTTPException(status_code=404, detail="Trajectory not found")
 
-    # Build trajectory dict and analyze
-    steps_dict = [render_step(s, view="scoring") for s in trajectory.steps]
-    traj_dict = {
-        "steps": steps_dict,
-        "status": trajectory.status,
-        "total_tokens": trajectory.total_tokens or 0,
-        "total_latency_ms": sum(s.latency_ms for s in trajectory.steps),
-        "max_steps": trajectory.max_steps or settings.llm_max_steps,
-    }
+    traj_dict = render_scoring_view(trajectory, settings.llm_max_steps)
 
     report: FailureReport = analyze_trajectory(traj_dict)
 
@@ -945,15 +929,15 @@ async def compile_and_store_policy(
         confidence=patch.confidence,
         source_trajectories=patch.source_trajectories,
     )
-    await store.link_trajectory(trajectory_id, policy["version_id"])
+    await store.link_trajectory(trajectory_id, policy.version_id)
 
     # Auto-approve if confidence is high
     if patch.confidence == "high":
-        await store.archive_active_policy()
-        await store.update_policy_status(policy["version_id"], "active")
+        await store.deactivate_active_policy()
+        await store.update_policy_status(policy.version_id, "active")
 
     await db.commit()
 
     # Re-fetch to get the persisted state
-    persisted = await store.get_policy(policy["version_id"])
-    return {"compiled": True, "policy": persisted}
+    persisted = await store.get_policy(policy.version_id)
+    return {"compiled": True, "policy": persisted.to_dict() if persisted else None}

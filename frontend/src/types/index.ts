@@ -162,7 +162,7 @@ export interface PolicyVersion {
   rationale: string;
   expected_impact: Record<string, unknown> | null;
   confidence: "high" | "medium" | "low";
-  status: "active" | "pending_review" | "reverted" | "archived";
+  status: "active" | "pending_review" | "reverted";
   score_delta: number | null;
   reject_reason: string | null;
   created_at: string;

@@ -43,6 +43,41 @@ class PolicyPatch:
     source_trajectories: list[str] = field(default_factory=list)
 
 
+@dataclass
+class Policy:
+    """A policy version with metadata, wrapping a compiled PolicyPatch.
+
+    This is the typed interface used between PolicyStore, auto_replay,
+    agent_runner, and AgentRuntime.  ``to_dict()`` produces a flat dict
+    suitable for JSON serialization (API responses).
+    """
+
+    version_id: str
+    version_display: str
+    patch: PolicyPatch
+    status: str
+    score_delta: float | None = None
+    parent_version: str | None = None
+    created_at: str | None = None
+    reject_reason: str | None = None
+
+    def to_dict(self) -> dict:
+        """Flatten to a raw dict for JSON serialization."""
+        return {
+            "version_id": self.version_id,
+            "version_display": self.version_display,
+            "parent_version": self.parent_version,
+            "patch": self.patch.patch,
+            "rationale": self.patch.rationale,
+            "expected_impact": self.patch.expected_impact,
+            "confidence": self.patch.confidence,
+            "status": self.status,
+            "score_delta": self.score_delta,
+            "reject_reason": self.reject_reason,
+            "created_at": self.created_at,
+        }
+
+
 # ---------------------------------------------------------------------------
 # Combination rules (C1–C6)
 # ---------------------------------------------------------------------------

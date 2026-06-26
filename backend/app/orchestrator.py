@@ -11,11 +11,12 @@ from logging import getLogger
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agent_runner import _execute_agent, run_agent_background
+from app.agent_runner import execute_agent, run_agent_background
 from app.config import Settings
 from app.context_manager import ContextManager
 from app.executor import create_executor
 from app.llm import OpenAICompatibleProvider
+from app.policy_compiler import Policy
 from app.runtime import AgentRuntime
 from app.tool_registry import ToolRegistry, tool_to_schema
 from app.trajectory_repo import TrajectoryRepository
@@ -48,7 +49,7 @@ class AgentOrchestrator:
             tool_registry=registry,
         )
 
-    async def _get_active_policy(self, session: AsyncSession) -> dict | None:
+    async def _get_active_policy(self, session: AsyncSession) -> Policy | None:
         """Fetch the currently active policy (if any)."""
         from app.policy_store import PolicyStore
 
@@ -70,7 +71,7 @@ class AgentOrchestrator:
         await session.commit()
 
         # ── Resolve active policy ────────────────────────────────────
-        policy: dict | None = None
+        policy: Policy | None = None
         if policy_id:
             from app.policy_store import PolicyStore
             store = PolicyStore(session)
@@ -93,7 +94,7 @@ class AgentOrchestrator:
         logger.info(
             "Started agent %s for task: %.60s (policy=%s)",
             trajectory.id, task,
-            policy["version_display"] if policy else "none",
+            policy.version_display if policy else "none",
         )
         return trajectory.id, f"/api/agents/{trajectory.id}/stream"
 
@@ -110,7 +111,7 @@ class AgentOrchestrator:
             policy = await self._get_active_policy(session)
             await session.commit()
 
-        await _execute_agent(
+        await execute_agent(
             task=task,
             tool_schemas=self.tool_schemas,
             llm=self.llm,
@@ -124,14 +125,14 @@ class AgentOrchestrator:
         return trajectory.id
 
     async def run_agent_with_policy(
-        self, task: str, policy: dict, trajectory_id: str,
+        self, task: str, policy: Policy, trajectory_id: str,
     ) -> None:
         """Run an agent with a specific policy (used for auto-replay).
 
         Uses the existing runtime/llm/executor but injects the given
         policy.  Runs synchronously (awaited, no SSE).
         """
-        await _execute_agent(
+        await execute_agent(
             task=task,
             tool_schemas=self.tool_schemas,
             llm=self.llm,

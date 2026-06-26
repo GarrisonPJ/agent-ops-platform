@@ -199,13 +199,13 @@ test("ReviewQueue reject flow works", async ({ page }) => {
       page.getByText(`${pendingPolicies.length} pending`),
     ).not.toBeVisible();
 
-    // Verify the Timeline shows the policy with "reverted" badge
+    // Verify the Timeline shows the policy with "reverted" badge near its version node
     await expect(
       page.getByText(pendingPolicies[0].version_display),
     ).toBeVisible();
 
     await expect(
-      page.getByText(/reverted/i).first(),
+      page.locator(`text=${pendingPolicies[0].version_display}`).first().locator("..").getByText("reverted"),
     ).toBeVisible({ timeout: 5_000 });
   } else {
     await expect(

@@ -12,7 +12,7 @@ import asyncio
 from logging import getLogger
 
 from app.config import settings
-from app.policy_compiler import ROLLBACK_ACTIVATE, ROLLBACK_REVERT
+from app.policy_compiler import ROLLBACK_ACTIVATE, ROLLBACK_REVERT, Policy
 
 logger = getLogger(__name__)
 
@@ -22,7 +22,7 @@ _REPLAY_SEMAPHORE = asyncio.Semaphore(2)
 
 async def replay_trajectories(
     orchestrator,
-    policy: dict,
+    policy: Policy,
     trajectory_ids: list[str],
 ) -> list[dict]:
     """Re-run failed trajectories under a given policy.
@@ -117,7 +117,7 @@ async def evaluate_policy_effectiveness(
 
 async def trigger_auto_replay(
     orchestrator,
-    policy: dict,
+    policy: Policy,
     trajectory_ids: list[str],
     original_scores: dict[str, float],
     store,
@@ -130,7 +130,7 @@ async def trigger_auto_replay(
     orchestrator:
         The ``AgentOrchestrator`` instance.
     policy:
-        The policy dict to evaluate (must have ``version_id``).
+        The ``Policy`` object to evaluate.
     trajectory_ids:
         Trajectory IDs to replay.
     original_scores:
@@ -143,7 +143,7 @@ async def trigger_auto_replay(
     # ── Replay ──────────────────────────────────────────────────────
     logger.info(
         "Starting auto-replay for policy %s on %d trajectories",
-        policy.get("version_display", "?"),
+        policy.version_display or "?",
         len(trajectory_ids),
     )
 
@@ -157,33 +157,33 @@ async def trigger_auto_replay(
 
     if avg_delta is None:
         logger.info("No comparable scores — marking policy as pending_review")
-        await store.update_policy_status(policy["version_id"], "pending_review")
+        await store.update_policy_status(policy.version_id, "pending_review")
         await session.commit()
         return
 
-    logger.info("Policy %s score delta: %+.4f", policy["version_display"], avg_delta)
+    logger.info("Policy %s score delta: %+.4f", policy.version_display, avg_delta)
 
     # ── Activate or rollback ─────────────────────────────────────────
     if avg_delta >= ROLLBACK_ACTIVATE:
-        logger.info("Policy %s activated (Δ ≥ %.0f%%)", policy["version_display"], ROLLBACK_ACTIVATE * 100)
-        await store.archive_active_policy()
+        logger.info("Policy %s activated (Δ ≥ %.0f%%)", policy.version_display, ROLLBACK_ACTIVATE * 100)
+        await store.deactivate_active_policy()
         await store.update_policy_status(
-            policy["version_id"], "active", score_delta=avg_delta,
+            policy.version_id, "active", score_delta=avg_delta,
         )
     elif avg_delta <= ROLLBACK_REVERT:
-        logger.info("Policy %s reverted (Δ ≤ %.0f%%)", policy["version_display"], ROLLBACK_REVERT * 100)
+        logger.info("Policy %s reverted (Δ ≤ %.0f%%)", policy.version_display, ROLLBACK_REVERT * 100)
         await store.update_policy_status(
-            policy["version_id"], "reverted", score_delta=avg_delta,
+            policy.version_id, "reverted", score_delta=avg_delta,
         )
     else:
-        logger.info("Policy %s set to pending_review (Δ in middle range)", policy["version_display"])
+        logger.info("Policy %s set to pending_review (Δ in middle range)", policy.version_display)
         await store.update_policy_status(
-            policy["version_id"], "pending_review", score_delta=avg_delta,
+            policy.version_id, "pending_review", score_delta=avg_delta,
         )
 
     await session.commit()
 
     logger.info(
         "Auto-replay complete for policy %s. Average Δ = %+.4f",
-        policy["version_display"], avg_delta,
+        policy.version_display, avg_delta,
     )

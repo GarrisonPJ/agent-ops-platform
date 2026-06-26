@@ -30,6 +30,7 @@ from app.llm import (
 
 if TYPE_CHECKING:
     from app.executor import Executor
+    from app.policy_compiler import PolicyPatch
     from app.tool_registry import ToolRegistry
 
 logger = getLogger(__name__)
@@ -106,6 +107,18 @@ class AgentRuntime:
         self._policy_patch: dict | None = None
         self._context_strategy: str | None = None
         self._tool_priority_bias: dict | None = None
+
+    def apply_policy(self, patch: PolicyPatch) -> None:
+        """Inject a compiled policy patch into the runtime.
+
+        This is the sole public entry point for policy injection.  It
+        sets the prompt-suffix, context strategy, and tool priority
+        bias from the ``PolicyPatch`` in a single call, replacing the
+        previous pattern of writing three private attributes separately.
+        """
+        self._policy_patch = patch.patch
+        self._context_strategy = patch.patch.get("context_strategy")
+        self._tool_priority_bias = patch.patch.get("tool_priority_bias")
 
     async def run(
         self,

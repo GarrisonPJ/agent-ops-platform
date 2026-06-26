@@ -7,8 +7,8 @@ Usage::
     # SSE streaming events
     stream_dict = render_step(runtime_step, view="full")
 
-    # Scoring input
-    scoring_dict = render_step(orm_step, view="scoring")
+    # Scoring / failure analysis input
+    scoring_dict = render_scoring_view(orm_trajectory, max_steps=15)
 
     # Compare endpoint
     compare_dict = render_step(orm_step, view="compare")
@@ -86,6 +86,21 @@ def render_step(step, *, view: str = "full") -> dict:
     base["token_prompt"] = getattr(step, "token_prompt", None)
     base["token_completion"] = getattr(step, "token_completion", None)
     return base
+
+
+def render_scoring_view(trajectory, max_steps: int) -> dict:
+    """Convert an ORM ``Trajectory`` instance to a scoring/analysis dict.
+
+    This is the single adaptation point for the ``Trajectory`` ORM → dict
+    conversion consumed by ``compute_score`` and ``failure_analyzer``.
+    """
+    return {
+        "steps": [render_step(s, view="scoring") for s in trajectory.steps],
+        "status": trajectory.status,
+        "total_tokens": trajectory.total_tokens or 0,
+        "total_latency_ms": sum(s.latency_ms for s in trajectory.steps),
+        "max_steps": max_steps,
+    }
 
 
 def render_trajectory(trajectory) -> dict:

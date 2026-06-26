@@ -1,11 +1,7 @@
-import { useState } from "react";
 import { motion } from "framer-motion";
 import { Clock, Shield, CheckCircle, XCircle } from "lucide-react";
-import {
-  useGetPoliciesQuery,
-  useApprovePolicyMutation,
-  useRejectPolicyMutation,
-} from "../services/api";
+import type { PolicyVersion } from "../types";
+import { usePolicyActions } from "../hooks/usePolicyActions";
 import LoadingSkeleton from "./LoadingSkeleton";
 import ErrorBanner from "./ErrorBanner";
 import EmptyState from "./EmptyState";
@@ -26,12 +22,23 @@ function formatDate(iso: string): string {
   });
 }
 
-export default function PolicyReviewQueue() {
-  const { data: policies, isLoading, isError, error, refetch } =
-    useGetPoliciesQuery({ status: "pending_review" });
-  const [approvePolicy, { isLoading: isApproving }] = useApprovePolicyMutation();
-  const [rejectPolicy] = useRejectPolicyMutation();
-  const [rejectingId, setRejectingId] = useState<string | null>(null);
+interface PolicyReviewQueueProps {
+  policies: PolicyVersion[];
+  isLoading: boolean;
+  isError: boolean;
+  error?: unknown;
+  onRetry?: () => void;
+}
+
+export default function PolicyReviewQueue({
+  policies,
+  isLoading,
+  isError,
+  error,
+  onRetry,
+}: PolicyReviewQueueProps) {
+  const { approvePolicy, rejectWithReason, isApproving, rejectingId } =
+    usePolicyActions();
 
   // ── Loading state ─────────────────────────────────────────
   if (isLoading) {
@@ -63,7 +70,7 @@ export default function PolicyReviewQueue() {
               ? JSON.stringify((error as { data: unknown }).data)
               : "Could not fetch pending policies"
           }
-          onRetry={refetch}
+          onRetry={onRetry}
         />
       </motion.div>
     );
@@ -84,29 +91,6 @@ export default function PolicyReviewQueue() {
       </motion.div>
     );
   }
-
-  // ── Approve handler ───────────────────────────────────────
-  const handleApprove = async (versionId: string) => {
-    try {
-      await approvePolicy(versionId).unwrap();
-    } catch {
-      // Toast error handled by parent or RTK
-    }
-  };
-
-  // ── Reject handler ────────────────────────────────────────
-  const handleReject = async (versionId: string) => {
-    const reason = window.prompt("Reason for rejection (optional):");
-    if (reason === null) return; // cancelled
-    setRejectingId(versionId);
-    try {
-      await rejectPolicy({ version_id: versionId, reason }).unwrap();
-    } catch {
-      // handled by RTK
-    } finally {
-      setRejectingId(null);
-    }
-  };
 
   // ── Render ────────────────────────────────────────────────
   return (
@@ -166,7 +150,7 @@ export default function PolicyReviewQueue() {
               {/* Actions */}
               <div className="flex items-center gap-2 pt-1">
                 <button
-                  onClick={() => handleApprove(policy.version_id)}
+                  onClick={() => approvePolicy(policy.version_id)}
                   disabled={isApproving}
                   className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-[11px] font-mono font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20 active:scale-[0.97] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
@@ -174,7 +158,7 @@ export default function PolicyReviewQueue() {
                   Approve
                 </button>
                 <button
-                  onClick={() => handleReject(policy.version_id)}
+                  onClick={() => rejectWithReason(policy.version_id)}
                   disabled={rejectingId === policy.version_id}
                   className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-[11px] font-mono font-semibold bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 active:scale-[0.97] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >

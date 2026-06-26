@@ -19,7 +19,7 @@ class PolicyStore:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
-    async def get_active_policy(self) -> dict | None:
+    async def get_active_policy(self) -> "Policy | None":
         """Return the latest active policy, or None."""
         from app.models import PolicyVersion
 
@@ -31,7 +31,7 @@ class PolicyStore:
         )
         result = await self.session.execute(stmt)
         row = result.scalar_one_or_none()
-        return self._to_dict(row) if row else None
+        return self._to_policy(row) if row else None
 
     async def create_policy(
         self,
@@ -42,7 +42,7 @@ class PolicyStore:
         expected_impact: dict | None,
         confidence: str,
         source_trajectories: list[str],
-    ) -> dict:
+    ) -> "Policy":
         """Create a new policy version and return it as a dict.
 
         Retries once on IntegrityError (concurrent version_display conflict).
@@ -77,7 +77,7 @@ class PolicyStore:
                             self._map_row(tid, policy.version_id)
                         )
 
-                return self._to_dict(policy)
+                return self._to_policy(policy)
             except IntegrityError as exc:
                 last_error = exc
                 continue  # retry once
@@ -91,7 +91,7 @@ class PolicyStore:
         status: str,
         score_delta: float | None = None,
         reject_reason: str | None = None,
-    ) -> dict | None:
+    ) -> "Policy | None":
         """Update the status of a policy version."""
         from app.models import PolicyVersion
 
@@ -104,9 +104,9 @@ class PolicyStore:
             policy.score_delta = score_delta
         if reject_reason is not None:
             policy.reject_reason = reject_reason
-        return self._to_dict(policy)
+        return self._to_policy(policy)
 
-    async def list_policies(self, status: str | None = None) -> list[dict]:
+    async def list_policies(self, status: str | None = None) -> list["Policy"]:
         """List policy versions, optionally filtered by status."""
         from app.models import PolicyVersion
 
@@ -116,14 +116,14 @@ class PolicyStore:
 
         result = await self.session.execute(stmt)
         rows = result.scalars().all()
-        return [self._to_dict(r) for r in rows]
+        return [self._to_policy(r) for r in rows]
 
-    async def get_policy(self, version_id: str) -> dict | None:
+    async def get_policy(self, version_id: str) -> "Policy | None":
         """Get a single policy by version_id."""
         from app.models import PolicyVersion
 
         policy = await self.session.get(PolicyVersion, version_id)
-        return self._to_dict(policy) if policy else None
+        return self._to_policy(policy) if policy else None
 
     async def link_trajectory(
         self, trajectory_id: str, policy_version_id: str
@@ -145,12 +145,19 @@ class PolicyStore:
             "ready": total >= threshold,
         }
 
-    async def archive_active_policy(self) -> None:
-        """Archive the currently active policy (before approving a new one)."""
+    async def deactivate_active_policy(self) -> None:
+        """Deactivate the currently active policy before activating a successor.
+
+        Sets the old active to ``"reverted"``.  Within the three-status
+        vocabulary (active / pending_review / reverted) this is the closest
+        fit: the policy is no longer active and is being replaced by a
+        successor, whether that successor was approved manually or promoted
+        by the auto-replay evaluator.
+        """
         active = await self.get_active_policy()
         if active:
             await self.update_policy_status(
-                active["version_id"], "reverted"
+                active.version_id, "reverted"
             )
 
     async def next_version_display(self) -> str:
@@ -182,6 +189,29 @@ class PolicyStore:
             "reject_reason": policy.reject_reason,
             "created_at": policy.created_at.isoformat() if policy.created_at else None,
         }
+
+    @staticmethod
+    def _to_policy(row: Any) -> "Policy":
+        """Convert a PolicyVersion ORM instance to a Policy dataclass."""
+        from app.policy_compiler import Policy, PolicyPatch
+
+        patch_obj = PolicyPatch(
+            parent_version=row.parent_version,
+            patch=row.patch,
+            rationale=row.rationale,
+            expected_impact=row.expected_impact,
+            confidence=row.confidence,
+        )
+        return Policy(
+            version_id=row.version_id,
+            version_display=row.version_display,
+            patch=patch_obj,
+            status=row.status,
+            score_delta=row.score_delta,
+            parent_version=row.parent_version,
+            created_at=row.created_at.isoformat() if row.created_at else None,
+            reject_reason=row.reject_reason,
+        )
 
     @staticmethod
     def _map_row(trajectory_id: str, policy_version_id: str) -> Any:
