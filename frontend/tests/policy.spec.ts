@@ -143,10 +143,20 @@ test("ReviewQueue shows pending_review policies and approve flow works", async (
     await page.waitForTimeout(1500);
 
     // After approve, the approved policy should no longer appear in Review Queue
-    // but may appear in timeline as active or still visible
-    const approveButtonAfter = page.getByRole("button", { name: /Approve/i });
-    const approveCount = await approveButtonAfter.count();
-    expect(approveCount).toBeLessThanOrEqual(pendingPolicies.length);
+    await expect(
+      page.getByText(`${pendingPolicies.length} pending`),
+    ).not.toBeVisible();
+
+    // Verify the Timeline shows the policy with "active" badge
+    await expect(
+      page.getByText(pendingPolicies[0].version_display),
+    ).toBeVisible();
+
+    // Look for the active badge near this policy's version_display
+    // The Timeline renders status labels as uppercase text
+    await expect(
+      page.locator(`text=${pendingPolicies[0].version_display}`).first().locator("..").getByText("active"),
+    ).toBeVisible({ timeout: 5_000 });
   } else {
     // No pending policies — verify empty state
     await expect(
@@ -185,9 +195,18 @@ test("ReviewQueue reject flow works", async ({ page }) => {
     await page.waitForTimeout(1500);
 
     // The rejected policy should disappear from the queue
-    const rejectButtonsAfter = page.getByRole("button", { name: /Reject/i });
-    const rejectCount = await rejectButtonsAfter.count();
-    expect(rejectCount).toBeLessThanOrEqual(pendingPolicies.length);
+    await expect(
+      page.getByText(`${pendingPolicies.length} pending`),
+    ).not.toBeVisible();
+
+    // Verify the Timeline shows the policy with "reverted" badge
+    await expect(
+      page.getByText(pendingPolicies[0].version_display),
+    ).toBeVisible();
+
+    await expect(
+      page.getByText(/reverted/i).first(),
+    ).toBeVisible({ timeout: 5_000 });
   } else {
     await expect(
       page.getByText(/No policies pending review/i),

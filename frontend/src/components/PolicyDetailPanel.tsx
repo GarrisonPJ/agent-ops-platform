@@ -34,6 +34,11 @@ const STATUS_BADGE: Record<string, { bg: string; text: string; label: string }> 
     text: "text-red-400",
     label: "Reverted",
   },
+  archived: {
+    bg: "bg-zinc-500/10 border-zinc-500/20",
+    text: "text-zinc-400",
+    label: "Archived",
+  },
 };
 
 const CONFIDENCE_BADGE: Record<

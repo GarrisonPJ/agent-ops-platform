@@ -316,6 +316,15 @@ async def _run_compile_pipeline(
         source_trajectories=patch.source_trajectories,
     )
 
+    # needs_human_review → skip auto-replay, stay as pending_review
+    if patch.needs_human_review:
+        logger.info(
+            "Policy %s needs human review — skipping auto-replay",
+            version_display,
+        )
+        await session.commit()
+        return
+
     # Build orchestrator for replay
     orchestrator = AgentOrchestrator(settings)
 
@@ -326,6 +335,11 @@ async def _run_compile_pipeline(
             original_scores[traj.id] = traj.score
 
     # All policies go through replay verification (no shortcut for high confidence)
+    logger.info(
+        "Starting auto-replay for policy %s with %d source trajectories",
+        version_display,
+        len(patch.source_trajectories),
+    )
     await trigger_auto_replay(
         orchestrator=orchestrator,
         policy=policy,
@@ -333,6 +347,10 @@ async def _run_compile_pipeline(
         original_scores=original_scores,
         store=store,
         session=session,
+    )
+    logger.info(
+        "Auto-replay completed for policy %s",
+        version_display,
     )
 
     await session.commit()

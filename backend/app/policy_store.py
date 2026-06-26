@@ -150,7 +150,7 @@ class PolicyStore:
         active = await self.get_active_policy()
         if active:
             await self.update_policy_status(
-                active["version_id"], "archived"
+                active["version_id"], "reverted"
             )
 
     async def next_version_display(self) -> str:

@@ -34,7 +34,6 @@ ROLLBACK_REVERT = -0.05
 class PolicyPatch:
     """A compiled policy patch produced from a FailureReport."""
 
-    version: str
     parent_version: str | None
     patch: dict  # {system_prompt_suffix, tool_priority_bias, context_strategy, max_steps_override}
     rationale: str
@@ -252,7 +251,6 @@ def compile_policy(
     }
 
     return PolicyPatch(
-        version="v0",  # placeholder; PolicyStore will assign the real version
         parent_version=None,
         patch=combined_patch,
         rationale=rationale,

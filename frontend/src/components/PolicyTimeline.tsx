@@ -24,6 +24,11 @@ const STATUS_STYLE: Record<string, { dot: string; line: string; label: string }>
     line: "bg-red-500/30",
     label: "text-red-400",
   },
+  archived: {
+    dot: "bg-zinc-500 border-zinc-500 shadow-[0_0_8px_rgba(113,113,122,0.5)]",
+    line: "bg-zinc-500/30",
+    label: "text-zinc-400",
+  },
 };
 
 function formatDate(iso: string): string {
@@ -91,9 +96,7 @@ export default function PolicyTimeline({
       </h3>
 
       <div className="flex items-center gap-0 overflow-x-auto pb-2">
-        {policies
-          .filter((p) => p.status !== "archived")
-          .map((policy, idx) => {
+        {policies.map((policy, idx) => {
           const style = (STATUS_STYLE as Record<string, typeof STATUS_STYLE.active>)[policy.status];
           const isSelected = policy.version_id === selectedId;
           const isLast = idx === policies.length - 1;
