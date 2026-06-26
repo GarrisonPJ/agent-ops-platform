@@ -59,3 +59,32 @@ class Step(Base):
 
     trajectory: Mapped[Trajectory] = relationship(back_populates="steps")
 
+
+class PolicyVersion(Base):
+    __tablename__ = "policy_versions"
+
+    version_id: Mapped[str] = mapped_column(String, primary_key=True)
+    version_display: Mapped[str] = mapped_column(String, unique=True)
+    parent_version: Mapped[str | None] = mapped_column(String, nullable=True)
+    patch: Mapped[dict] = mapped_column(JSONB)
+    rationale: Mapped[str] = mapped_column(Text)
+    expected_impact: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    confidence: Mapped[str] = mapped_column(String)
+    status: Mapped[str] = mapped_column(String, default="pending_review")
+    score_delta: Mapped[float | None] = mapped_column(nullable=True)
+    reject_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+    )
+
+
+class TrajectoryPolicyMap(Base):
+    __tablename__ = "trajectory_policy_map"
+
+    trajectory_id: Mapped[str] = mapped_column(
+        String, ForeignKey("trajectories.id"), primary_key=True
+    )
+    policy_version_id: Mapped[str] = mapped_column(
+        String, ForeignKey("policy_versions.version_id"), primary_key=True
+    )
+

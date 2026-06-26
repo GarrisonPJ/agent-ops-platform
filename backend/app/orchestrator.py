@@ -48,16 +48,35 @@ class AgentOrchestrator:
             tool_registry=registry,
         )
 
+    async def _get_active_policy(self, session: AsyncSession) -> dict | None:
+        """Fetch the currently active policy (if any)."""
+        from app.policy import PolicyStore
+
+        store = PolicyStore(session)
+        return await store.get_active_policy()
+
     async def run_background(
-        self, task: str, session: AsyncSession
+        self, task: str, session: AsyncSession,
+        policy_id: str | None = None,
     ) -> tuple[str, str]:
         """Start an agent in a background task with SSE streaming.
 
+        If *policy_id* is provided, that specific policy is used.
+        Otherwise, the currently active policy is automatically fetched.
         Returns ``(trajectory_id, stream_url)``.
         """
         repo = TrajectoryRepository(session)
         trajectory = await repo.create_trajectory(task)
         await session.commit()
+
+        # ── Resolve active policy ────────────────────────────────────
+        policy: dict | None = None
+        if policy_id:
+            from app.policy import PolicyStore
+            store = PolicyStore(session)
+            policy = await store.get_policy(policy_id)
+        else:
+            policy = await self._get_active_policy(session)
 
         asyncio.create_task(
             run_agent_background(
@@ -67,10 +86,15 @@ class AgentOrchestrator:
                 context_manager=self.cm,
                 runtime=self.runtime,
                 trajectory_id=trajectory.id,
+                policy=policy,
             )
         )
 
-        logger.info("Started agent %s for task: %.60s", trajectory.id, task)
+        logger.info(
+            "Started agent %s for task: %.60s (policy=%s)",
+            trajectory.id, task,
+            policy["version_display"] if policy else "none",
+        )
         return trajectory.id, f"/api/agents/{trajectory.id}/stream"
 
     async def run_benchmark(self, task: str) -> str:
@@ -85,6 +109,8 @@ class AgentOrchestrator:
             trajectory = await repo.create_trajectory(task)
             await session.commit()
 
+        policy = await self._get_active_policy(session)
+
         await _execute_agent(
             task=task,
             tool_schemas=self.tool_schemas,
@@ -93,6 +119,26 @@ class AgentOrchestrator:
             runtime=self.runtime,
             trajectory_id=trajectory.id,
             publish_sse=False,
+            policy=policy,
         )
 
         return trajectory.id
+
+    async def run_agent_with_policy(
+        self, task: str, policy: dict, trajectory_id: str,
+    ) -> None:
+        """Run an agent with a specific policy (used for auto-replay).
+
+        Uses the existing runtime/llm/executor but injects the given
+        policy.  Runs synchronously (awaited, no SSE).
+        """
+        await _execute_agent(
+            task=task,
+            tool_schemas=self.tool_schemas,
+            llm=self.llm,
+            context_manager=self.cm,
+            runtime=self.runtime,
+            trajectory_id=trajectory_id,
+            publish_sse=False,
+            policy=policy,
+        )

@@ -7,12 +7,16 @@ import type {
   CompareResponse,
   BenchmarkTask,
   BenchmarkResponse,
+  FailureReport,
+  FailureSummary,
+  PolicyVersion,
+  WarmupStatus,
 } from "../types";
 
 export const api = createApi({
   reducerPath: "api",
   baseQuery: fetchBaseQuery({ baseUrl: "/api" }),
-  tagTypes: ["Traces", "Trace", "Tools"],
+  tagTypes: ["Traces", "Trace", "Tools", "Policies"],
   endpoints: (builder) => ({
     runAgent: builder.mutation<RunResponse, { task: string }>({
       query: (body) => ({
@@ -96,6 +100,80 @@ export const api = createApi({
         return { data: blob };
       },
     }),
+
+    analyzeTrajectory: builder.mutation<
+      FailureReport,
+      { trajectory_id: string }
+    >({
+      query: (body) => ({
+        url: "/eval/analyze",
+        method: "POST",
+        body,
+      }),
+    }),
+
+    getFailureSummary: builder.query<
+      FailureSummary,
+      { last_n?: number } | void
+    >({
+      query: (params) => {
+        const searchParams = new URLSearchParams();
+        if (params && params.last_n) searchParams.set("last_n", String(params.last_n));
+        const qs = searchParams.toString();
+        return `/eval/analysis/summary${qs ? `?${qs}` : ""}`;
+      },
+    }),
+
+    // ── Policy endpoints ──────────────────────────────────────
+    getPolicies: builder.query<PolicyVersion[], { status?: string } | void>({
+      query: (params) => {
+        const searchParams = new URLSearchParams();
+        if (params && params.status) searchParams.set("status", params.status);
+        const qs = searchParams.toString();
+        return `/eval/policies${qs ? `?${qs}` : ""}`;
+      },
+      providesTags: ["Policies"],
+    }),
+    getActivePolicy: builder.query<PolicyVersion | null, void>({
+      query: () => "/eval/policies/active",
+      providesTags: ["Policies"],
+    }),
+    getPolicyDetail: builder.query<PolicyVersion, string>({
+      query: (id) => `/eval/policies/${id}`,
+      providesTags: (_r, _e, id) => [{ type: "Policies" as const, id }],
+    }),
+    approvePolicy: builder.mutation<PolicyVersion, string>({
+      query: (id) => ({
+        url: `/eval/policies/${id}/approve`,
+        method: "POST",
+      }),
+      invalidatesTags: ["Policies"],
+    }),
+    rejectPolicy: builder.mutation<
+      PolicyVersion,
+      { version_id: string; reason: string }
+    >({
+      query: ({ version_id, reason }) => ({
+        url: `/eval/policies/${version_id}/reject`,
+        method: "POST",
+        body: { reason },
+      }),
+      invalidatesTags: ["Policies"],
+    }),
+    compilePolicy: builder.mutation<
+      { compiled: boolean; policy?: PolicyVersion; reason?: string },
+      { trajectory_id: string }
+    >({
+      query: (body) => ({
+        url: "/eval/policies/compile",
+        method: "POST",
+        body,
+      }),
+      invalidatesTags: ["Policies"],
+    }),
+    getWarmupStatus: builder.query<WarmupStatus, void>({
+      query: () => "/eval/policies/warmup-status",
+    }),
   }),
 });
 
@@ -109,4 +187,13 @@ export const {
   useGetBenchmarksQuery,
   useRunBenchmarkMutation,
   useLazyExportTrajectoryQuery,
+  useAnalyzeTrajectoryMutation,
+  useGetFailureSummaryQuery,
+  useGetPoliciesQuery,
+  useGetActivePolicyQuery,
+  useGetPolicyDetailQuery,
+  useApprovePolicyMutation,
+  useRejectPolicyMutation,
+  useCompilePolicyMutation,
+  useGetWarmupStatusQuery,
 } = api;

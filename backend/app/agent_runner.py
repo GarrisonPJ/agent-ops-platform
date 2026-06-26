@@ -62,6 +62,7 @@ async def _execute_agent(
     trajectory_id: str,
     *,
     publish_sse: bool = False,
+    policy: dict | None = None,
 ) -> None:
     """Shared agent execution lifecycle.
 
@@ -82,6 +83,13 @@ async def _execute_agent(
     async with async_session() as session:
         repo = TrajectoryRepository(session)
         final_status = "success"
+
+        # ── Policy injection ─────────────────────────────────────────
+        if policy:
+            patch = policy.get("patch", {})
+            runtime._policy_patch = patch
+            runtime._context_strategy = patch.get("context_strategy")
+            runtime._tool_priority_bias = patch.get("tool_priority_bias")
 
         try:
             async for step in runtime.run(
@@ -136,12 +144,18 @@ async def run_agent_background(
     context_manager,
     runtime,
     trajectory_id: str,
+    *,
+    policy: dict | None = None,
 ) -> None:
     """Run the agent loop as a background task.
 
     Persists each step to the database, publishes events to SSE subscribers,
     updates the final status, computes an automatic score, and publishes a
     terminal event (``done`` / ``error``).
+
+    If a *policy* is provided, it is injected into the runtime for
+    prompt-suffix, context-strategy, and tool-priority-bias modifications.
+    After the agent completes, the closed-loop pipeline is triggered.
     """
     await _execute_agent(
         task=task,
@@ -151,6 +165,164 @@ async def run_agent_background(
         runtime=runtime,
         trajectory_id=trajectory_id,
         publish_sse=True,
+        policy=policy,
+    )
+
+    # ── Trigger closed-loop pipeline after agent finishes ────────────
+    try:
+        await _maybe_trigger_closed_loop()
+    except Exception:
+        logger.exception("Closed-loop trigger failed (non-fatal)")
+
+
+async def _maybe_trigger_closed_loop() -> None:
+    """Check conditions and trigger the closed-loop pipeline.
+
+    Conditions for automatic compilation:
+    1. No active policy exists (cold-start) AND ≥10 trajectories exist, OR
+    2. ≥10 new trajectories since last compilation, OR
+    3. ≥30 minutes since last compilation.
+
+    When conditions are met, runs: analyze → compile → store → replay.
+    """
+    from app.database import async_session
+    from app.trajectory_repo import TrajectoryRepository
+    from app.policy import PolicyStore
+
+    async with async_session() as session:
+        repo = TrajectoryRepository(session)
+        store = PolicyStore(session)
+
+        active = await store.get_active_policy()
+        warmup = await store.get_warmup_status()
+        policies = await store.list_policies()
+
+        # ── Cold-start check ─────────────────────────────────────────
+        if active is None:
+            if not warmup["ready"]:
+                logger.info(
+                    "Cold-start warmup in progress: %d/%d trajectories",
+                    warmup["total_trajectories"],
+                    warmup["threshold"],
+                )
+                return
+
+            logger.info("Cold-start threshold met — triggering auto-compile")
+            await _run_compile_pipeline(repo, store, session)
+            return
+
+        # ── Periodic check: ≥10 new trajectories since last compile ──
+        if policies:
+            # Count trajectories created after the most recent policy
+            from app.models import Trajectory
+            from sqlalchemy import select, func
+
+            latest_policy = policies[0]
+            latest_ts = latest_policy.get("created_at")
+            if latest_ts:
+                stmt = select(func.count(Trajectory.id)).where(
+                    Trajectory.created_at > latest_ts
+                )
+                result = await session.execute(stmt)
+                new_count = result.scalar() or 0
+                if new_count >= 10:
+                    logger.info(
+                        "%d new trajectories since last policy — triggering auto-compile",
+                        new_count,
+                    )
+                    await _run_compile_pipeline(repo, store, session)
+                    return
+
+        logger.debug("Closed-loop conditions not met — skipping")
+
+
+async def _run_compile_pipeline(
+    repo: TrajectoryRepository,
+    store: PolicyStore,
+    session,
+) -> None:
+    """Run the full compile pipeline: analyze → compile → store.
+
+    Iterates over all trajectories, analyzes them, and compiles a policy
+    from the aggregate failure report.
+    """
+    from app.failure import analyze_trajectory, FailureReport
+    from app.serializer import render_step
+
+    # Get all trajectories
+    from app.models import Trajectory
+    from sqlalchemy import select
+
+    stmt = select(Trajectory).order_by(Trajectory.created_at.desc()).limit(50)
+    result = await session.execute(stmt)
+    trajectories = result.scalars().all()
+
+    if not trajectories:
+        return
+
+    # Build trajectory dicts and analyze each
+    all_evidence: list = []
+    dim_totals: dict[str, float] = {}
+    traj_ids: list[str] = []
+
+    for traj in trajectories:
+        steps_dict = [render_step(s, view="scoring") for s in traj.steps]
+        traj_dict = {
+            "steps": steps_dict,
+            "status": traj.status,
+            "total_tokens": traj.total_tokens or 0,
+            "total_latency_ms": sum(s.latency_ms for s in traj.steps),
+        }
+        report = analyze_trajectory(traj_dict)
+
+        for dim, rate in report.dimensions.items():
+            dim_totals[dim] = dim_totals.get(dim, 0.0) + rate
+
+        all_evidence.extend(report.evidence)
+        traj_ids.append(traj.id)
+
+    if not dim_totals:
+        logger.info("No failures found in recent trajectories — skipping compile")
+        return
+
+    # Create aggregate failure report
+    n = len(trajectories)
+    agg_dims = {d: v / n for d, v in dim_totals.items()}
+    agg_report = FailureReport(
+        dimensions=agg_dims,
+        evidence=all_evidence,
+    )
+
+    # Compile policy
+    from app.policy import compile_policy
+
+    patch = compile_policy(agg_report, traj_ids)
+    if patch is None:
+        logger.info("Policy compile returned None — no policy needed")
+        return
+
+    # Store
+    version_display = await store.next_version_display()
+    policy = await store.create_policy(
+        version_display=version_display,
+        parent_version=None,
+        patch=patch.patch,
+        rationale=patch.rationale,
+        expected_impact=patch.expected_impact,
+        confidence=patch.confidence,
+        source_trajectories=patch.source_trajectories,
+    )
+
+    # Auto-approve if high confidence
+    if patch.confidence == "high":
+        await store.archive_active_policy()
+        await store.update_policy_status(policy["version_id"], "active")
+
+    await session.commit()
+    logger.info(
+        "Policy %s compiled and stored (confidence=%s)",
+        policy["version_display"],
+        policy["confidence"],
     )
 
 

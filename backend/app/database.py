@@ -18,6 +18,10 @@ _MIGRATIONS: list[str] = [
     # v0.3 — scoring engine
     "ALTER TABLE trajectories ADD COLUMN IF NOT EXISTS score FLOAT",
     "ALTER TABLE trajectories ADD COLUMN IF NOT EXISTS score_breakdown JSONB",
+    # closed-loop — policy pipeline
+    "ALTER TABLE trajectories ADD COLUMN IF NOT EXISTS max_steps INTEGER",
+    "CREATE TABLE IF NOT EXISTS policy_versions (version_id TEXT PRIMARY KEY, version_display TEXT UNIQUE, parent_version TEXT, patch JSONB, rationale TEXT, expected_impact JSONB, confidence TEXT, status TEXT DEFAULT 'pending_review', score_delta FLOAT, reject_reason TEXT, created_at TIMESTAMPTZ)",
+    "CREATE TABLE IF NOT EXISTS trajectory_policy_map (trajectory_id TEXT REFERENCES trajectories(id), policy_version_id TEXT REFERENCES policy_versions(version_id), PRIMARY KEY (trajectory_id, policy_version_id))",
 ]
 
 

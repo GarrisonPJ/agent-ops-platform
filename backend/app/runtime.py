@@ -103,6 +103,9 @@ class AgentRuntime:
         self._history: list[Message] = []
         self._tool_executor = tool_executor
         self._tool_registry = tool_registry
+        self._policy_patch: dict | None = None
+        self._context_strategy: str | None = None
+        self._tool_priority_bias: dict | None = None
 
     async def run(
         self,
@@ -135,19 +138,31 @@ class AgentRuntime:
             Message(role="user", content=task),
         ]
 
+        # ── Policy injection: append suffix to system prompt ─────────
+        if self._policy_patch and self._policy_patch.get("system_prompt_suffix"):
+            suffix = self._policy_patch["system_prompt_suffix"]
+            self._history[0] = Message(
+                role="system",
+                content=f"{_REACT_SYSTEM_PROMPT}\n\n[Policy] {suffix}",
+            )
+
         for step_index in range(max_steps):
             started_at = time.time()
 
+            # ── Apply tool priority bias ────────────────────────────────
+            sorted_tools = self._sort_tools_by_priority(tools)
+
             # ── Context window management ────────────────────────────────
             self._history, ctx_info = context_manager.manage(
-                self._history, max_tokens
+                self._history, max_tokens,
+                strategy=self._context_strategy or "default",
             )
 
             # ── Call LLM ────────────────────────────────────────────────
             t0 = time.perf_counter()
             response: ChatResponse = await llm.chat(
                 messages=self._history,
-                tools=tools,
+                tools=sorted_tools,
             )
 
             elapsed = int((time.perf_counter() - t0) * 1000)
@@ -283,3 +298,26 @@ class AgentRuntime:
             token_prompt=None,
             token_completion=None,
         )
+
+    # ------------------------------------------------------------------
+    # Policy-aware helpers
+    # ------------------------------------------------------------------
+
+    def _sort_tools_by_priority(
+        self, tools: list[ToolSchema]
+    ) -> list[ToolSchema]:
+        """Sort tools by priority bias from the active policy.
+
+        Tools with positive bias float to the top; negative bias sink.
+        Tools not mentioned in the bias dict retain their original relative
+        order (stable sort).
+        """
+        if not self._tool_priority_bias:
+            return tools
+
+        bias = self._tool_priority_bias
+
+        def _key(t: ToolSchema) -> float:
+            return -bias.get(t.get("function", {}).get("name", ""), 0.0)
+
+        return sorted(tools, key=_key)

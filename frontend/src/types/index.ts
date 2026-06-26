@@ -120,3 +120,56 @@ export interface ScoreResponse {
   score: number;
   breakdown: Record<string, number>;
 }
+
+// ── Failure Analysis types ───────────────────────────────────
+
+export interface FailureEvidence {
+  dimension: "planning" | "execution" | "context" | "budget";
+  step_index: number;
+  reason: string;
+  severity: number;
+  details: Record<string, unknown> | null;
+}
+
+export interface FailureReport {
+  dimensions: Record<string, number>;
+  dominant: string | null;
+  evidence: FailureEvidence[];
+  needs_human_review: boolean;
+}
+
+export interface FailureSummary {
+  planning: number;
+  execution: number;
+  context: number;
+  budget: number;
+}
+
+// ── Policy types ────────────────────────────────────────────
+
+export interface PolicyPatch {
+  system_prompt_suffix?: string;
+  tool_priority_bias?: Record<string, number>;
+  context_strategy?: string;
+  max_steps_override?: number;
+}
+
+export interface PolicyVersion {
+  version_id: string;
+  version_display: string;
+  parent_version: string | null;
+  patch: PolicyPatch;
+  rationale: string;
+  expected_impact: Record<string, unknown> | null;
+  confidence: "high" | "medium" | "low";
+  status: "active" | "pending_review" | "reverted" | "archived";
+  score_delta: number | null;
+  reject_reason: string | null;
+  created_at: string;
+}
+
+export interface WarmupStatus {
+  total_trajectories: number;
+  threshold: number;
+  ready: boolean;
+}

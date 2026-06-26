@@ -18,7 +18,9 @@ from app.benchmarks import BENCHMARK_TASKS, get_benchmark_task
 from app.config import settings
 from app.database import get_db
 from app.event_bus import event_bus, stream_events
+from app.failure import analyze_trajectory
 from app.orchestrator import AgentOrchestrator
+from app.policy import PolicyStore, compile_policy
 from app.serializer import (
     render_step,
     render_trajectory,
@@ -116,15 +118,20 @@ async def run_agent(
 ) -> dict[str, object]:
     """Launch an agent run in the background and return immediately.
 
-    Request body: ``{"task": "..."}``
+    Request body: ``{"task": "...", "policy_id": "..."}`` (policy_id optional)
 
     The agent executes asynchronously — steps are streamed to the SSE endpoint
     at ``GET /api/agents/{trajectory_id}/stream`` as they are produced.
     """
+    from fastapi import HTTPException
+
     task: str = body["task"]
+    policy_id: str | None = body.get("policy_id")
 
     orchestrator = AgentOrchestrator(settings)
-    trajectory_id, stream_url = await orchestrator.run_background(task, db)
+    trajectory_id, stream_url = await orchestrator.run_background(
+        task, db, policy_id=policy_id,
+    )
 
     return {
         "trajectory_id": trajectory_id,
@@ -411,6 +418,98 @@ async def eval_score(
     }
 
 
+@app.post("/api/eval/analyze")
+async def eval_analyze(
+    body: dict,
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, object]:
+    """Analyze a single trajectory for failure root causes.
+
+    Request body::
+
+        {"trajectory_id": "..."}
+
+    Returns a ``FailureReport`` with per-dimension rates, evidence list,
+    dominant dimension, and a ``needs_human_review`` flag.
+    """
+    from fastapi import HTTPException
+
+    from app.failure import analyze_trajectory
+
+    trajectory_id: str = body.get("trajectory_id", "")
+    if not trajectory_id:
+        raise HTTPException(status_code=422, detail="trajectory_id is required")
+
+    repo = TrajectoryRepository(db)
+    trajectory = await repo.get_trajectory(trajectory_id)
+
+    if trajectory is None:
+        raise HTTPException(status_code=404, detail="Trajectory not found")
+
+    from app.config import settings
+
+    # Build trajectory dict + include max_steps from config
+    traj_dict = render_trajectory(trajectory)
+    traj_dict["max_steps"] = settings.llm_max_steps
+
+    report = analyze_trajectory(traj_dict)
+
+    return {
+        "trajectory_id": trajectory_id,
+        "dimensions": report.dimensions,
+        "dominant": report.dominant,
+        "evidence": [
+            {
+                "dimension": ev.dimension,
+                "step_index": ev.step_index,
+                "reason": ev.reason,
+                "severity": ev.severity,
+                "details": ev.details,
+            }
+            for ev in report.evidence
+        ],
+        "needs_human_review": report.needs_human_review,
+    }
+
+
+@app.get("/api/eval/analysis/summary")
+async def eval_analysis_summary(
+    last_n: int = Query(50, ge=1, le=500),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, object]:
+    """Aggregate failure analysis across the most recent completed trajectories.
+
+    Query params:
+        ``last_n``: number of recent completed trajectories to analyze (1-500).
+
+    Returns per-dimension average failure rates across all selected trajectories.
+    """
+    from app.failure import analyze_trajectories
+    from app.config import settings
+
+    repo = TrajectoryRepository(db)
+    # Fetch last_n trajectories with terminal status (not "running")
+    trajectories, _, _ = await repo.list_trajectories(
+        limit=last_n,
+        offset=0,
+    )
+    # Filter to completed trajectories only
+    completed = [t for t in trajectories if t.status in ("success", "failed")]
+
+    traj_dicts: list[dict] = []
+    for t in completed:
+        td = render_trajectory(t)
+        td["max_steps"] = settings.llm_max_steps
+        traj_dicts.append(td)
+
+    result = analyze_trajectories(traj_dicts)
+
+    return {
+        "trajectories_analyzed": len(completed),
+        "dimension_rates": result,
+    }
+
+
 # ---------------------------------------------------------------------------
 # Export routes
 # ---------------------------------------------------------------------------
@@ -689,3 +788,171 @@ async def run_benchmark(
         if worst
         else None,
     }
+
+
+# ---------------------------------------------------------------------------
+# Policy routes
+# ---------------------------------------------------------------------------
+
+
+@app.get("/api/eval/policies")
+async def list_policies(
+    status: str | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+) -> list[dict]:
+    """List policy versions, optionally filtered by status."""
+    store = PolicyStore(db)
+    return await store.list_policies(status=status)
+
+
+@app.get("/api/eval/policies/active")
+async def get_active_policy(
+    db: AsyncSession = Depends(get_db),
+) -> dict | None:
+    """Return the currently active policy, or null."""
+    store = PolicyStore(db)
+    return await store.get_active_policy()
+
+
+@app.get("/api/eval/policies/{version_id}")
+async def get_policy(
+    version_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Return a single policy version by ID."""
+    from fastapi import HTTPException
+
+    store = PolicyStore(db)
+    policy = await store.get_policy(version_id)
+    if policy is None:
+        raise HTTPException(status_code=404, detail="Policy not found")
+    return policy
+
+
+@app.post("/api/eval/policies/{version_id}/approve")
+async def approve_policy(
+    version_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Approve a pending_review policy — archive the old active, activate this one."""
+    from fastapi import HTTPException
+
+    store = PolicyStore(db)
+    policy = await store.get_policy(version_id)
+    if policy is None:
+        raise HTTPException(status_code=404, detail="Policy not found")
+    if policy["status"] not in ("pending_review", "active"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot approve policy with status '{policy['status']}'",
+        )
+
+    await store.archive_active_policy()
+    result = await store.update_policy_status(version_id, "active")
+    await db.commit()
+    return result
+
+
+@app.post("/api/eval/policies/{version_id}/reject")
+async def reject_policy(
+    version_id: str,
+    body: dict,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Reject a pending_review policy with an optional reason."""
+    from fastapi import HTTPException
+
+    store = PolicyStore(db)
+    policy = await store.get_policy(version_id)
+    if policy is None:
+        raise HTTPException(status_code=404, detail="Policy not found")
+
+    reason = body.get("reason", "")
+    result = await store.update_policy_status(
+        version_id, "reverted", reject_reason=reason
+    )
+    await db.commit()
+    return result
+
+
+@app.get("/api/eval/policies/warmup-status")
+async def warmup_status(
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Return the warmup progress toward the first auto-compile threshold."""
+    store = PolicyStore(db)
+    return await store.get_warmup_status()
+
+
+@app.post("/api/eval/policies/compile")
+async def compile_and_store_policy(
+    body: dict,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Analyze a trajectory, compile a policy, and persist it.
+
+    Request body::
+
+        {"trajectory_id": "..."}
+
+    Returns ``{"compiled": true, "policy": {...}}`` on success, or
+    ``{"compiled": false, "reason": "..."}`` when no compilation is needed.
+    """
+    from fastapi import HTTPException
+
+    from app.failure import FailureReport
+    from app.serializer import render_step
+
+    trajectory_id: str = body.get("trajectory_id", "")
+    if not trajectory_id:
+        raise HTTPException(status_code=422, detail="trajectory_id is required")
+
+    repo = TrajectoryRepository(db)
+    trajectory = await repo.get_trajectory(trajectory_id)
+    if trajectory is None:
+        raise HTTPException(status_code=404, detail="Trajectory not found")
+
+    # Build trajectory dict and analyze
+    steps_dict = [render_step(s, view="scoring") for s in trajectory.steps]
+    traj_dict = {
+        "steps": steps_dict,
+        "status": trajectory.status,
+        "total_tokens": trajectory.total_tokens or 0,
+        "total_latency_ms": sum(s.latency_ms for s in trajectory.steps),
+        "max_steps": trajectory.max_steps or settings.llm_max_steps,
+    }
+
+    report: FailureReport = analyze_trajectory(traj_dict)
+
+    # Compile policy
+    patch = compile_policy(report, [trajectory_id])
+    if patch is None:
+        reason = "no_policy_needed"
+        if report.needs_human_review:
+            reason = "needs_human_review"
+        return {"compiled": False, "reason": reason}
+
+    # Persist
+    store = PolicyStore(db)
+    version_display = await store.next_version_display()
+    policy = await store.create_policy(
+        version_display=version_display,
+        parent_version=None,
+        patch=patch.patch,
+        rationale=patch.rationale,
+        expected_impact=patch.expected_impact,
+        confidence=patch.confidence,
+        source_trajectories=patch.source_trajectories,
+    )
+    await store.link_trajectory(trajectory_id, policy["version_id"])
+
+    # Auto-approve if confidence is high
+    if patch.confidence == "high":
+        await store.archive_active_policy()
+        await store.update_policy_status(policy["version_id"], "active")
+
+    await db.commit()
+
+    # Re-fetch to get the persisted state
+    persisted = await store.get_policy(policy["version_id"])
+    return {"compiled": True, "policy": persisted}
