@@ -21,6 +21,7 @@ import EmptyState from "../components/EmptyState";
 import FailureDistributionChart from "../components/FailureDistributionChart";
 import PolicyTimeline from "../components/PolicyTimeline";
 import PolicyDetailPanel from "../components/PolicyDetailPanel";
+import PolicyReviewQueue from "../components/PolicyReviewQueue";
 import type {
   BenchmarkRanking,
   BenchmarkResponse,
@@ -795,6 +796,9 @@ export default function EvalPage() {
               onSelect={(id) => setSelectedPolicyId(id)}
               loading={policiesLoading}
             />
+
+            {/* Review queue */}
+            <PolicyReviewQueue />
 
             {/* Detail panel */}
             {selectedPolicyId && policies ? (

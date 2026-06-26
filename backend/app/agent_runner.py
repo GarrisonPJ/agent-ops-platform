@@ -187,7 +187,7 @@ async def _maybe_trigger_closed_loop() -> None:
     """
     from app.database import async_session
     from app.trajectory_repo import TrajectoryRepository
-    from app.policy import PolicyStore
+    from app.policy_store import PolicyStore
 
     async with async_session() as session:
         repo = TrajectoryRepository(session)
@@ -246,7 +246,7 @@ async def _run_compile_pipeline(
     Iterates over all trajectories, analyzes them, and compiles a policy
     from the aggregate failure report.
     """
-    from app.failure import analyze_trajectory, FailureReport
+    from app.failure_analyzer import analyze_trajectory, FailureReport
     from app.serializer import render_step
 
     # Get all trajectories
@@ -294,7 +294,7 @@ async def _run_compile_pipeline(
     )
 
     # Compile policy
-    from app.policy import compile_policy
+    from app.policy_compiler import compile_policy
 
     patch = compile_policy(agg_report, traj_ids)
     if patch is None:
@@ -302,6 +302,9 @@ async def _run_compile_pipeline(
         return
 
     # Store
+    from app.auto_replay import trigger_auto_replay
+    from app.orchestrator import AgentOrchestrator
+
     version_display = await store.next_version_display()
     policy = await store.create_policy(
         version_display=version_display,
@@ -313,17 +316,26 @@ async def _run_compile_pipeline(
         source_trajectories=patch.source_trajectories,
     )
 
-    # Auto-approve if high confidence
-    if patch.confidence == "high":
-        await store.archive_active_policy()
-        await store.update_policy_status(policy["version_id"], "active")
+    # Build orchestrator for replay
+    orchestrator = AgentOrchestrator(settings)
+
+    # Collect original scores
+    original_scores: dict[str, float] = {}
+    for traj in trajectories:
+        if traj.id in patch.source_trajectories and traj.score is not None:
+            original_scores[traj.id] = traj.score
+
+    # All policies go through replay verification (no shortcut for high confidence)
+    await trigger_auto_replay(
+        orchestrator=orchestrator,
+        policy=policy,
+        trajectory_ids=patch.source_trajectories,
+        original_scores=original_scores,
+        store=store,
+        session=session,
+    )
 
     await session.commit()
-    logger.info(
-        "Policy %s compiled and stored (confidence=%s)",
-        policy["version_display"],
-        policy["confidence"],
-    )
 
 
 async def run_benchmark_task(task: str) -> str:
@@ -337,5 +349,3 @@ async def run_benchmark_task(task: str) -> str:
 
     orchestrator = AgentOrchestrator(settings)
     return await orchestrator.run_benchmark(task)
-
-    return trajectory.id

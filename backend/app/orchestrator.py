@@ -50,7 +50,7 @@ class AgentOrchestrator:
 
     async def _get_active_policy(self, session: AsyncSession) -> dict | None:
         """Fetch the currently active policy (if any)."""
-        from app.policy import PolicyStore
+        from app.policy_store import PolicyStore
 
         store = PolicyStore(session)
         return await store.get_active_policy()
@@ -72,7 +72,7 @@ class AgentOrchestrator:
         # ── Resolve active policy ────────────────────────────────────
         policy: dict | None = None
         if policy_id:
-            from app.policy import PolicyStore
+            from app.policy_store import PolicyStore
             store = PolicyStore(session)
             policy = await store.get_policy(policy_id)
         else:
@@ -107,9 +107,8 @@ class AgentOrchestrator:
         async with async_session() as session:
             repo = TrajectoryRepository(session)
             trajectory = await repo.create_trajectory(task)
+            policy = await self._get_active_policy(session)
             await session.commit()
-
-        policy = await self._get_active_policy(session)
 
         await _execute_agent(
             task=task,

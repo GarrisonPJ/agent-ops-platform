@@ -18,10 +18,7 @@ import EmptyState from "./EmptyState";
 /*  Helpers                                                            */
 /* ------------------------------------------------------------------ */
 
-const STATUS_BADGE: Record<
-  PolicyVersion["status"],
-  { bg: string; text: string; label: string }
-> = {
+const STATUS_BADGE: Record<string, { bg: string; text: string; label: string }> = {
   active: {
     bg: "bg-emerald-500/10 border-emerald-500/20",
     text: "text-emerald-400",
@@ -36,11 +33,6 @@ const STATUS_BADGE: Record<
     bg: "bg-red-500/10 border-red-500/20",
     text: "text-red-400",
     label: "Reverted",
-  },
-  archived: {
-    bg: "bg-zinc-500/10 border-zinc-500/20",
-    text: "text-zinc-400",
-    label: "Archived",
   },
 };
 

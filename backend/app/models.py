@@ -65,7 +65,7 @@ class PolicyVersion(Base):
 
     version_id: Mapped[str] = mapped_column(String, primary_key=True)
     version_display: Mapped[str] = mapped_column(String, unique=True)
-    parent_version: Mapped[str | None] = mapped_column(String, nullable=True)
+    parent_version: Mapped[str | None] = mapped_column(String, ForeignKey("policy_versions.version_id"), nullable=True)
     patch: Mapped[dict] = mapped_column(JSONB)
     rationale: Mapped[str] = mapped_column(Text)
     expected_impact: Mapped[dict | None] = mapped_column(JSONB, nullable=True)

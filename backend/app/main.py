@@ -18,9 +18,10 @@ from app.benchmarks import BENCHMARK_TASKS, get_benchmark_task
 from app.config import settings
 from app.database import get_db
 from app.event_bus import event_bus, stream_events
-from app.failure import analyze_trajectory
+from app.failure_analyzer import analyze_trajectory
 from app.orchestrator import AgentOrchestrator
-from app.policy import PolicyStore, compile_policy
+from app.policy_store import PolicyStore
+from app.policy_compiler import compile_policy
 from app.serializer import (
     render_step,
     render_trajectory,
@@ -434,7 +435,7 @@ async def eval_analyze(
     """
     from fastapi import HTTPException
 
-    from app.failure import analyze_trajectory
+    from app.failure_analyzer import analyze_trajectory
 
     trajectory_id: str = body.get("trajectory_id", "")
     if not trajectory_id:
@@ -484,7 +485,7 @@ async def eval_analysis_summary(
 
     Returns per-dimension average failure rates across all selected trajectories.
     """
-    from app.failure import analyze_trajectories
+    from app.failure_analyzer import analyze_trajectories
     from app.config import settings
 
     repo = TrajectoryRepository(db)
@@ -900,7 +901,7 @@ async def compile_and_store_policy(
     """
     from fastapi import HTTPException
 
-    from app.failure import FailureReport
+    from app.failure_analyzer import FailureReport
     from app.serializer import render_step
 
     trajectory_id: str = body.get("trajectory_id", "")

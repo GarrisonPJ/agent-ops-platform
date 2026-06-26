@@ -12,7 +12,7 @@ import asyncio
 from logging import getLogger
 
 from app.config import settings
-from app.policy import ROLLBACK_ACTIVATE, ROLLBACK_REVERT
+from app.policy_compiler import ROLLBACK_ACTIVATE, ROLLBACK_REVERT
 
 logger = getLogger(__name__)
 

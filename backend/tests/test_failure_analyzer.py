@@ -9,7 +9,7 @@ from typing import Any
 
 import pytest
 
-from app.failure import (
+from app.failure_analyzer import (
     FailureEvidence,
     FailureReport,
     analyze_trajectories,

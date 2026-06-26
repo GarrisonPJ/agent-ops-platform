@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field, asdict
 from typing import Any
 
-# ── Data structures ────────────────────────────────────────────────────────────
+# ── Data structures ────────────────────────────────────────────────────────────────
 
 
 @dataclass
@@ -34,14 +34,14 @@ class FailureReport:
     needs_human_review: bool = False
 
 
-# ── Error-keyword sets (case-insensitive) ─────────────────────────────────────
+# ── Error-keyword sets (case-insensitive) ──────────────────────────────────────
 
 _ERROR_KEYWORDS = ("error", "exception", "timeout", "failed", "traceback")
 _TIMEOUT_LATENCY_MS = 60_000
 _CONTEXT_KEYWORDS = ("truncated", "context")
 
 
-# ── Detection functions ────────────────────────────────────────────────────────
+# ── Detection functions ──────────────────────────────────────────────────────────────
 
 
 def _detect_planning(steps: list[dict]) -> list[FailureEvidence]:
@@ -204,7 +204,7 @@ def _detect_budget(steps: list[dict], trajectory: dict) -> list[FailureEvidence]
     return []
 
 
-# ── Analysis entry points ──────────────────────────────────────────────────────
+# ── Analysis entry points ────────────────────────────────────────────────────────────
 
 
 def analyze_trajectory(trajectory: dict) -> FailureReport:

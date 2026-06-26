@@ -5,6 +5,38 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
+import pytest_asyncio
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.compiler import compiles
+from sqlalchemy.dialects.postgresql import JSONB
+
+
+# Allow JSONB columns to work with SQLite (testing only).
+@compiles(JSONB, "sqlite")
+def _compile_jsonb_sqlite(element: Any, compiler: Any, **kw: Any) -> str:
+    """Render JSONB as JSON on SQLite."""
+    return compiler.visit_JSON(element, **kw)
+
+
+@pytest_asyncio.fixture
+async def session() -> AsyncSession:  # type: ignore[misc]
+    """Create a fresh in-memory SQLite database for each test."""
+    engine = create_async_engine(
+        "sqlite+aiosqlite://",
+        echo=False,
+    )
+
+    from app.models import Base
+
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    _async_session = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+
+    async with _async_session() as sess:
+        yield sess
+
+    await engine.dispose()
 
 
 @pytest.fixture

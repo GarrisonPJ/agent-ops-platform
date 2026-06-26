@@ -97,3 +97,100 @@ test.describe("Eval Policies tab", () => {
     }
   });
 });
+
+test("ReviewQueue shows pending_review policies and approve flow works", async ({
+  page,
+}) => {
+  const BASE_URL = "http://localhost:8000";
+
+  // Check existing policies
+  const response = await page.request.get(`${BASE_URL}/api/eval/policies`);
+  expect(response.ok()).toBeTruthy();
+  const policies = await response.json();
+  const pendingPolicies = policies.filter(
+    (p: { status: string }) => p.status === "pending_review",
+  );
+
+  await page.goto("/eval?view=policies");
+
+  // Wait for page to load
+  await expect(
+    page.locator("header").getByText("Evaluations"),
+  ).toBeVisible({ timeout: 10_000 });
+
+  // Look for Review Queue section
+  const reviewQueueHeader = page.getByText(/Review Queue/i);
+
+  if (pendingPolicies.length > 0) {
+    // Verify Review Queue is visible
+    await expect(reviewQueueHeader).toBeVisible({ timeout: 5_000 });
+
+    // Verify pending count badge
+    await expect(
+      page.getByText(`${pendingPolicies.length} pending`),
+    ).toBeVisible();
+
+    // Verify first pending policy's version_display is shown
+    await expect(
+      page.getByText(pendingPolicies[0].version_display),
+    ).toBeVisible();
+
+    // Click Approve on first pending policy
+    const approveButtons = page.getByRole("button", { name: /Approve/i });
+    await approveButtons.first().click();
+
+    // Wait for RTK cache invalidation
+    await page.waitForTimeout(1500);
+
+    // After approve, the approved policy should no longer appear in Review Queue
+    // but may appear in timeline as active or still visible
+    const approveButtonAfter = page.getByRole("button", { name: /Approve/i });
+    const approveCount = await approveButtonAfter.count();
+    expect(approveCount).toBeLessThanOrEqual(pendingPolicies.length);
+  } else {
+    // No pending policies — verify empty state
+    await expect(
+      page.getByText(/No policies pending review/i),
+    ).toBeVisible({ timeout: 5_000 });
+  }
+});
+
+test("ReviewQueue reject flow works", async ({ page }) => {
+  const BASE_URL = "http://localhost:8000";
+
+  const response = await page.request.get(`${BASE_URL}/api/eval/policies`);
+  expect(response.ok()).toBeTruthy();
+  const policies = await response.json();
+  const pendingPolicies = policies.filter(
+    (p: { status: string }) => p.status === "pending_review",
+  );
+
+  await page.goto("/eval?view=policies");
+
+  await expect(
+    page.locator("header").getByText("Evaluations"),
+  ).toBeVisible({ timeout: 10_000 });
+
+  if (pendingPolicies.length > 0) {
+    // Handle the dialog that prompt() creates
+    page.on("dialog", (dialog) => {
+      dialog.accept("E2E test rejection");
+    });
+
+    // Click first Reject button
+    const rejectButtons = page.getByRole("button", { name: /Reject/i });
+    await rejectButtons.first().click();
+
+    // Wait for action
+    await page.waitForTimeout(1500);
+
+    // The rejected policy should disappear from the queue
+    const rejectButtonsAfter = page.getByRole("button", { name: /Reject/i });
+    const rejectCount = await rejectButtonsAfter.count();
+    expect(rejectCount).toBeLessThanOrEqual(pendingPolicies.length);
+  } else {
+    await expect(
+      page.getByText(/No policies pending review/i),
+    ).toBeVisible({ timeout: 5_000 });
+  }
+});

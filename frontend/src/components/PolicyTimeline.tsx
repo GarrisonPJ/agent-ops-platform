@@ -8,10 +8,7 @@ import EmptyState from "./EmptyState";
 /*  Status colour helpers                                              */
 /* ------------------------------------------------------------------ */
 
-const STATUS_STYLE: Record<
-  PolicyVersion["status"],
-  { dot: string; line: string; label: string }
-> = {
+const STATUS_STYLE: Record<string, { dot: string; line: string; label: string }> = {
   active: {
     dot: "bg-emerald-500 border-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]",
     line: "bg-emerald-500/30",
@@ -26,11 +23,6 @@ const STATUS_STYLE: Record<
     dot: "bg-red-500 border-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)]",
     line: "bg-red-500/30",
     label: "text-red-400",
-  },
-  archived: {
-    dot: "bg-zinc-600 border-zinc-600",
-    line: "bg-zinc-600/20",
-    label: "text-zinc-500",
   },
 };
 
@@ -99,8 +91,10 @@ export default function PolicyTimeline({
       </h3>
 
       <div className="flex items-center gap-0 overflow-x-auto pb-2">
-        {policies.map((policy, idx) => {
-          const style = STATUS_STYLE[policy.status];
+        {policies
+          .filter((p) => p.status !== "archived")
+          .map((policy, idx) => {
+          const style = (STATUS_STYLE as Record<string, typeof STATUS_STYLE.active>)[policy.status];
           const isSelected = policy.version_id === selectedId;
           const isLast = idx === policies.length - 1;
 

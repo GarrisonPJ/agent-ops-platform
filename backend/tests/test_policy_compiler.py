@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from app.failure import FailureEvidence, FailureReport
-from app.policy import (
+from app.failure_analyzer import FailureEvidence, FailureReport
+from app.policy_compiler import (
     DIMENSION_THRESHOLDS,
     compile_policy,
     PolicyPatch,
@@ -97,7 +97,7 @@ class TestCompilePolicy:
         assert "system_prompt_suffix" in result.patch
 
     def test_three_dimensions_returns_none(self):
-        """≥3 dimensions with rate > 0 → return None (needs human review)."""
+        """≥3 dimensions with rate > 0 → needs_human_review=True."""
         report = _make_report(
             dimensions={
                 "execution": 0.30,
@@ -113,7 +113,8 @@ class TestCompilePolicy:
             needs_human_review=True,
         )
         result = compile_policy(report, ["traj-1"])
-        assert result is None
+        assert result is not None
+        assert result.needs_human_review is True
 
     def test_budget_context_c5_combination(self):
         """Budget + Context → C5 combination."""
