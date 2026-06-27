@@ -44,7 +44,7 @@ export default function ErrorBanner({
               px-3 py-1.5 rounded-full
               bg-accent/8 border border-accent/15
               hover:bg-accent/12
-              transition-all duration-300 ease-spring
+              transition-colors duration-300 ease-spring
             "
           >
             Retry

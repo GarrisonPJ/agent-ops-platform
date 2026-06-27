@@ -48,7 +48,7 @@ const columns = [
   columnHelper.accessor("task", {
     header: "任务",
     cell: (info) => (
-      <span className="font-medium text-sm cursor-pointer hover:text-accent transition-colors">
+      <span className="font-medium text-sm cursor-pointer hover:text-accent transition-colors truncate block max-w-full">
         {info.getValue()}
       </span>
     ),
@@ -125,14 +125,9 @@ export default function TraceListPage() {
   };
 
   return (
-      <motion.main
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-        className="max-w-5xl mx-auto px-6 py-8"
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between mb-6">
+    <div className="flex-1 flex flex-col">
+      <div className="max-w-5xl mx-auto px-6 pt-8 pb-6 w-full shrink-0">
+        <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight text-fg-primary">Traces</h1>
             <p className="text-sm text-fg-muted mt-1">Execution history & trajectories.</p>
@@ -143,19 +138,31 @@ export default function TraceListPage() {
               type="text"
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
-              placeholder="Search..."
-              className="bg-bg-card border border-border shadow-inner-glow rounded-md pl-9 pr-4 py-2 text-sm outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/50 w-64 text-fg-primary placeholder-fg-muted/50 transition-all duration-150 ease-out"
+              placeholder="Search…"
+              aria-label="Search trajectories"
+              inputMode="search"
+              autoComplete="off"
+              spellCheck={false}
+              className="bg-bg-card border border-border shadow-inner-glow rounded-md pl-9 pr-4 py-2 text-sm outline-none focus-visible:border-accent/50 focus-visible:ring-1 focus-visible:ring-accent/50 w-64 text-fg-primary placeholder-fg-muted/50 transition-colors duration-150 ease-out"
             />
           </div>
         </div>
+      </div>
 
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+        className="flex-1 overflow-auto max-w-5xl mx-auto px-6 pb-8 w-full"
+      >
         {/* Filters */}
         <div className="flex gap-3 mb-6">
           <div className="relative">
             <select
+              aria-label="Filter by status"
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="appearance-none bg-bg-card shadow-inner-glow border border-border rounded-md pl-3 pr-8 py-2 text-sm text-fg-primary font-mono outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/50"
+              className="appearance-none bg-bg-card shadow-inner-glow border border-border rounded-md pl-3 pr-8 py-2 text-sm text-fg-primary font-mono outline-none focus-visible:border-accent/50 focus-visible:ring-1 focus-visible:ring-accent/50"
             >
               <option value="">All Statuses</option>
               <option value="running">Running</option>
@@ -201,7 +208,16 @@ export default function TraceListPage() {
                   <motion.tr
                     key={row.id}
                     variants={rowVariants}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`View trace ${row.original.id}`}
                     onClick={() => navigate(`/traces/${row.original.id}`)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        navigate(`/traces/${row.original.id}`);
+                      }
+                    }}
                     className="border-b border-border last:border-b-0 hover:bg-white/[0.04] cursor-pointer transition-colors duration-150"
                   >
                     {row.getVisibleCells().map((cell) => (
@@ -235,6 +251,7 @@ export default function TraceListPage() {
             onAction={() => navigate("/run")}
           />
         )}
-      </motion.main>
+      </motion.div>
+    </div>
   );
 }

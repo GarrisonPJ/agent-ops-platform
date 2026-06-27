@@ -97,7 +97,7 @@ export default function RunPage() {
 
   return (
     <div className="h-full w-full flex bg-bg-root">
-      <Group>
+      <Group style={{ touchAction: "manipulation" }}>
         {/* ── 1. Input & Status Panel ───────────────────────── */}
         <Panel defaultSize={25} minSize={20} className="flex flex-col border-r border-border bg-bg-root z-10 shadow-xl">
           <div className="flex-1 flex flex-col p-6 overflow-y-auto">
@@ -113,14 +113,17 @@ export default function RunPage() {
                 onKeyDown={handleKeyDown}
                 placeholder="Analyze production logs and isolate the latency spike..."
                 disabled={executing}
-                className="w-full h-32 bg-bg-card border border-border rounded-md px-4 py-3 text-sm text-fg-primary placeholder-fg-muted/40 outline-none focus:border-accent/50 focus:ring-1 focus:ring-accent/50 transition-all resize-none disabled:opacity-50 shadow-inner-glow"
+                aria-label="Task description"
+                autoComplete="off"
+                spellCheck={false}
+                className="w-full h-32 bg-bg-card border border-border rounded-md px-4 py-3 text-sm text-fg-primary placeholder-fg-muted/40 outline-none focus-visible:border-accent/50 focus-visible:ring-1 focus-visible:ring-accent/50 transition-colors resize-none disabled:opacity-50 shadow-inner-glow"
               />
               
               <button
                 onClick={executing ? handleCancel : handleSubmit}
                 disabled={!task.trim() || isStarting}
                 className={cn(
-                  "group w-full font-medium rounded-full px-5 py-3 text-sm active:scale-[0.98] transition-all duration-700 ease-spring flex items-center justify-center gap-2",
+                  "group w-full font-medium rounded-full px-5 py-3 text-sm active:scale-[0.98] transition-colors duration-700 ease-spring flex items-center justify-center gap-2",
                   executing
                     ? "bg-error/8 text-error border border-error/15 hover:bg-error/12"
                     : "bg-fg-primary text-bg-root hover:shadow-card-raised"
@@ -170,7 +173,7 @@ export default function RunPage() {
           </div>
         </Panel>
 
-        <Separator className="w-[1px] bg-border hover:bg-accent/50 hover:w-[2px] -ml-[1px] transition-all cursor-col-resize z-20" />
+        <Separator className="w-[1px] bg-border hover:bg-accent/50 hover:w-[2px] -ml-[1px] transition-[width] cursor-col-resize z-20" />
 
         {/* ── 2. Stream / Timeline Panel ─────────────────────── */}
         <Panel defaultSize={35} minSize={30} className="flex flex-col bg-bg-card relative">
@@ -207,7 +210,7 @@ export default function RunPage() {
             {executing && (
               <div className="flex items-center gap-3 py-4 pl-8 opacity-60">
                 <Loader2 className="w-4 h-4 animate-spin text-accent" />
-                <span className="text-xs font-mono text-accent">Agent is thinking...</span>
+                <span className="text-xs font-mono text-accent">Agent is thinking…</span>
               </div>
             )}
             
@@ -215,7 +218,7 @@ export default function RunPage() {
           </div>
         </Panel>
 
-        <Separator className="w-[1px] bg-border hover:bg-accent/50 hover:w-[2px] -ml-[1px] transition-all cursor-col-resize z-20" />
+        <Separator className="w-[1px] bg-border hover:bg-accent/50 hover:w-[2px] -ml-[1px] transition-[width] cursor-col-resize z-20" />
 
         {/* ── 3. Inspector Panel ───────────────────────────── */}
         <Panel defaultSize={40} minSize={25} className="flex flex-col bg-bg-root">

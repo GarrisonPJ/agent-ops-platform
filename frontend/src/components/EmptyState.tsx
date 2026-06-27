@@ -42,7 +42,7 @@ export default function EmptyState({
             rounded-full px-6 py-2.5 text-sm
             hover:shadow-glow-accent hover:scale-[1.02]
             active:scale-[0.98]
-            transition-all duration-500 ease-spring
+            transition-colors transition-transform duration-500 ease-spring
           "
         >
           {actionLabel}

@@ -46,7 +46,7 @@ export default function TrajectorySelector({
           <button
             onClick={onCompare}
             disabled={!canCompare || loading}
-            className="flex items-center gap-1.5 bg-accent text-bg-root text-sm font-semibold font-mono rounded-lg px-4 py-1.5 hover:brightness-110 active:scale-[0.97] disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+            className="flex items-center gap-1.5 bg-accent text-bg-root text-sm font-semibold font-mono rounded-lg px-4 py-1.5 hover:brightness-110 active:scale-[0.97] disabled:opacity-50 disabled:cursor-not-allowed transition-[filter,transform,opacity]"
           >
             {loading ? (
               <Loader2 className="w-4 h-4 animate-spin" />
@@ -80,7 +80,7 @@ export default function TrajectorySelector({
           <p className="text-sm text-fg-muted font-mono">No trajectories found</p>
         </div>
       ) : (
-        <div className="divide-y divide-border max-h-[400px] overflow-y-auto">
+        <div className="divide-y divide-border">
           {trajectories.map((traj) => {
             const isSelected = selectedIds.includes(traj.id);
             return (

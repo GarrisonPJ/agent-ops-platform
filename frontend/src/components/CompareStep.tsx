@@ -42,7 +42,7 @@ export default function CompareStep({
         ease: "easeOut",
       }}
       onClick={() => setExpanded((v) => !v)}
-      className={`bg-bg-card ${borderWidth} ${borderColor} rounded-lg overflow-hidden cursor-pointer transition-all duration-200 ${
+      className={`bg-bg-card ${borderWidth} ${borderColor} rounded-lg overflow-hidden cursor-pointer transition-shadow duration-200 ${
         expanded ? "relative z-10 ring-1 ring-accent/30 shadow-lg" : ""
       }`}
     >
@@ -128,6 +128,6 @@ function ToolBadge({ name, color }: { name: string; color: string }) {
 
 function truncateArgs(args: Record<string, unknown>): string {
   const json = JSON.stringify(args, null, 1);
-  if (json.length > 120) return json.slice(0, 120) + "...";
+  if (json.length > 120) return json.slice(0, 120) + "…";
   return json;
 }

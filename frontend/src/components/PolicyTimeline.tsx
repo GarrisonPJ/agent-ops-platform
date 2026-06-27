@@ -96,7 +96,7 @@ export default function PolicyTimeline({
         Policy Timeline
       </h3>
 
-      <div className="flex items-center gap-0 overflow-x-auto pb-2">
+      <div className="flex items-center gap-0 overflow-x-auto pt-4 pb-3 px-3 -mx-3">
         {policies.map((policy, idx) => {
           const style = (STATUS_STYLE as Record<string, typeof STATUS_STYLE.active>)[policy.status] || STATUS_FALLBACK;
           const isSelected = policy.version_id === selectedId;
@@ -112,7 +112,7 @@ export default function PolicyTimeline({
                 {/* Dot */}
                 <div className="relative">
                   <div
-                    className={`w-4 h-4 rounded-full border-2 transition-all duration-300 ${
+                    className={`w-4 h-4 rounded-full border-2 transition-colors transition-shadow transition-transform duration-300 ${
                       style.dot
                     } ${
                       isSelected

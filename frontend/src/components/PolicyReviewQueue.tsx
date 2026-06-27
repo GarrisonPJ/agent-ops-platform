@@ -114,7 +114,7 @@ export default function PolicyReviewQueue({
           const maxRationale = 120;
           const truncated =
             policy.rationale.length > maxRationale
-              ? policy.rationale.slice(0, maxRationale) + "..."
+              ? policy.rationale.slice(0, maxRationale) + "…"
               : policy.rationale;
 
           return (
@@ -152,7 +152,7 @@ export default function PolicyReviewQueue({
                 <button
                   onClick={() => approvePolicy(policy.version_id)}
                   disabled={isApproving}
-                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-[11px] font-mono font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20 active:scale-[0.97] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-[11px] font-mono font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20 active:scale-[0.97] transition-colors transition-transform transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <CheckCircle className="w-3 h-3" />
                   Approve
@@ -160,7 +160,7 @@ export default function PolicyReviewQueue({
                 <button
                   onClick={() => rejectWithReason(policy.version_id)}
                   disabled={rejectingId === policy.version_id}
-                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-[11px] font-mono font-semibold bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 active:scale-[0.97] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-[11px] font-mono font-semibold bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 active:scale-[0.97] transition-colors transition-transform transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <XCircle className="w-3 h-3" />
                   Reject

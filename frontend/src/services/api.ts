@@ -24,7 +24,7 @@ export const api = createApi({
         method: "POST",
         body,
       }),
-      invalidatesTags: [{ type: 'Traces' as const }],
+      invalidatesTags: [{ type: 'Traces' as const }, { type: 'Trace' as const }],
     }),
     getTraces: builder.query<
       { trajectories: TrajectorySummary[]; total: number },
@@ -76,7 +76,7 @@ export const api = createApi({
         method: "POST",
         body,
       }),
-      invalidatesTags: [{ type: 'Traces' as const }],
+      invalidatesTags: [{ type: 'Traces' as const }, { type: 'Trace' as const }],
     }),
     exportTrajectory: builder.query<
       Blob,

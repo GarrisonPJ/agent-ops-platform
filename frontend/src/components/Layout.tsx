@@ -16,7 +16,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const isRunPage = location.pathname === "/run";
 
   return (
-    <div className="flex flex-col h-[100dvh] w-[100dvw] bg-bg-root overflow-hidden">
+    <div className="flex flex-col h-[100dvh] w-[100dvw] bg-bg-root overflow-hidden touch-action-manipulation">
       {/* ── Ambient glow (behind everything) ──────────── */}
       <div className={`ambient-glow${isRunPage ? "" : " active"}`} />
 
@@ -45,6 +45,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 <NavLink
                   key={item.to}
                   to={item.to}
+                  aria-label={item.label}
                   className={cn(
                     "relative flex items-center gap-2 px-3 h-8 rounded-md text-sm font-medium transition-colors duration-150 ease-out",
                     isActive

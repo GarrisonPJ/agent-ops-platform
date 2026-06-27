@@ -123,7 +123,7 @@ export default function ExecutionTimeline({
                 key={step.index}
                 onMouseEnter={() => onSeek(idx)}
                 className={cn(
-                  "w-[6px] h-[6px] rounded-full transition-all duration-300 shrink-0 cursor-pointer",
+                  "w-[6px] h-[6px] rounded-full transition-colors transition-opacity duration-300 shrink-0 cursor-pointer",
                   step.action !== null ? "bg-accent" : "bg-accent-amber",
                   idx === currentStepIndex && isPlaying && "mini-dot-current",
                   idx !== currentStepIndex && "opacity-40 hover:opacity-80",
@@ -136,7 +136,7 @@ export default function ExecutionTimeline({
         {/* Progress Bar */}
         <div
           className={cn(
-            "progress-bar-container relative h-1 bg-border cursor-pointer group hover:h-2 transition-all",
+            "progress-bar-container relative h-1 bg-border cursor-pointer group hover:h-2 transition-[height]",
             isPlaying && "is-playing",
           )}
           onClick={onProgressClick}
@@ -144,7 +144,7 @@ export default function ExecutionTimeline({
           <div
             className={cn(
               "h-full bg-accent relative",
-              !isPlaying && "transition-all duration-300 ease-linear",
+              !isPlaying && "transition-[width] duration-300 ease-linear",
             )}
             style={{ width: `${progress}%` }}
           >
@@ -168,13 +168,13 @@ export default function ExecutionTimeline({
             <button
               onClick={() => onSeek(currentStepIndex - 1)}
               disabled={currentStepIndex === 0}
-              className="w-8 h-8 flex items-center justify-center rounded-md text-fg-muted hover:bg-white/[0.04] active:scale-[0.95] disabled:opacity-30 transition-all"
+              className="w-8 h-8 flex items-center justify-center rounded-md text-fg-muted hover:bg-white/[0.04] active:scale-[0.95] disabled:opacity-30 transition-colors transition-transform transition-opacity"
             >
               <SkipBack className="w-4 h-4" />
             </button>
             <button
               onClick={onTogglePlay}
-              className="w-10 h-10 flex items-center justify-center rounded-md text-accent bg-accent/10 hover:bg-accent/20 active:scale-[0.95] shadow-inner-glow transition-all"
+              className="w-10 h-10 flex items-center justify-center rounded-md text-accent bg-accent/10 hover:bg-accent/20 active:scale-[0.95] shadow-inner-glow transition-colors transition-transform"
             >
               {isPlaying ? (
                 <Pause className="w-5 h-5" />
@@ -185,13 +185,13 @@ export default function ExecutionTimeline({
             <button
               onClick={() => onSeek(currentStepIndex + 1)}
               disabled={currentStepIndex >= steps.length - 1}
-              className="w-8 h-8 flex items-center justify-center rounded-md text-fg-muted hover:bg-white/[0.04] active:scale-[0.95] disabled:opacity-30 transition-all"
+              className="w-8 h-8 flex items-center justify-center rounded-md text-fg-muted hover:bg-white/[0.04] active:scale-[0.95] disabled:opacity-30 transition-colors transition-transform transition-opacity"
             >
               <SkipForward className="w-4 h-4" />
             </button>
             <button
               onClick={onCycleSpeed}
-              className="w-8 h-8 ml-2 flex items-center justify-center rounded-md text-fg-subtle hover:bg-white/[0.04] hover:text-fg-primary font-mono text-[10px] tabular-nums transition-all"
+              className="w-8 h-8 ml-2 flex items-center justify-center rounded-md text-fg-subtle hover:bg-white/[0.04] hover:text-fg-primary font-mono text-[10px] tabular-nums transition-colors"
             >
               {playbackSpeed}x
             </button>

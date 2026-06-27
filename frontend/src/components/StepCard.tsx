@@ -53,7 +53,7 @@ export default function StepCard({
 
       {/* ── Double-Bezel: Outer Shell ────────────────── */}
       <div className={cn(
-        "p-[1px] rounded-lg transition-all duration-700 ease-spring",
+        "p-[1px] rounded-lg transition-colors transition-shadow duration-700 ease-spring",
         isSelected && isPlaying
           ? "bg-gradient-to-b from-accent/40 to-accent/15 shadow-[0_0_30px_rgb(59_130_246/0.30)]"
           : isSelected
@@ -64,7 +64,7 @@ export default function StepCard({
         <div
           onClick={onClick}
           className={cn(
-            "rounded-lg p-4 transition-all duration-700 ease-spring cursor-pointer active:scale-[0.985]",
+            "rounded-lg p-4 transition-colors transition-shadow transition-transform duration-700 ease-spring cursor-pointer active:scale-[0.985]",
             isSelected
               ? "bg-white/[0.06] shadow-[inset_0_1px_0_rgb(255_255_255/0.06)]"
               : "bg-bg-card shadow-[inset_0_1px_0_rgb(255_255_255/0.03)] group-hover/card:bg-bg-card-raised group-hover/card:shadow-[inset_0_1px_0_rgb(255_255_255/0.05)]"

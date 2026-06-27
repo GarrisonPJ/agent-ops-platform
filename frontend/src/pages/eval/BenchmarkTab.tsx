@@ -205,7 +205,7 @@ export default function BenchmarkTab() {
           <div className="flex bg-bg-root rounded-lg p-0.5 border border-border">
             <button
               onClick={() => setMode("predefined")}
-              className={`px-4 py-1.5 text-xs font-mono rounded-md transition-all duration-200 ${
+              className={`px-4 py-1.5 text-xs font-mono rounded-md transition-colors duration-200 ${
                 mode === "predefined"
                   ? "bg-accent/15 text-accent border border-accent/30 font-semibold"
                   : "text-fg-muted hover:text-fg-primary"
@@ -215,7 +215,7 @@ export default function BenchmarkTab() {
             </button>
             <button
               onClick={() => setMode("custom")}
-              className={`px-4 py-1.5 text-xs font-mono rounded-md transition-all duration-200 ${
+              className={`px-4 py-1.5 text-xs font-mono rounded-md transition-colors duration-200 ${
                 mode === "custom"
                   ? "bg-accent/15 text-accent border border-accent/30 font-semibold"
                   : "text-fg-muted hover:text-fg-primary"
@@ -281,7 +281,7 @@ export default function BenchmarkTab() {
                 type="button"
                 onClick={() => setRunCount(Math.max(1, runCount - 1))}
                 disabled={runCount <= 1}
-                className="w-7 h-7 flex items-center justify-center text-fg-muted hover:bg-white/[0.04] disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                className="w-7 h-7 flex items-center justify-center text-fg-muted hover:bg-white/[0.04] disabled:opacity-30 disabled:cursor-not-allowed transition-colors transition-opacity"
               >
                 <Minus className="w-3 h-3" />
               </button>
@@ -292,7 +292,7 @@ export default function BenchmarkTab() {
                 type="button"
                 onClick={() => setRunCount(Math.min(10, runCount + 1))}
                 disabled={runCount >= 10}
-                className="w-7 h-7 flex items-center justify-center text-fg-muted hover:bg-white/[0.04] disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                className="w-7 h-7 flex items-center justify-center text-fg-muted hover:bg-white/[0.04] disabled:opacity-30 disabled:cursor-not-allowed transition-colors transition-opacity"
               >
                 <Plus className="w-3 h-3" />
               </button>
@@ -302,7 +302,7 @@ export default function BenchmarkTab() {
           <button
             onClick={handleRun}
             disabled={isRunning || (mode === "custom" && !customTask.trim())}
-            className="flex items-center gap-2 bg-accent text-bg-root font-semibold rounded-lg px-6 py-2 text-sm hover:brightness-110 active:scale-[0.97] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex items-center gap-2 bg-accent text-bg-root font-semibold rounded-lg px-6 py-2 text-sm hover:brightness-110 active:scale-[0.97] transition-[filter,transform,opacity] disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Play className="w-4 h-4" />
             Run Benchmark

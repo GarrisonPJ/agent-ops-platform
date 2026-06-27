@@ -23,28 +23,29 @@ export default function EvalPage() {
   };
 
   return (
-    <div>
-      {/* Page header */}
-      <header className="border-b border-border px-6 py-4">
-        <div className="max-w-6xl mx-auto flex items-center gap-3">
-          <FlaskConical className="w-5 h-5 text-accent" />
-          <h1 className="text-sm font-mono font-semibold text-fg-primary">
-            Evaluations
-          </h1>
-        </div>
-      </header>
+    <div className="flex-1 flex flex-col">
+      {/* ── Header ──────────────────────────────────── */}
+      <div className="max-w-5xl mx-auto px-6 pt-8 pb-6 w-full shrink-0">
+        <h1 className="text-2xl font-semibold tracking-tight text-fg-primary">Eval</h1>
+        <p className="text-sm text-fg-muted mt-1">Evaluation & quality benchmarks.</p>
+      </div>
 
-      <main className="max-w-4xl mx-auto px-6 py-8 space-y-6">
+      {/* ── Content ─────────────────────────────────── */}
+      <div className="flex-1 overflow-auto max-w-5xl mx-auto px-6 pb-8 w-full space-y-6">
         {/* ── Tab navigation ─────────────────────────────────────── */}
-        <div className="flex items-center gap-1 bg-bg-card border border-border rounded-lg p-0.5">
+        <div className="flex items-center gap-1 bg-bg-card border border-border rounded-lg p-0.5" role="tablist" aria-label="Evaluation views">
           {TABS.map((tab) => {
             const Icon = tab.icon;
             const active = view === tab.key;
             return (
               <button
                 key={tab.key}
+                id={`tab-${tab.key}`}
+                role="tab"
+                aria-selected={active}
+                aria-controls={`panel-${tab.key}`}
                 onClick={() => setView(tab.key)}
-                className={`flex items-center gap-2 px-4 py-1.5 text-xs font-mono rounded-md transition-all duration-200 ${
+                className={`flex items-center gap-2 px-4 py-1.5 text-xs font-mono rounded-md transition-colors duration-200 ${
                   active
                     ? "bg-accent/15 text-accent border border-accent/30 font-semibold"
                     : "text-fg-muted hover:text-fg-primary"
@@ -57,11 +58,17 @@ export default function EvalPage() {
           })}
         </div>
 
-        {/* ── Active tab content ──────────────────────────────────── */}
-        {view === "benchmark" && <BenchmarkTab />}
-        {view === "failures" && <FailuresTab />}
-        {view === "policies" && <PoliciesTab />}
-      </main>
+        {/* ── Tab content (all kept mounted to preserve state) ──── */}
+        <div role="tabpanel" id="panel-benchmark" aria-labelledby="tab-benchmark" className={view === "benchmark" ? "" : "hidden"}>
+          <BenchmarkTab />
+        </div>
+        <div role="tabpanel" id="panel-failures" aria-labelledby="tab-failures" className={view === "failures" ? "" : "hidden"}>
+          <FailuresTab />
+        </div>
+        <div role="tabpanel" id="panel-policies" aria-labelledby="tab-policies" className={view === "policies" ? "" : "hidden"}>
+          <PoliciesTab />
+        </div>
+      </div>
     </div>
   );
 }

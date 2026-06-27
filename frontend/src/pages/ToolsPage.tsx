@@ -15,7 +15,7 @@ function ToolCard({ tool }: { tool: ToolInfo }) {
 
   return (
     <div
-      className={`bg-bg-card border shadow-inner-glow rounded-md p-5 flex flex-col transition-all duration-150 ease-out ${
+      className={`bg-bg-card border shadow-inner-glow rounded-md p-5 flex flex-col transition-colors duration-150 ease-out ${
         enabled
           ? "border-border hover:bg-white/[0.02] hover:border-border-strong"
           : "border-white/[0.03]"
@@ -34,13 +34,15 @@ function ToolCard({ tool }: { tool: ToolInfo }) {
             e.stopPropagation();
             toggleTool(tool.name);
           }}
-          className={`relative w-9 h-5 rounded-full transition-all duration-300 flex-shrink-0 ${
+          role="switch"
+          aria-checked={enabled}
+          className={`relative w-9 h-5 rounded-full transition-colors duration-300 flex-shrink-0 ${
             enabled ? "bg-accent" : "bg-white/[0.08]"
           }`}
           title={enabled ? "Disable tool" : "Enable tool"}
         >
           <span
-            className={`absolute top-[2px] w-4 h-4 bg-white rounded-full shadow-sm transition-all duration-300 ${
+            className={`absolute top-[2px] w-4 h-4 bg-white rounded-full shadow-sm transition-[left] duration-300 ${
               enabled ? "left-[18px]" : "left-[2px]"
             }`}
           />
@@ -85,37 +87,37 @@ export default function ToolsPage() {
   const { data: tools, isLoading } = useGetToolsQuery();
 
   return (
-    <motion.main
-      initial={{ opacity: 0, y: 16 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-      className="max-w-5xl mx-auto px-6 py-8"
-    >
-      {/* Header */}
-      <div className="flex items-center justify-between mb-8">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-fg-primary">Tools</h1>
-          <p className="text-sm text-fg-muted mt-1">Manage active agent capabilities.</p>
-        </div>
+    <div className="flex-1 flex flex-col">
+      {/* ── Title ──────────────────────────────────── */}
+      <div className="max-w-5xl mx-auto px-6 pt-8 pb-6 w-full shrink-0">
+        <h1 className="text-2xl font-semibold tracking-tight text-fg-primary">Tools</h1>
+        <p className="text-sm text-fg-muted mt-1">Manage active agent capabilities.</p>
       </div>
 
-      {/* Loading state */}
-      {isLoading ? (
-        <LoadingSkeleton variant="cards" />
-      ) : tools && tools.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5 items-start">
-          {tools.map((tool) => (
-            <ToolCard key={tool.name} tool={tool} />
-          ))}
-        </div>
-      ) : (
-        <EmptyState
-          icon={Wrench}
-          message="No Tools Registered"
-          description="Register a tool to give the agent new capabilities."
-        />
-      )}
-
-    </motion.main>
+      {/* ── Content ─────────────────────────────────── */}
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+        className="flex-1 overflow-auto max-w-5xl mx-auto px-6 pb-8 w-full"
+      >
+        {/* Loading state */}
+        {isLoading ? (
+          <LoadingSkeleton variant="cards" />
+        ) : tools && tools.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5 items-start">
+            {tools.map((tool) => (
+              <ToolCard key={tool.name} tool={tool} />
+            ))}
+          </div>
+        ) : (
+          <EmptyState
+            icon={Wrench}
+            message="No Tools Registered"
+            description="Register a tool to give the agent new capabilities."
+          />
+        )}
+      </motion.div>
+    </div>
   );
 }

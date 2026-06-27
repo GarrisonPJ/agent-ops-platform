@@ -108,23 +108,19 @@ export default function ComparePage() {
   }, [compareData, handleCompare, handleClear]);
 
   return (
-    <motion.main
-      initial={{ opacity: 0, y: 16 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
-      className="max-w-5xl mx-auto px-6 py-8"
-    >
-      {/* Header */}
-      <div className="mb-6">
+    <div className="flex-1 flex flex-col">
+      {/* ── Title ──────────────────────────────────── */}
+      <div className="max-w-5xl mx-auto px-6 pt-8 pb-6 w-full shrink-0">
         <h1 className="text-2xl font-semibold tracking-tight text-fg-primary">Compare</h1>
         <p className="text-sm text-fg-muted mt-1">Side-by-side trajectory comparison.</p>
       </div>
 
-      {/* Trajectory selector (shown when no comparison results) */}
-      {!compareData && (
+      {!compareData ? (
+        /* ── Selection ──────────────────────────── */
         <motion.div
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
+          className="flex-1 overflow-auto max-w-5xl mx-auto px-6 pb-8 w-full"
         >
           <TrajectorySelector
             trajectories={tracesData?.trajectories ?? []}
@@ -135,33 +131,28 @@ export default function ComparePage() {
             loading={isLoading}
             isLoading={tracesLoading}
           />
+          <AnimatePresence>
+            {error && (
+              <motion.div
+                initial={{ opacity: 0, y: -8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                className="mt-4"
+              >
+                <ErrorBanner title="Comparison Error" message={error} />
+              </motion.div>
+            )}
+          </AnimatePresence>
         </motion.div>
-      )}
-
-      {/* Error state */}
-      <AnimatePresence>
-        {error && (
-          <motion.div
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-          >
-            <ErrorBanner title="Comparison Error" message={error} />
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Comparison view */}
-      <AnimatePresence mode="wait">
-        {compareData && (
-          <motion.div
-            key="comparison"
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -16 }}
-            transition={{ duration: 0.25, ease: "easeOut" }}
-            className="space-y-4"
-          >
+      ) : (
+        /* ── Comparison ──────────────────────────── */
+        <motion.div
+          key="comparison"
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="flex-1 flex flex-col min-h-0"
+        >
+          <div className="max-w-5xl mx-auto px-6 w-full shrink-0 pb-2">
             <button
               onClick={() => setCompareData(null)}
               className="flex items-center gap-1.5 text-xs text-fg-muted hover:text-accent font-mono transition-colors"
@@ -169,15 +160,28 @@ export default function ComparePage() {
               <ArrowLeft className="w-3.5 h-3.5" />
               Back to selection
             </button>
-
+          </div>
+          <AnimatePresence>
+            {error && (
+              <motion.div
+                initial={{ opacity: 0, y: -8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                className="max-w-5xl mx-auto px-6 w-full"
+              >
+                <ErrorBanner title="Comparison Error" message={error} />
+              </motion.div>
+            )}
+          </AnimatePresence>
+          <div className="flex-1 overflow-auto px-8 py-4">
             <CompareTimeline
               data={compareData}
               focusedTrajectory={focusedTrajectory}
               onFocusChange={setFocusedTrajectory}
             />
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </motion.main>
+          </div>
+        </motion.div>
+      )}
+    </div>
   );
 }

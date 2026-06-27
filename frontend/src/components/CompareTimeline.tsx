@@ -57,7 +57,8 @@ export default function CompareTimeline({
           <button
             onClick={() => onFocusChange(Math.max(0, focusedTrajectory - 1))}
             disabled={focusedTrajectory === 0}
-            className="p-1 rounded text-fg-muted hover:text-fg-primary hover:bg-bg-hover disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+            aria-label="Previous trajectory"
+            className="p-1 rounded text-fg-muted hover:text-fg-primary hover:bg-bg-hover disabled:opacity-30 disabled:cursor-not-allowed transition-colors transition-opacity"
             title="Previous trajectory"
           >
             <ChevronLeft className="w-4 h-4" />
@@ -70,7 +71,8 @@ export default function CompareTimeline({
               onFocusChange(Math.min(numTrajectories - 1, focusedTrajectory + 1))
             }
             disabled={focusedTrajectory >= numTrajectories - 1}
-            className="p-1 rounded text-fg-muted hover:text-fg-primary hover:bg-bg-hover disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+            aria-label="Next trajectory"
+            className="p-1 rounded text-fg-muted hover:text-fg-primary hover:bg-bg-hover disabled:opacity-30 disabled:cursor-not-allowed transition-colors transition-opacity"
             title="Next trajectory"
           >
             <ChevronRight className="w-4 h-4" />
@@ -84,11 +86,11 @@ export default function CompareTimeline({
           {data.trajectories.map((meta, colIdx) => (
             <div key={meta.id} className="flex-1 flex flex-col gap-4 min-w-0">
               {/* Column header */}
-              <motion.div
+              <motion.button
                 initial={{ opacity: 0, y: -8 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: colIdx * 0.05 }}
-                className={`bg-bg-card border rounded-md shadow-inner-glow overflow-hidden transition-all duration-300 cursor-pointer shrink-0 ${
+                className={`bg-bg-card border rounded-md shadow-inner-glow overflow-hidden transition-colors transition-shadow transition-opacity duration-300 cursor-pointer shrink-0 w-full text-left ${
                   colIdx === focusedTrajectory
                     ? "border-accent shadow-[inset_0_1px_0_rgba(255,255,255,0.2),0_0_0_1px_rgba(59,130,246,0.5)] bg-white/[0.02] opacity-100"
                     : "border-border hover:bg-white/[0.02] opacity-70"
@@ -117,7 +119,7 @@ export default function CompareTimeline({
                     </span>
                   </div>
                 </div>
-              </motion.div>
+              </motion.button>
 
               {/* Steps for this trace — independent column */}
               {data.aligned_steps.map((aligned) => {
@@ -125,7 +127,7 @@ export default function CompareTimeline({
                 return (
                   <div
                     key={`${aligned.step_index}-${colIdx}`}
-                    className={`transition-all duration-300 ${
+                    className={`transition-opacity duration-300 ${
                       colIdx === focusedTrajectory ? "opacity-100" : "opacity-70"
                     }`}
                   >

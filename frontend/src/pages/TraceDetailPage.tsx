@@ -120,7 +120,7 @@ export default function TraceDetailPage() {
     <div className="h-full flex flex-col bg-bg-root">
       {/* ── Header: bold, framed, spacious ──────────────── */}
       <header className="border-b border-border bg-bg-card/30 shrink-0 z-10">
-        <div className="px-8 py-5 flex items-center gap-5 flex-wrap">
+        <div className="max-w-5xl mx-auto px-6 py-5 flex items-center gap-5 flex-wrap">
           {/* Breadcrumb + title */}
           <div className="flex items-center gap-3 min-w-0 flex-shrink">
             <button
@@ -184,7 +184,7 @@ export default function TraceDetailPage() {
 
       {/* ── Main 2-Pane Workspace ───────────────────────── */}
       <main className="flex-1 overflow-hidden relative">
-        <Group>
+        <Group style={{ touchAction: "manipulation" }}>
           {/* 1. Stream / Timeline Panel */}
           <Panel
             defaultSize={50}
@@ -205,7 +205,7 @@ export default function TraceDetailPage() {
             />
           </Panel>
 
-          <Separator className="w-[1px] bg-border hover:bg-accent/50 hover:w-[2px] -ml-[1px] transition-all cursor-col-resize z-20" />
+          <Separator className="w-[1px] bg-border hover:bg-accent/50 hover:w-[2px] -ml-[1px] transition-[width] cursor-col-resize z-20" />
 
           {/* 2. Inspector Panel */}
           <Panel

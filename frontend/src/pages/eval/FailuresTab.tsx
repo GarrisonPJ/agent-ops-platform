@@ -81,7 +81,7 @@ export default function FailuresTab() {
               <option value="">-- Select a trajectory --</option>
               {tracesData?.trajectories?.map((t: TrajectorySummary) => (
                 <option key={t.id} value={t.id}>
-                  {t.id.substring(0, 8)}... — {t.task.substring(0, 60)}{t.task.length > 60 ? "..." : ""} ({t.status})
+                  {t.id.substring(0, 8)}… — {t.task.substring(0, 60)}{t.task.length > 60 ? "…" : ""} ({t.status})
                 </option>
               ))}
             </select>
