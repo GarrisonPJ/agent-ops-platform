@@ -109,7 +109,7 @@ export default function ComparePage() {
   }, [compareData, handleCompare, handleClear]);
 
   return (
-    <div>
+    <>
       {/* Page header */}
       <header className="border-b border-border px-6 py-4">
         <div className="max-w-6xl mx-auto flex items-center gap-4">
@@ -194,6 +194,6 @@ export default function ComparePage() {
           )}
         </AnimatePresence>
       </main>
-    </div>
+    </>
   );
 }
