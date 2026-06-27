@@ -109,91 +109,87 @@ export default function ComparePage() {
   }, [compareData, handleCompare, handleClear]);
 
   return (
-    <div className="flex flex-col min-h-full">
-      {/* Page header */}
-      <header className="border-b border-border px-6 py-4 shrink-0">
-        <div className="max-w-6xl mx-auto flex items-center gap-4">
-          <button
-            onClick={() => navigate("/traces")}
-            className="flex items-center gap-1 text-fg-muted hover:text-fg-primary transition-colors"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            <span className="text-sm font-mono">Back</span>
-          </button>
-          <span className="text-sm font-mono text-fg-muted hidden sm:inline">
-            /
-          </span>
-          <h1 className="text-sm font-mono font-semibold text-fg-primary">
-            Compare Traces
-          </h1>
+    <motion.main
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
+      className="max-w-5xl mx-auto px-6 py-8"
+    >
+      {/* Header — matches TraceListPage pattern */}
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => navigate("/traces")}
+              className="flex items-center gap-1 text-fg-muted hover:text-fg-primary transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span className="text-xs font-mono">Traces</span>
+            </button>
+          </div>
+          <h1 className="text-2xl font-semibold tracking-tight text-fg-primary mt-1">Compare</h1>
+          <p className="text-sm text-fg-muted mt-1">Side-by-side trajectory comparison.</p>
         </div>
-      </header>
+      </div>
 
-      <div className="flex-1 w-full px-6 py-8 space-y-6 overflow-auto">
-        {/* Trajectory selector (shown when no comparison results) */}
-        {!compareData && (
+      {/* Trajectory selector (shown when no comparison results) */}
+      {!compareData && (
+        <motion.div
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+        >
+          <TrajectorySelector
+            trajectories={tracesData?.trajectories ?? []}
+            selectedIds={selectedIds}
+            onToggle={handleToggle}
+            onCompare={handleCompare}
+            onClear={handleClear}
+            loading={isLoading}
+            isLoading={tracesLoading}
+          />
+        </motion.div>
+      )}
+
+      {/* Error state */}
+      <AnimatePresence>
+        {error && (
           <motion.div
-            initial={{ opacity: 0, y: 12 }}
+            initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
-            className="max-w-6xl mx-auto"
+            exit={{ opacity: 0, y: -8 }}
           >
-            <TrajectorySelector
-              trajectories={tracesData?.trajectories ?? []}
-              selectedIds={selectedIds}
-              onToggle={handleToggle}
-              onCompare={handleCompare}
-              onClear={handleClear}
-              loading={isLoading}
-              isLoading={tracesLoading}
+            <ErrorBanner title="Comparison Error" message={error} />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Comparison view */}
+      <AnimatePresence mode="wait">
+        {compareData && (
+          <motion.div
+            key="comparison"
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -16 }}
+            transition={{ duration: 0.25, ease: "easeOut" }}
+            className="space-y-4"
+          >
+            <button
+              onClick={() => setCompareData(null)}
+              className="flex items-center gap-1.5 text-xs text-fg-muted hover:text-accent font-mono transition-colors"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              Back to selection
+            </button>
+
+            <CompareTimeline
+              data={compareData}
+              focusedTrajectory={focusedTrajectory}
+              onFocusChange={setFocusedTrajectory}
             />
           </motion.div>
         )}
-
-        {/* Error state */}
-        <AnimatePresence>
-          {error && (
-            <motion.div
-              initial={{ opacity: 0, y: -8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -8 }}
-              className="max-w-6xl mx-auto"
-            >
-              <ErrorBanner title="Comparison Error" message={error} />
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Comparison view */}
-        <AnimatePresence mode="wait">
-          {compareData && (
-            <motion.div
-              key="comparison"
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -16 }}
-              transition={{ duration: 0.25, ease: "easeOut" }}
-              className="space-y-4"
-            >
-              {/* Back to selection button */}
-              <button
-                onClick={() => {
-                  setCompareData(null);
-                }}
-                className="flex items-center gap-1.5 text-xs text-fg-muted hover:text-accent font-mono transition-colors mb-2"
-              >
-                <ArrowLeft className="w-3.5 h-3.5" />
-                Back to selection
-              </button>
-
-              <CompareTimeline
-                data={compareData}
-                focusedTrajectory={focusedTrajectory}
-                onFocusChange={setFocusedTrajectory}
-              />
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-    </div>
+      </AnimatePresence>
+    </motion.main>
   );
 }
