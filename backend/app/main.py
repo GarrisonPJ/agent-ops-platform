@@ -930,7 +930,6 @@ async def compile_and_store_policy(
         confidence=patch.confidence,
         source_trajectories=patch.source_trajectories,
     )
-    await store.link_trajectory(trajectory_id, policy.version_id)
 
     # Auto-approve if confidence is high
     if patch.confidence == "high":
