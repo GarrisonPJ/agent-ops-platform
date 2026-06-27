@@ -17,21 +17,28 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.models import Base
 
+# Use a separate test DB to avoid polluting the dev database.
 TEST_DATABASE_URL = os.getenv(
     "TEST_DATABASE_URL",
-    "postgresql+asyncpg://agentops:agentops@localhost:5433/agentops",
+    "postgresql+asyncpg://agentops:agentops@localhost:5433/agentops_test",
 )
 
 
 @pytest_asyncio.fixture
 async def real_session() -> AsyncSession:  # type: ignore[misc]
-    """Create a session against a real PostgreSQL database."""
+    """Create a session against a real PostgreSQL database.
+
+    Creates tables on setup, drops them on teardown — leaves no
+    traces in the test database.
+    """
     engine = create_async_engine(TEST_DATABASE_URL, echo=False)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     async with session_factory() as session:
         yield session
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
     await engine.dispose()
 
 
