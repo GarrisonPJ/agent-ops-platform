@@ -1,7 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import {
-  Shield,
   Thermometer,
 } from "lucide-react";
 import PolicyTimeline from "../../components/PolicyTimeline";
@@ -19,6 +18,14 @@ export default function PoliciesTab() {
 
   // ── API hooks ────────────────────────────────────────────────────
   const { data: policies, isLoading: policiesLoading } = useGetPoliciesQuery();
+
+  // Auto-select the latest policy on first load so details are visible
+
+  useEffect(() => {
+    if (!policiesLoading && policies && policies.length > 0 && !selectedPolicyId) {
+      setSelectedPolicyId(policies[0].version_id);
+    }
+  }, [policies, policiesLoading, selectedPolicyId]);
   const {
     data: pendingPolicies,
     isLoading: pendingLoading,
