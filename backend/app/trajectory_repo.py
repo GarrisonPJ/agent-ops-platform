@@ -129,7 +129,7 @@ class TrajectoryRepository:
         trajectory in the returned page.
         """
         # -- build filtered query -------------------------------------------
-        query = select(Trajectory)
+        query = select(Trajectory).options(selectinload(Trajectory.steps))
 
         if status is not None:
             query = query.where(Trajectory.status == status)
