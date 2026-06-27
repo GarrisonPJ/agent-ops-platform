@@ -109,9 +109,9 @@ export default function ComparePage() {
   }, [compareData, handleCompare, handleClear]);
 
   return (
-    <>
+    <div className="flex flex-col min-h-full">
       {/* Page header */}
-      <header className="border-b border-border px-6 py-4">
+      <header className="border-b border-border px-6 py-4 shrink-0">
         <div className="max-w-6xl mx-auto flex items-center gap-4">
           <button
             onClick={() => navigate("/traces")}
@@ -194,6 +194,6 @@ export default function ComparePage() {
           )}
         </AnimatePresence>
       </div>
-    </>
+    </div>
   );
 }
