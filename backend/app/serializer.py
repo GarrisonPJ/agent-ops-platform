@@ -88,18 +88,20 @@ def render_step(step, *, view: str = "full") -> dict:
     return base
 
 
-def render_scoring_view(trajectory, max_steps: int) -> dict:
+def render_scoring_view(trajectory, max_steps: int | None = None) -> dict:
     """Convert an ORM ``Trajectory`` instance to a scoring/analysis dict.
 
-    This is the single adaptation point for the ``Trajectory`` ORM → dict
-    conversion consumed by ``compute_score`` and ``failure_analyzer``.
+    If *max_steps* is not provided, ``settings.llm_max_steps`` is used.
+    Callers with an active policy should pass the effective max_steps
+    (after override) so the analysis layer uses the correct budget baseline.
     """
+    effective_max = max_steps if max_steps is not None else settings.llm_max_steps
     return {
         "steps": [render_step(s, view="scoring") for s in trajectory.steps],
         "status": trajectory.status,
         "total_tokens": trajectory.total_tokens or 0,
         "total_latency_ms": sum(s.latency_ms for s in trajectory.steps),
-        "max_steps": max_steps,
+        "max_steps": effective_max,
     }
 
 

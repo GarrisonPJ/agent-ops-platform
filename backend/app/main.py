@@ -918,7 +918,8 @@ async def compile_and_store_policy(
             reason = "needs_human_review"
         return {"compiled": False, "reason": reason}
 
-    # Persist
+    # Persist — stored as pending_review; activation is governed by the
+    # auto-replay pipeline (policy_pipeline.py), not by this endpoint.
     store = PolicyStore(db)
     version_display = await store.next_version_display()
     policy = await store.create_policy(
@@ -930,11 +931,6 @@ async def compile_and_store_policy(
         confidence=patch.confidence,
         source_trajectories=patch.source_trajectories,
     )
-
-    # Auto-approve if confidence is high
-    if patch.confidence == "high":
-        await store.deactivate_active_policy()
-        await store.update_policy_status(policy.version_id, "active")
 
     await db.commit()
 
