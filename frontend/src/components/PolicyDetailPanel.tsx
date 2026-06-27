@@ -13,7 +13,6 @@ import {
 import type { PolicyVersion } from "../types";
 import LoadingSkeleton from "./LoadingSkeleton";
 import EmptyState from "./EmptyState";
-import { usePolicyActions } from "../hooks/usePolicyActions";
 
 /* ------------------------------------------------------------------ */
 /*  Helpers                                                            */
@@ -147,8 +146,6 @@ export default function PolicyDetailPanel({
   policy,
   loading,
 }: PolicyDetailPanelProps) {
-  const { approvePolicy, rejectWithReason, isApproving, rejectingId } =
-    usePolicyActions();
   if (loading) {
     return (
       <motion.div
@@ -295,27 +292,6 @@ export default function PolicyDetailPanel({
         </div>
       )}
 
-      {/* Approve / Reject buttons (only for pending_review) */}
-      {policy.status === "pending_review" && (
-        <div className="flex items-center gap-3 pt-2 border-t border-border">
-          <button
-            onClick={() => approvePolicy(policy.version_id)}
-            disabled={isApproving}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-mono font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500/20 active:scale-[0.97] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <TrendingUp className="w-3.5 h-3.5" />
-            Approve
-          </button>
-          <button
-            onClick={() => rejectWithReason(policy.version_id)}
-            disabled={rejectingId === policy.version_id}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-mono font-semibold bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 active:scale-[0.97] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <TrendingDown className="w-3.5 h-3.5" />
-            Reject
-          </button>
-        </div>
-      )}
     </motion.div>
   );
 }
