@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft } from "lucide-react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import TrajectorySelector from "../components/TrajectorySelector";
 import CompareTimeline from "../components/CompareTimeline";
 import ErrorBanner from "../components/ErrorBanner";
@@ -9,7 +9,6 @@ import { useGetTracesQuery, useCompareTrajectoriesMutation } from "../services/a
 import type { CompareResponse } from "../types";
 
 export default function ComparePage() {
-  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [compareData, setCompareData] = useState<CompareResponse | null>(null);
@@ -115,21 +114,10 @@ export default function ComparePage() {
       transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
       className="max-w-5xl mx-auto px-6 py-8"
     >
-      {/* Header — matches TraceListPage pattern */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => navigate("/traces")}
-              className="flex items-center gap-1 text-fg-muted hover:text-fg-primary transition-colors"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              <span className="text-xs font-mono">Traces</span>
-            </button>
-          </div>
-          <h1 className="text-2xl font-semibold tracking-tight text-fg-primary mt-1">Compare</h1>
-          <p className="text-sm text-fg-muted mt-1">Side-by-side trajectory comparison.</p>
-        </div>
+      {/* Header */}
+      <div className="mb-6">
+        <h1 className="text-2xl font-semibold tracking-tight text-fg-primary">Compare</h1>
+        <p className="text-sm text-fg-muted mt-1">Side-by-side trajectory comparison.</p>
       </div>
 
       {/* Trajectory selector (shown when no comparison results) */}
