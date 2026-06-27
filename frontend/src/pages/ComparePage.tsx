@@ -129,7 +129,7 @@ export default function ComparePage() {
         </div>
       </header>
 
-      <main className="w-full px-6 py-8 space-y-6">
+      <div className="flex-1 w-full px-6 py-8 space-y-6 overflow-auto">
         {/* Trajectory selector (shown when no comparison results) */}
         {!compareData && (
           <motion.div
@@ -193,7 +193,7 @@ export default function ComparePage() {
             </motion.div>
           )}
         </AnimatePresence>
-      </main>
+      </div>
     </>
   );
 }
