@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { GitBranch } from "lucide-react";
+import { GitBranch } from "@phosphor-icons/react";
 import type { PolicyVersion } from "../types";
 import LoadingSkeleton from "./LoadingSkeleton";
 import EmptyState from "./EmptyState";

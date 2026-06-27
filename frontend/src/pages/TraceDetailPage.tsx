@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
-import { Loader2, AlertCircle, Code2 } from "lucide-react";
+import { CircleNotch, WarningCircle, Code } from "@phosphor-icons/react";
 import { Group, Panel, Separator } from "react-resizable-panels";
 
 import type { RootState, AppDispatch } from "../store";
@@ -91,7 +91,7 @@ export default function TraceDetailPage() {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full">
-        <Loader2 className="w-8 h-8 text-accent animate-spin" />
+        <CircleNotch className="w-8 h-8 text-accent animate-spin" />
       </div>
     );
   }
@@ -101,7 +101,7 @@ export default function TraceDetailPage() {
     return (
       <div className="flex items-center justify-center h-full">
         <div className="text-center">
-          <AlertCircle className="w-12 h-12 text-destructive mx-auto mb-4" />
+          <WarningCircle className="w-12 h-12 text-destructive mx-auto mb-4" />
           <p className="text-fg-primary text-sm font-mono mb-2">
             Trace not found or failed to load
           </p>
@@ -120,28 +120,23 @@ export default function TraceDetailPage() {
     <div className="h-full flex flex-col bg-bg-root">
       {/* ── Header: bold, framed, spacious ──────────────── */}
       <header className="border-b border-border bg-bg-card/30 shrink-0 z-10">
-        <div className="max-w-5xl mx-auto px-6 py-5 flex items-center gap-5 flex-wrap">
+        <div className="w-full px-6 py-4 flex items-center justify-between gap-5 flex-wrap">
           {/* Breadcrumb + title */}
           <div className="flex items-center gap-3 min-w-0 flex-shrink">
             <button
               onClick={() => navigate("/traces")}
-              className="text-sm font-mono text-fg-muted hover:text-fg-primary transition-colors"
+              className="text-sm font-mono text-fg-muted hover:text-fg-primary transition-colors rounded-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
             >
-              ← Traces
+              ← Back to Traces
             </button>
             <span className="text-lg font-bold tracking-tight text-fg-primary truncate border border-white/[0.10] rounded-lg px-3 py-1.5 bg-white/[0.02]">
               {trace.task}
             </span>
           </div>
 
-          {/* Divider */}
-          {trace.total_tokens != null && (
-            <span className="w-px h-8 bg-border/40 flex-shrink-0" />
-          )}
-
           {/* Metrics row */}
           {trace.total_tokens != null && (
-            <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-3 flex-wrap ml-auto">
               <TokenDashboard
                 inline
                 totalTokens={trace.total_tokens}
@@ -215,7 +210,7 @@ export default function TraceDetailPage() {
           >
             <div className="flex items-center px-4 h-10 border-b border-border shrink-0 bg-bg-root sticky top-0 z-10">
               <h2 className="text-[10px] font-mono tracking-wider text-fg-muted uppercase flex items-center gap-2">
-                <Code2 className="w-3.5 h-3.5" />
+                <Code className="w-3.5 h-3.5" />
                 Inspector
               </h2>
             </div>

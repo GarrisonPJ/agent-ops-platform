@@ -17,7 +17,7 @@ import type { FailureSummary } from "../types";
 import LoadingSkeleton from "./LoadingSkeleton";
 import ErrorBanner from "./ErrorBanner";
 import EmptyState from "./EmptyState";
-import { AlertTriangle } from "lucide-react";
+import { Warning } from "@phosphor-icons/react";
 
 /* ------------------------------------------------------------------ */
 /*  Props                                                              */
@@ -138,7 +138,7 @@ export default function FailureDistributionChart({
         animate={{ opacity: 1, y: 0 }}
       >
         <EmptyState
-          icon={AlertTriangle}
+          icon={Warning}
           message="No failure data available"
           description="Run an analysis on a trajectory to see failure distribution"
         />

@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { Clock, Shield, CheckCircle, XCircle } from "lucide-react";
+import { Clock, Shield, CheckCircle, XCircle } from "@phosphor-icons/react";
 import type { PolicyVersion } from "../types";
 import { usePolicyActions } from "../hooks/usePolicyActions";
 import LoadingSkeleton from "./LoadingSkeleton";

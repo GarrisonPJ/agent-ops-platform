@@ -1,15 +1,15 @@
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  FlaskConical,
+  Flask,
   Play,
   Download,
-  GitCompare,
-  Loader2,
-  ChevronDown,
+  GitDiff,
+  CircleNotch,
+  CaretDown,
   Minus,
   Plus,
-} from "lucide-react";
+} from "@phosphor-icons/react";
 import { useNavigate } from "react-router-dom";
 import StatusBadge from "../../components/StatusBadge";
 import ErrorBanner from "../../components/ErrorBanner";
@@ -244,7 +244,7 @@ export default function BenchmarkTab() {
                   </option>
                 ))}
               </select>
-              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-fg-muted pointer-events-none" />
+              <CaretDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-fg-muted pointer-events-none" />
             </div>
             {selectedBenchmark && (
               <p className="text-xs text-fg-muted font-mono mt-1">
@@ -322,7 +322,7 @@ export default function BenchmarkTab() {
             exit={{ opacity: 0, y: -12 }}
             className="bg-bg-card border border-border rounded-lg p-6 flex items-center gap-4"
           >
-            <Loader2 className="w-6 h-6 text-accent animate-spin" />
+            <CircleNotch className="w-6 h-6 text-accent animate-spin" />
             <div>
               <p className="text-sm font-mono text-fg-primary">
                 Running benchmark...
@@ -392,7 +392,7 @@ export default function BenchmarkTab() {
                   onClick={handleCompare}
                   className="flex items-center gap-1.5 text-xs font-mono text-fg-muted hover:text-accent transition-colors"
                 >
-                  <GitCompare className="w-3.5 h-3.5" />
+                  <GitDiff className="w-3.5 h-3.5" />
                   Compare Top 3
                 </button>
               )}
@@ -457,7 +457,7 @@ export default function BenchmarkTab() {
           animate={{ opacity: 1 }}
         >
           <EmptyState
-            icon={FlaskConical}
+            icon={Flask}
             message="Configure and run a benchmark evaluation"
             description="Results will appear here after the benchmark completes"
           />
@@ -539,7 +539,7 @@ function ResultRow({
             className="flex items-center gap-1 px-2.5 py-1.5 rounded text-xs font-mono text-fg-muted hover:text-accent hover:bg-accent/10 transition-colors"
             title="Compare top 3 trajectories"
           >
-            <GitCompare className="w-3.5 h-3.5" />
+            <GitDiff className="w-3.5 h-3.5" />
             Compare
           </button>
 

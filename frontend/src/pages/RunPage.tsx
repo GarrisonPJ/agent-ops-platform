@@ -2,14 +2,14 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { AnimatePresence } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import {
-  Zap,
-  Square,
+  Lightning,
+  Stop,
   ArrowRight,
-  Loader2,
+  CircleNotch,
   Terminal,
-  Code2,
+  Code,
   List
-} from "lucide-react";
+} from "@phosphor-icons/react";
 import { Group, Panel, Separator } from "react-resizable-panels";
 
 import { useAgentStream } from "../hooks/useAgentStream";
@@ -102,7 +102,7 @@ export default function RunPage() {
         <Panel defaultSize={25} minSize={20} className="flex flex-col border-r border-border bg-bg-root z-10 shadow-xl">
           <div className="flex-1 flex flex-col p-6 overflow-y-auto">
             <h2 className="text-sm font-semibold tracking-wide text-fg-primary mb-6 flex items-center gap-2">
-              <Terminal className="w-4 h-4 text-accent" strokeWidth={2} />
+              <Terminal className="w-4 h-4 text-accent" weight="bold" />
               COMMAND CENTER
             </h2>
             
@@ -130,11 +130,11 @@ export default function RunPage() {
                 )}
               >
                 {isStarting ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <CircleNotch className="w-4 h-4 animate-spin" />
                 ) : executing ? (
-                  <Square className="w-3.5 h-3.5 fill-current" />
+                  <Stop className="w-3.5 h-3.5" weight="fill" />
                 ) : (
-                  <Zap className="w-4 h-4" />
+                  <Lightning className="w-4 h-4" weight="bold" />
                 )}
                 {executing ? "Stop Execution" : "Execute Agent"}
               </button>
@@ -188,7 +188,7 @@ export default function RunPage() {
             {!executing && steps.length === 0 && !done && (
               <div className="h-full flex flex-col items-center justify-center text-fg-subtle">
                 <div className="w-12 h-12 rounded-full border border-dashed border-border flex items-center justify-center mb-4">
-                  <Zap className="w-5 h-5 opacity-50" />
+                  <Lightning className="w-5 h-5 opacity-50" />
                 </div>
                 <p className="text-sm font-medium">No active execution</p>
                 <p className="text-xs mt-1">Submit a command to begin</p>
@@ -209,7 +209,7 @@ export default function RunPage() {
 
             {executing && (
               <div className="flex items-center gap-3 py-4 pl-8 opacity-60">
-                <Loader2 className="w-4 h-4 animate-spin text-accent" />
+                <CircleNotch className="w-4 h-4 animate-spin text-accent" />
                 <span className="text-xs font-mono text-accent">Agent is thinking…</span>
               </div>
             )}
@@ -224,7 +224,7 @@ export default function RunPage() {
         <Panel defaultSize={40} minSize={25} className="flex flex-col bg-bg-root">
           <div className="flex items-center px-4 h-12 border-b border-border shrink-0 bg-bg-root">
             <h2 className="text-xs font-mono tracking-wider text-fg-muted uppercase flex items-center gap-2">
-              <Code2 className="w-3.5 h-3.5" />
+              <Code className="w-3.5 h-3.5" />
               Inspector
             </h2>
           </div>

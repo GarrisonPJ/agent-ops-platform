@@ -1,4 +1,4 @@
-import { ArrowUp, ArrowDown } from "lucide-react";
+import { ArrowUp, ArrowDown } from "@phosphor-icons/react";
 
 interface TokenBadgeProps {
   prompt: number | null;

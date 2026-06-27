@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { CheckSquare, Square, GitCompare, Search, Loader2 } from "lucide-react";
+import { CheckSquare, Square, GitDiff, MagnifyingGlass, CircleNotch } from "@phosphor-icons/react";
 import StatusBadge from "./StatusBadge";
 import type { TrajectorySummary } from "../types";
 
@@ -29,7 +29,7 @@ export default function TrajectorySelector({
       {/* Header */}
       <div className="px-5 py-4 border-b border-border flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <GitCompare className="w-5 h-5 text-accent" />
+          <GitDiff className="w-5 h-5 text-accent" />
           <h2 className="text-sm font-semibold font-mono text-fg-primary">
             Select Trajectories to Compare
           </h2>
@@ -49,9 +49,9 @@ export default function TrajectorySelector({
             className="flex items-center gap-1.5 bg-accent text-bg-root text-sm font-semibold font-mono rounded-lg px-4 py-1.5 hover:brightness-110 active:scale-[0.97] disabled:opacity-50 disabled:cursor-not-allowed transition-[filter,transform,opacity]"
           >
             {loading ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
+              <CircleNotch className="w-4 h-4 animate-spin" />
             ) : (
-              <GitCompare className="w-4 h-4" />
+              <GitDiff className="w-4 h-4" />
             )}
             Compare
           </button>
@@ -76,7 +76,7 @@ export default function TrajectorySelector({
         </div>
       ) : trajectories.length === 0 ? (
         <div className="p-8 text-center">
-          <Search className="w-10 h-10 text-fg-muted/30 mx-auto mb-3" />
+          <MagnifyingGlass className="w-10 h-10 text-fg-muted/30 mx-auto mb-3" />
           <p className="text-sm text-fg-muted font-mono">No trajectories found</p>
         </div>
       ) : (

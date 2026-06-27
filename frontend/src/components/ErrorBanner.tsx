@@ -1,4 +1,4 @@
-import { AlertCircle } from "lucide-react";
+import { WarningCircle } from "@phosphor-icons/react";
 import { motion } from "framer-motion";
 
 interface ErrorBannerProps {
@@ -30,7 +30,7 @@ export default function ErrorBanner({
           flex items-center justify-center w-8 h-8 rounded-xl
           bg-destructive/10 ring-1 ring-destructive/20 flex-shrink-0
         ">
-          <AlertCircle className="w-4 h-4 text-destructive" />
+          <WarningCircle className="w-4 h-4 text-destructive" weight="fill" />
         </span>
         <div className="flex-1 min-w-0">
           <p className="text-destructive font-semibold text-sm">{title}</p>

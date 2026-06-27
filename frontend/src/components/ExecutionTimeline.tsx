@@ -3,11 +3,11 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Play,
   Pause,
-  SkipBack,
-  SkipForward,
+  Rewind,
+  FastForward,
   Clock,
   List,
-} from "lucide-react";
+} from "@phosphor-icons/react";
 import StepCard from "./StepCard";
 import TokenBadge from "./TokenBadge";
 import ContextWindowBar from "./ContextWindowBar";
@@ -170,16 +170,16 @@ export default function ExecutionTimeline({
               disabled={currentStepIndex === 0}
               className="w-8 h-8 flex items-center justify-center rounded-md text-fg-muted hover:bg-white/[0.04] active:scale-[0.95] disabled:opacity-30 transition-colors transition-transform transition-opacity"
             >
-              <SkipBack className="w-4 h-4" />
+              <Rewind className="w-4 h-4" weight="fill" />
             </button>
             <button
               onClick={onTogglePlay}
               className="w-10 h-10 flex items-center justify-center rounded-md text-accent bg-accent/10 hover:bg-accent/20 active:scale-[0.95] shadow-inner-glow transition-colors transition-transform"
             >
               {isPlaying ? (
-                <Pause className="w-5 h-5" />
+                <Pause className="w-5 h-5" weight="fill" />
               ) : (
-                <Play className="w-5 h-5" />
+                <Play className="w-5 h-5" weight="fill" />
               )}
             </button>
             <button
@@ -187,7 +187,7 @@ export default function ExecutionTimeline({
               disabled={currentStepIndex >= steps.length - 1}
               className="w-8 h-8 flex items-center justify-center rounded-md text-fg-muted hover:bg-white/[0.04] active:scale-[0.95] disabled:opacity-30 transition-colors transition-transform transition-opacity"
             >
-              <SkipForward className="w-4 h-4" />
+              <FastForward className="w-4 h-4" weight="fill" />
             </button>
             <button
               onClick={onCycleSpeed}

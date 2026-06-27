@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import {
   Thermometer,
-} from "lucide-react";
+} from "@phosphor-icons/react";
 import PolicyTimeline from "../../components/PolicyTimeline";
 import PolicyDetailPanel from "../../components/PolicyDetailPanel";
 import PolicyReviewQueue from "../../components/PolicyReviewQueue";

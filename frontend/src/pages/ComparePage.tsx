@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import TrajectorySelector from "../components/TrajectorySelector";
 import CompareTimeline from "../components/CompareTimeline";
@@ -110,9 +109,19 @@ export default function ComparePage() {
   return (
     <div className="flex-1 flex flex-col">
       {/* ── Title ──────────────────────────────────── */}
-      <div className="max-w-5xl mx-auto px-6 pt-8 pb-6 w-full shrink-0">
-        <h1 className="text-2xl font-semibold tracking-tight text-fg-primary">Compare</h1>
-        <p className="text-sm text-fg-muted mt-1">Side-by-side trajectory comparison.</p>
+      <div className={`pt-8 pb-6 w-full shrink-0 flex items-center gap-4 ${compareData ? "px-8" : "max-w-5xl mx-auto px-6"}`}>
+        {compareData && (
+          <button
+            onClick={() => setCompareData(null)}
+            className="text-sm font-mono text-fg-muted hover:text-fg-primary transition-colors shrink-0 rounded-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
+          >
+            ← Back to selection
+          </button>
+        )}
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight text-fg-primary">Compare</h1>
+          <p className="text-sm text-fg-muted mt-1">Side-by-side trajectory comparison.</p>
+        </div>
       </div>
 
       {!compareData ? (
@@ -152,22 +161,13 @@ export default function ComparePage() {
           animate={{ opacity: 1, y: 0 }}
           className="flex-1 flex flex-col min-h-0"
         >
-          <div className="max-w-5xl mx-auto px-6 w-full shrink-0 pb-2">
-            <button
-              onClick={() => setCompareData(null)}
-              className="flex items-center gap-1.5 text-xs text-fg-muted hover:text-accent font-mono transition-colors"
-            >
-              <ArrowLeft className="w-3.5 h-3.5" />
-              Back to selection
-            </button>
-          </div>
           <AnimatePresence>
             {error && (
               <motion.div
                 initial={{ opacity: 0, y: -8 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -8 }}
-                className="max-w-5xl mx-auto px-6 w-full"
+                className="w-full px-8"
               >
                 <ErrorBanner title="Comparison Error" message={error} />
               </motion.div>

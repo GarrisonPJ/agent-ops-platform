@@ -1,4 +1,4 @@
-import { CheckCircle2, XCircle } from "lucide-react";
+import { CheckCircle, XCircle } from "@phosphor-icons/react";
 import { motion } from "framer-motion";
 
 interface StatusBadgeProps {
@@ -74,14 +74,14 @@ export default function StatusBadge({
     case "success":
       return (
         <span className="inline-flex items-center gap-1.5 text-sm">
-          <CheckCircle2 className="w-4 h-4 text-accent" />
+          <CheckCircle className="w-4 h-4 text-accent" weight="fill" />
           <span className="text-accent font-medium">{resolvedLabel}</span>
         </span>
       );
     case "failed":
       return (
         <span className="inline-flex items-center gap-1.5 text-sm">
-          <XCircle className="w-4 h-4 text-destructive" />
+          <XCircle className="w-4 h-4 text-destructive" weight="fill" />
           <span className="text-destructive font-medium">{resolvedLabel}</span>
         </span>
       );

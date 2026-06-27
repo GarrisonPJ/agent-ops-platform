@@ -1,12 +1,28 @@
 import { useState } from "react";
-import { Wrench, ChevronDown } from "lucide-react";
+import { Wrench, CaretDown } from "@phosphor-icons/react";
 import { motion, AnimatePresence } from "framer-motion";
-import { JsonView, darkStyles, allExpanded } from "react-json-view-lite";
+import { JsonView, allExpanded } from "react-json-view-lite";
 import "react-json-view-lite/dist/index.css";
 import { useGetToolsQuery, useToggleToolMutation } from "../services/api";
 import type { ToolInfo } from "../types";
 import EmptyState from "../components/EmptyState";
 import LoadingSkeleton from "../components/LoadingSkeleton";
+
+const proMaxJsonStyles = {
+  container: "text-[12px] font-mono leading-loose",
+  basicChildStyle: "ml-4",
+  label: "text-fg-muted mr-1.5 font-medium tracking-wide",
+  nullValue: "text-fg-subtle italic",
+  undefinedValue: "text-fg-subtle italic",
+  stringValue: "text-accent-amber font-medium",
+  booleanValue: "text-accent font-medium",
+  numberValue: "text-accent font-medium",
+  otherValue: "text-fg-primary",
+  punctuation: "text-fg-subtle/50",
+  collapseIcon: "cursor-pointer text-fg-subtle hover:text-fg-primary mr-1 select-none transition-colors",
+  expandIcon: "cursor-pointer text-fg-subtle hover:text-fg-primary mr-1 select-none transition-colors",
+  collapsedContent: "text-fg-subtle italic ml-2 cursor-pointer hover:text-fg-muted transition-colors",
+};
 
 function ToolCard({ tool }: { tool: ToolInfo }) {
   const [expanded, setExpanded] = useState(false);
@@ -15,18 +31,18 @@ function ToolCard({ tool }: { tool: ToolInfo }) {
 
   return (
     <div
-      className={`bg-bg-card border shadow-inner-glow rounded-md p-5 flex flex-col transition-colors duration-150 ease-out ${
+      className={`bg-bg-card border shadow-inner-glow rounded-xl p-5 flex flex-col transition-colors duration-150 ease-out ${
         enabled
-          ? "border-border hover:bg-white/[0.02] hover:border-border-strong"
+          ? "border-border/60 hover:bg-white/[0.02] hover:border-border"
           : "border-white/[0.03]"
       }`}
     >
       <div className="flex justify-between items-start">
-        <div className="flex items-center gap-3">
-          <div className={`w-8 h-8 rounded-md bg-accent/10 border border-accent/20 flex items-center justify-center ${enabled ? "text-accent" : "text-fg-subtle"}`}>
-            <Wrench className={`w-4 h-4 ${enabled ? "" : "opacity-40"}`} strokeWidth={1.5} />
+        <div className="flex items-center gap-3 min-w-0 flex-1">
+          <div className={`w-8 h-8 rounded-md bg-accent/10 border border-accent/20 flex items-center justify-center shrink-0 ${enabled ? "text-accent" : "text-fg-subtle"}`}>
+            <Wrench className={`w-4 h-4 ${enabled ? "" : "opacity-40"}`} weight="regular" />
           </div>
-          <span className={`font-mono text-sm font-semibold ${enabled ? "text-fg-primary" : "text-fg-subtle"}`}>{tool.name}</span>
+          <span className={`font-mono text-sm font-semibold truncate pr-2 ${enabled ? "text-fg-primary" : "text-fg-subtle"}`}>{tool.name}</span>
         </div>
         {/* Toggle switch — calls API */}
         <button
@@ -36,7 +52,8 @@ function ToolCard({ tool }: { tool: ToolInfo }) {
           }}
           role="switch"
           aria-checked={enabled}
-          className={`relative w-9 h-5 rounded-full transition-colors duration-300 flex-shrink-0 ${
+          aria-label={enabled ? "Disable tool" : "Enable tool"}
+          className={`relative w-9 h-5 rounded-full transition-colors duration-300 flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg-card ${
             enabled ? "bg-accent" : "bg-white/[0.08]"
           }`}
           title={enabled ? "Disable tool" : "Enable tool"}
@@ -57,9 +74,9 @@ function ToolCard({ tool }: { tool: ToolInfo }) {
           e.stopPropagation();
           setExpanded((v) => !v);
         }}
-        className={`flex items-center gap-1.5 mt-3 text-xs transition-colors self-start ${enabled ? "text-fg-muted hover:text-fg-primary" : "text-fg-subtle"}`}
+        className={`flex items-center gap-1.5 mt-3 text-xs transition-colors self-start rounded-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent ${enabled ? "text-fg-muted hover:text-fg-primary" : "text-fg-subtle"}`}
       >
-        <ChevronDown
+        <CaretDown
           className={`w-3.5 h-3.5 transition-transform duration-200 ${expanded ? "rotate-180" : ""}`}
         />
         {expanded ? "Hide schema" : "View schema"}
@@ -73,9 +90,9 @@ function ToolCard({ tool }: { tool: ToolInfo }) {
             animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={{ duration: 0.2, ease: "easeOut" }}
-            className="mt-3 bg-black/20 rounded-lg p-3 overflow-x-auto overflow-hidden schema-scroll"
+            className="mt-4 bg-white/[0.01] border border-white/[0.03] shadow-inner-glow rounded-lg p-4 overflow-x-auto overflow-hidden schema-scroll"
           >
-            <JsonView data={tool.parameters} shouldExpandNode={allExpanded} style={darkStyles} />
+            <JsonView data={tool.parameters} shouldExpandNode={allExpanded} style={proMaxJsonStyles} />
           </motion.div>
         )}
       </AnimatePresence>

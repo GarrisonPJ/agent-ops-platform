@@ -1,5 +1,5 @@
 import { NavLink, useLocation } from "react-router-dom";
-import { GitCompare, List, Wrench, Play, FlaskConical } from "lucide-react";
+import { GitDiff, List, Wrench, Play, Flask } from "@phosphor-icons/react";
 import { cn } from "../lib/utils";
 import ToastContainer from "./Toast";
 
@@ -7,8 +7,8 @@ const navItems = [
   { to: "/run", label: "Run", icon: Play },
   { to: "/traces", label: "Traces", icon: List },
   { to: "/tools", label: "Tools", icon: Wrench },
-  { to: "/compare", label: "Compare", icon: GitCompare },
-  { to: "/eval", label: "Eval", icon: FlaskConical },
+  { to: "/compare", label: "Compare", icon: GitDiff },
+  { to: "/eval", label: "Eval", icon: Flask },
 ];
 
 export default function Layout({ children }: { children: React.ReactNode }) {
@@ -26,7 +26,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           {/* Logo / Brand */}
           <div className="flex items-center gap-2 mr-4">
             <div className="w-5 h-5 rounded-md bg-accent flex items-center justify-center shadow-inner-glow-accent">
-              <Play className="w-3 h-3 text-white" strokeWidth={2.5} />
+              <Play className="w-3 h-3 text-white" weight="fill" />
             </div>
             <span className="font-mono font-semibold text-sm tracking-tight text-fg-primary">
               AgentOps
@@ -53,7 +53,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                       : "text-fg-muted hover:text-fg-primary hover:bg-white/[0.02]"
                   )}
                 >
-                  <Icon className="w-4 h-4" strokeWidth={1.5} />
+                  <Icon className="w-[18px] h-[18px]" weight={isActive ? "fill" : "regular"} />
                   <span className="hidden sm:inline relative z-10">{item.label}</span>
                 </NavLink>
               );

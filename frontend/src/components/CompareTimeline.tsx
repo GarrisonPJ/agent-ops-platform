@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { motion } from "framer-motion";
-import { Clock, ArrowUpDown, ChevronLeft, ChevronRight, CheckCircle2 } from "lucide-react";
+import { Clock, ArrowsDownUp, CaretLeft, CaretRight, CheckCircle } from "@phosphor-icons/react";
 import CompareStep from "./CompareStep";
 import StatusBadge from "./StatusBadge";
 import { TRAJECTORY_COLORS } from "../lib/colors";
@@ -44,11 +44,11 @@ export default function CompareTimeline({
           {data.max_steps} steps &middot; {numTrajectories} trajectories
         </span>
         <span className="text-xs text-accent-amber font-mono flex items-center gap-1">
-          <ArrowUpDown className="w-3 h-3" />
+          <ArrowsDownUp className="w-3 h-3" />
           {diffCount} step{diffCount !== 1 ? "s" : ""} with tool differences
         </span>
         <span className="text-xs text-accent font-mono flex items-center gap-1">
-          <CheckCircle2 className="w-3 h-3" />
+          <CheckCircle className="w-3 h-3" />
           {matchCount} step{matchCount !== 1 ? "s" : ""} with matching tools
         </span>
 
@@ -58,10 +58,10 @@ export default function CompareTimeline({
             onClick={() => onFocusChange(Math.max(0, focusedTrajectory - 1))}
             disabled={focusedTrajectory === 0}
             aria-label="Previous trajectory"
-            className="p-1 rounded text-fg-muted hover:text-fg-primary hover:bg-bg-hover disabled:opacity-30 disabled:cursor-not-allowed transition-colors transition-opacity"
+            className="p-1 rounded text-fg-muted hover:text-fg-primary hover:bg-bg-hover disabled:opacity-30 disabled:cursor-not-allowed transition-colors transition-opacity focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
             title="Previous trajectory"
           >
-            <ChevronLeft className="w-4 h-4" />
+            <CaretLeft className="w-4 h-4" />
           </button>
           <span className="text-xs text-fg-muted font-mono tabular-nums">
             {focusedTrajectory + 1} / {numTrajectories}
@@ -72,10 +72,10 @@ export default function CompareTimeline({
             }
             disabled={focusedTrajectory >= numTrajectories - 1}
             aria-label="Next trajectory"
-            className="p-1 rounded text-fg-muted hover:text-fg-primary hover:bg-bg-hover disabled:opacity-30 disabled:cursor-not-allowed transition-colors transition-opacity"
+            className="p-1 rounded text-fg-muted hover:text-fg-primary hover:bg-bg-hover disabled:opacity-30 disabled:cursor-not-allowed transition-colors transition-opacity focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
             title="Next trajectory"
           >
-            <ChevronRight className="w-4 h-4" />
+            <CaretRight className="w-4 h-4" />
           </button>
         </div>
       </motion.div>
@@ -90,7 +90,7 @@ export default function CompareTimeline({
                 initial={{ opacity: 0, y: -8 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: colIdx * 0.05 }}
-                className={`bg-bg-card border rounded-md shadow-inner-glow overflow-hidden transition-colors transition-shadow transition-opacity duration-300 cursor-pointer shrink-0 w-full text-left ${
+                className={`bg-bg-card border rounded-md shadow-inner-glow overflow-hidden transition-all duration-300 cursor-pointer shrink-0 w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-bg-root ${
                   colIdx === focusedTrajectory
                     ? "border-accent shadow-[inset_0_1px_0_rgba(255,255,255,0.2),0_0_0_1px_rgba(59,130,246,0.5)] bg-white/[0.02] opacity-100"
                     : "border-border hover:bg-white/[0.02] opacity-70"
@@ -137,7 +137,7 @@ export default function CompareTimeline({
                       </span>
                       {aligned.tools_differ && aligned.tool_names[colIdx] && (
                         <span className="text-[11px] bg-accent-amber/10 text-accent-amber font-mono font-semibold px-1.5 py-0.5 rounded inline-flex items-center gap-1">
-                          <ArrowUpDown className="w-3 h-3" />
+                          <ArrowsDownUp className="w-3 h-3" />
                           {aligned.tool_names[colIdx]}
                         </span>
                       )}

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { Clock, Wrench, Brain } from "lucide-react";
+import { Clock, Wrench, Brain } from "@phosphor-icons/react";
 import { TRAJECTORY_COLORS } from "../lib/colors";
 import type { CompareStepData } from "../types";
 

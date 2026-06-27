@@ -1,15 +1,15 @@
 import { useSearchParams } from "react-router-dom";
 import {
-  FlaskConical,
+  Flask,
   Bug,
   Shield,
-} from "lucide-react";
+} from "@phosphor-icons/react";
 import BenchmarkTab from "./eval/BenchmarkTab";
 import FailuresTab from "./eval/FailuresTab";
 import PoliciesTab from "./eval/PoliciesTab";
 
-const TABS: { key: string; label: string; icon: typeof FlaskConical }[] = [
-  { key: "benchmark", label: "Benchmark", icon: FlaskConical },
+const TABS: { key: string; label: string; icon: typeof Flask }[] = [
+  { key: "benchmark", label: "Benchmark", icon: Flask },
   { key: "failures", label: "Failures", icon: Bug },
   { key: "policies", label: "Policies", icon: Shield },
 ];

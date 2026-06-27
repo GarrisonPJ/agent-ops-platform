@@ -1,5 +1,5 @@
 import type { Step } from "../types";
-import { Clock } from "lucide-react";
+import { Clock } from "@phosphor-icons/react";
 import { motion } from "framer-motion";
 import { cn } from "../lib/utils";
 
@@ -98,7 +98,7 @@ export default function StepCard({
           <div className="flex items-center gap-2 text-fg-subtle">
             {footer ?? (
               <span className="flex items-center gap-1.5 text-[11px] font-mono">
-                <Clock className="w-3 h-3" strokeWidth={1.5} />
+                <Clock className="w-3 h-3" />
                 {(step.latency_ms / 1000).toFixed(1)}s
               </span>
             )}

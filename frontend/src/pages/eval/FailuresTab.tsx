@@ -1,10 +1,10 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import {
-  AlertTriangle,
+  Warning,
   Bug,
-  ChevronDown,
-} from "lucide-react";
+  CaretDown,
+} from "@phosphor-icons/react";
 import EmptyState from "../../components/EmptyState";
 import FailureDistributionChart from "../../components/FailureDistributionChart";
 import type {
@@ -85,7 +85,7 @@ export default function FailuresTab() {
                 </option>
               ))}
             </select>
-            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-fg-muted pointer-events-none" />
+            <CaretDown className="absolute right-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-fg-muted pointer-events-none" />
           </div>
         </div>
       </div>
@@ -117,7 +117,7 @@ export default function FailuresTab() {
               className="bg-bg-card border border-border rounded-lg p-5 flex items-center gap-4"
             >
               <span className="flex items-center justify-center w-10 h-10 rounded-xl bg-accent-amber/10 ring-1 ring-accent-amber/20 flex-shrink-0">
-                <AlertTriangle className="w-5 h-5 text-accent-amber" />
+                <Warning className="w-5 h-5 text-accent-amber" />
               </span>
               <div>
                 <p className="text-xs font-mono text-fg-muted uppercase tracking-wider">

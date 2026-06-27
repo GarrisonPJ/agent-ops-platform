@@ -6,7 +6,7 @@ import {
   getCoreRowModel,
   useReactTable,
 } from "@tanstack/react-table";
-import { Search, List, ChevronDown } from "lucide-react";
+import { MagnifyingGlass, List, CaretDown } from "@phosphor-icons/react";
 import { motion } from "framer-motion";
 import { useGetTracesQuery } from "../services/api";
 import type { TrajectorySummary } from "../types";
@@ -58,7 +58,7 @@ const columns = [
     cell: (info) => {
       const status = info.getValue();
       const labels: Record<string, string> = { success: "Success", failed: "Failed", running: "Running" };
-      return <StatusBadge status={status} label={labels[status]} variant="dot" />;
+      return <StatusBadge status={status} label={labels[status]} />;
     },
   }),
   columnHelper.accessor("step_count", {
@@ -133,7 +133,7 @@ export default function TraceListPage() {
             <p className="text-sm text-fg-muted mt-1">Execution history & trajectories.</p>
           </div>
           <div className="relative">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted" strokeWidth={1.5} />
+            <MagnifyingGlass className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-fg-muted" />
             <input
               type="text"
               value={searchInput}
@@ -169,7 +169,7 @@ export default function TraceListPage() {
               <option value="success">Success</option>
               <option value="failed">Failed</option>
             </select>
-            <ChevronDown className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 text-fg-muted pointer-events-none" strokeWidth={1.5} />
+            <CaretDown className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 text-fg-muted pointer-events-none" />
           </div>
         </div>
 

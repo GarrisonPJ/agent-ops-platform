@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, CheckCircle, AlertCircle, Info } from "lucide-react";
+import { X, CheckCircle, WarningCircle, Info } from "@phosphor-icons/react";
 import { subscribe, type ToastData } from "../lib/toast";
 
 const MAX_TOASTS = 3;
@@ -8,22 +8,25 @@ const AUTO_DISMISS_MS = 3000;
 
 const variantConfig: Record<
   ToastData["variant"],
-  { icon: typeof CheckCircle; border: string; bgGlow: string }
+  { icon: typeof CheckCircle; border: string; bgClass: string; iconColor: string }
 > = {
   success: {
     icon: CheckCircle,
-    border: "border-[#2dd4bf]/40",
-    bgGlow: "bg-[#2dd4bf]/8",
+    border: "border-[#2dd4bf]/30",
+    bgClass: "bg-bg-card/80",
+    iconColor: "text-[#2dd4bf]",
   },
   error: {
-    icon: AlertCircle,
-    border: "border-[#ef4444]/40",
-    bgGlow: "bg-[#ef4444]/8",
+    icon: WarningCircle,
+    border: "border-[#ef4444]/30",
+    bgClass: "bg-bg-card/80",
+    iconColor: "text-[#ef4444]",
   },
   info: {
     icon: Info,
-    border: "border-[#7ab8f7]/40",
-    bgGlow: "bg-[#7ab8f7]/8",
+    border: "border-[#7ab8f7]/30",
+    bgClass: "bg-bg-card/80",
+    iconColor: "text-[#7ab8f7]",
   },
 };
 
@@ -82,23 +85,28 @@ function ToastItem({
       exit={{ opacity: 0, x: 80, scale: 0.95 }}
       transition={{ duration: 0.25, ease: "easeOut" }}
       className={`
-        pointer-events-auto flex items-start gap-3
-        min-w-[300px] max-w-[420px]
-        bg-bg-card border rounded-xl p-4
-        shadow-lg backdrop-blur-md
-        ${config.border} ${config.bgGlow}
+        relative overflow-hidden pointer-events-auto flex items-start gap-3
+        w-[360px]
+        border rounded-xl p-4
+        shadow-card-raised backdrop-blur-xl
+        ${config.bgClass} ${config.border}
       `}
     >
-      <Icon className="w-5 h-5 shrink-0 mt-0.5 text-fg-primary" />
-      <p className="flex-1 text-sm text-fg-primary font-mono leading-relaxed min-w-0">
-        {toast.message}
-      </p>
+      <Icon className={`w-[20px] h-[20px] shrink-0 mt-0.5 ${config.iconColor}`} weight="fill" />
+      <div className="flex-1 flex flex-col gap-1 min-w-0">
+        <span className="text-[13px] font-medium text-fg-primary tracking-tight">
+          {toast.variant.charAt(0).toUpperCase() + toast.variant.slice(1)}
+        </span>
+        <p className="text-[12px] text-fg-muted font-mono leading-relaxed truncate whitespace-normal break-words max-h-[40px] overflow-hidden">
+          {toast.message}
+        </p>
+      </div>
       <button
         onClick={onDismiss}
-        className="shrink-0 p-0.5 rounded text-fg-muted hover:text-fg-primary hover:bg-white/[0.06] transition-colors"
+        className="shrink-0 text-fg-subtle hover:text-fg-primary transition-colors"
         aria-label="Dismiss"
       >
-        <X className="w-4 h-4" />
+        <X className="w-4 h-4" weight="bold" />
       </button>
     </motion.div>
   );

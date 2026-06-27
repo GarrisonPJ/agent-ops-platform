@@ -2,14 +2,17 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import {
   FileText,
-  ChevronDown,
-  ChevronUp,
-  TrendingUp,
-  TrendingDown,
+  CaretDown,
+  CaretUp,
+  TrendUp,
+  TrendDown,
   Clock,
   Shield,
-  Activity,
-} from "lucide-react";
+  ShieldWarning,
+  Pulse,
+  Check,
+  X
+} from "@phosphor-icons/react";
 import type { PolicyVersion } from "../types";
 import LoadingSkeleton from "./LoadingSkeleton";
 import EmptyState from "./EmptyState";
@@ -18,16 +21,17 @@ import EmptyState from "./EmptyState";
 /*  Helpers                                                            */
 /* ------------------------------------------------------------------ */
 
-const STATUS_BADGE: Record<string, { bg: string; text: string; label: string }> = {
+const STATUS_BADGE: Record<string, { bg: string; text: string; label: string; icon?: any }> = {
   active: {
     bg: "bg-emerald-500/10 border-emerald-500/20",
     text: "text-emerald-400",
     label: "Active",
   },
   pending_review: {
-    bg: "bg-amber-400/10 border-amber-400/20",
+    bg: "bg-amber-500/10 border-amber-500/20",
     text: "text-amber-400",
     label: "Pending Review",
+    icon: ShieldWarning,
   },
   reverted: {
     bg: "bg-red-500/10 border-red-500/20",
@@ -117,7 +121,7 @@ function PatchRow({
               className="ml-1 inline-flex items-center gap-0.5 text-accent hover:underline"
             >
               Show all
-              <ChevronDown className="w-3 h-3" />
+              <CaretDown className="w-3 h-3" />
             </button>
           </div>
         ) : (
@@ -128,7 +132,7 @@ function PatchRow({
                 onClick={() => setExpanded(false)}
                 className="ml-1 inline-flex items-center gap-0.5 text-fg-muted hover:text-accent"
               >
-                <ChevronUp className="w-3 h-3" />
+                <CaretUp className="w-3 h-3" />
               </button>
             )}
           </div>
@@ -176,6 +180,7 @@ export default function PolicyDetailPanel({
   const statusStyle = STATUS_BADGE[policy.status] || STATUS_FALLBACK;
   const confidenceStyle = CONFIDENCE_BADGE[policy.confidence];
   const patch = policy.patch;
+  const StatusIcon = statusStyle.icon;
 
   return (
     <motion.div
@@ -193,9 +198,9 @@ export default function PolicyDetailPanel({
           <div className="flex items-center gap-2 mt-2">
             {/* Status badge */}
             <span
-              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-mono font-medium border ${statusStyle.bg} ${statusStyle.text}`}
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-semibold uppercase tracking-wider border ${statusStyle.bg} ${statusStyle.text}`}
             >
-              <Shield className="w-3 h-3" />
+              {StatusIcon && <StatusIcon className="w-3.5 h-3.5" />}
               {statusStyle.label}
             </span>
 
@@ -203,7 +208,7 @@ export default function PolicyDetailPanel({
             <span
               className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-mono font-medium ${confidenceStyle.bg} ${confidenceStyle.text}`}
             >
-              <Activity className="w-3 h-3" />
+              <Pulse className="w-3 h-3" />
               {policy.confidence.charAt(0).toUpperCase() +
                 policy.confidence.slice(1)}{" "}
               Confidence
@@ -221,9 +226,9 @@ export default function PolicyDetailPanel({
             }`}
           >
             {policy.score_delta >= 0 ? (
-              <TrendingUp className="w-4 h-4" />
+              <TrendUp className="w-4 h-4" />
             ) : (
-              <TrendingDown className="w-4 h-4" />
+              <TrendDown className="w-4 h-4" />
             )}
             {policy.score_delta >= 0 ? "+" : ""}
             {policy.score_delta.toFixed(2)}
@@ -292,6 +297,17 @@ export default function PolicyDetailPanel({
         </div>
       )}
 
+      {/* Approve/Reject actions (Mocked for visual) */}
+      {policy.status === "pending_review" && (
+        <div className="mt-auto border-t border-border/50 pt-5 flex gap-3">
+          <button className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-fg-primary text-bg-root text-[13px] font-medium rounded-md hover:opacity-90 active:scale-[0.98] transition-all">
+            <Check className="w-4 h-4" weight="bold" /> Approve Policy
+          </button>
+          <button className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-bg-root border border-border/80 text-fg-primary text-[13px] font-medium rounded-md hover:bg-white/[0.04] active:scale-[0.98] shadow-inner-glow transition-all">
+            <X className="w-4 h-4" weight="bold" /> Reject
+          </button>
+        </div>
+      )}
     </motion.div>
   );
 }
