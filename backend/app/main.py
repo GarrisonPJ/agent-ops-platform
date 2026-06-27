@@ -808,6 +808,15 @@ async def get_active_policy(
     return policy.to_dict() if policy else None
 
 
+@app.get("/api/eval/policies/warmup-status")
+async def warmup_status(
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Return the warmup progress toward the first auto-compile threshold."""
+    store = PolicyStore(db)
+    return await store.get_warmup_status()
+
+
 @app.get("/api/eval/policies/{version_id}")
 async def get_policy(
     version_id: str,
@@ -868,14 +877,6 @@ async def reject_policy(
     await db.commit()
     return result.to_dict() if result else {"status": "ok"}
 
-
-@app.get("/api/eval/policies/warmup-status")
-async def warmup_status(
-    db: AsyncSession = Depends(get_db),
-) -> dict:
-    """Return the warmup progress toward the first auto-compile threshold."""
-    store = PolicyStore(db)
-    return await store.get_warmup_status()
 
 
 @app.post("/api/eval/policies/compile")
