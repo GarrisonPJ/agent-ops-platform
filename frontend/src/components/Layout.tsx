@@ -64,7 +64,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       </header>
 
       {/* ── Page content (occupies remaining height, scrolls internally) ─── */}
-      <main className="relative z-10 flex-1 overflow-auto">{children}</main>
+      <main className="relative z-10 flex flex-col flex-1 overflow-auto">{children}</main>
 
       {/* ── Toast notifications ─────────────────────────── */}
       <ToastContainer />
