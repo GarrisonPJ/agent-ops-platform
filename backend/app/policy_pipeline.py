@@ -102,10 +102,16 @@ async def _run_compile_pipeline(
 
     Returns the compiled policy dict if one was created, or *None*.
     """
-    # Get all trajectories
+    # Get all trajectories (eager-load steps to avoid MissingGreenlet on lazy load)
     from app.models import Trajectory
+    from sqlalchemy.orm import selectinload
 
-    stmt = select(Trajectory).order_by(Trajectory.created_at.desc()).limit(50)
+    stmt = (
+        select(Trajectory)
+        .options(selectinload(Trajectory.steps))
+        .order_by(Trajectory.created_at.desc())
+        .limit(50)
+    )
     result = await session.execute(stmt)
     trajectories = result.scalars().all()
 
