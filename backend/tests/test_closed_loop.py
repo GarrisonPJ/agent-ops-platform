@@ -15,8 +15,10 @@ Notes on what is *not* asserted on the returned ``Policy``:
   (proving the replay branch was skipped) and the stored status reflects
   correct handling.
 """
-
 from __future__ import annotations
+
+import pytest
+pytestmark = pytest.mark.needs_postgresql
 
 import os
 from datetime import datetime, timezone

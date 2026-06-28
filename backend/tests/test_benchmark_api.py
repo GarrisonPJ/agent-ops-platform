@@ -7,8 +7,10 @@ Uses the same pattern as ``test_eval_api.py``: FastAPI ``dependency_overrides``,
 ``run_benchmark_task`` callable is mocked via ``unittest.mock.patch`` to return
 pre-seeded trajectory IDs (no real agent runs).
 """
-
 from __future__ import annotations
+
+import pytest
+pytestmark = pytest.mark.needs_postgresql
 
 import os
 from typing import Any, AsyncGenerator

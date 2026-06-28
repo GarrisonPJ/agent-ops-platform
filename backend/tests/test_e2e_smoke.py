@@ -6,8 +6,10 @@ and other runtime errors that SQLite in-memory can't reproduce.
 Requires ``TEST_DATABASE_URL`` pointing to a running PostgreSQL instance
 or the Docker Compose dev environment.
 """
-
 from __future__ import annotations
+
+import pytest
+pytestmark = pytest.mark.needs_postgresql
 
 import os
 

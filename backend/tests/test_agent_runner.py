@@ -1,6 +1,9 @@
 """Tests for the agent runner module and trajectory_repo layering fix."""
 from __future__ import annotations
 
+import pytest
+pytestmark = pytest.mark.needs_postgresql
+
 import os
 from typing import Any, AsyncGenerator
 

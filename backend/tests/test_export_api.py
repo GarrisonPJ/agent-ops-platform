@@ -3,8 +3,10 @@
 Uses the same test infrastructure as ``test_eval_api.py`` (FastAPI
 ``dependency_overrides`` + httpx AsyncClient + function-scoped DB fixtures).
 """
-
 from __future__ import annotations
+
+import pytest
+pytestmark = pytest.mark.needs_postgresql
 
 import json
 import os

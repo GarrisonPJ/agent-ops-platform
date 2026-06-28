@@ -3,8 +3,10 @@
 These tests use ``httpx.AsyncClient`` against the real FastAPI app and require a
 running PostgreSQL database.  The database is cleaned up after each test session.
 """
-
 from __future__ import annotations
+
+import pytest
+pytestmark = pytest.mark.needs_postgresql
 
 import os
 from typing import Any, AsyncGenerator

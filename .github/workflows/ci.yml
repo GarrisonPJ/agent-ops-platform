@@ -22,8 +22,8 @@ jobs:
       - name: Install dependencies
         run: uv sync --frozen
 
-      - name: Test (pytest)
-        run: uv run pytest tests/ -q --tb=short
+      - name: Test (pytest — skip PostgreSQL tests)
+        run: uv run pytest tests/ -q --tb=short -m "not needs_postgresql"
 
   frontend:
     runs-on: ubuntu-latest
