@@ -26,6 +26,9 @@ target/
 
 # Claude Code agent config (not project source)
 .agents/
+.claude/
+CLAUDE.md
+skills-lock.json
 
 # Session scratch notes
 .scratch/
