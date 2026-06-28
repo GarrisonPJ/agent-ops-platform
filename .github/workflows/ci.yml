@@ -12,6 +12,22 @@ jobs:
     defaults:
       run:
         working-directory: backend
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: agentops
+          POSTGRES_PASSWORD: agentops
+          POSTGRES_DB: agentops_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - uses: actions/checkout@v4
 
@@ -22,8 +38,10 @@ jobs:
       - name: Install dependencies
         run: uv sync --frozen
 
-      - name: Test (pytest — skip PostgreSQL tests)
-        run: uv run pytest tests/ -q --tb=short -m "not needs_postgresql"
+      - name: Test (pytest)
+        env:
+          TEST_DATABASE_URL: postgresql+asyncpg://agentops:agentops@localhost:5432/agentops_test
+        run: uv run pytest tests/ -q --tb=short
 
   frontend:
     runs-on: ubuntu-latest
