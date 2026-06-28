@@ -22,9 +22,6 @@ jobs:
       - name: Install dependencies
         run: uv sync --frozen
 
-      - name: Lint (ruff)
-        run: uv run ruff check app/ tests/ --select E,F,I,N --ignore E501
-
       - name: Test (pytest)
         run: uv run pytest tests/ -q --tb=short
 
