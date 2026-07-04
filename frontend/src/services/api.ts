@@ -1,4 +1,5 @@
 import { createApi, fetchBaseQuery } from "@reduxjs/toolkit/query/react";
+import { mockBaseQuery } from "./mock/handlers";
 import type {
   TrajectorySummary,
   TrajectoryDetail,
@@ -13,9 +14,15 @@ import type {
   WarmupStatus,
 } from "../types";
 
+const IS_MOCK = import.meta.env.VITE_MOCK_API === "true";
+
+const baseQuery = IS_MOCK
+  ? mockBaseQuery
+  : fetchBaseQuery({ baseUrl: "/api" });
+
 export const api = createApi({
   reducerPath: "api",
-  baseQuery: fetchBaseQuery({ baseUrl: "/api" }),
+  baseQuery,
   tagTypes: ["Traces", "Trace", "Tools", "Policies"],
   endpoints: (builder) => ({
     runAgent: builder.mutation<RunResponse, { task: string }>({

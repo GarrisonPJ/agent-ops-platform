@@ -1,4 +1,5 @@
 import type { Step } from "../types";
+import { createMockEventSource } from "./mock/handlers";
 
 interface DoneEvent {
   type: "done";
@@ -12,12 +13,20 @@ interface ErrorEvent {
 
 type StreamEvent = Step | DoneEvent | ErrorEvent;
 
+const IS_MOCK = import.meta.env.VITE_MOCK_API === "true";
+
 export function subscribeToAgentStream(
   trajectoryId: string,
   onStep: (step: Step) => void,
   onDone: () => void,
   onError: (message: string) => void,
 ): () => void {
+  /* ── Mock mode: simulate SSE with timers ───────────────────── */
+  if (IS_MOCK) {
+    return createMockEventSource(trajectoryId, onStep, onDone, onError);
+  }
+
+  /* ── Real mode: EventSource ────────────────────────────────── */
   const eventSource = new EventSource(`/api/agents/${trajectoryId}/stream`);
 
   eventSource.onmessage = (event: MessageEvent) => {

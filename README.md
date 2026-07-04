@@ -54,7 +54,25 @@ Trigger: ≥10 new trajectories or ≥30 minutes since last compilation. Policie
 
 ---
 
-## Quick Start
+## Demo (Frontend Only)
+
+Try the UI without a backend — deployed on Netlify with fully mocked data:
+
+[**Live Demo →**](https://agentops-demo.netlify.app) *(replace with your actual URL after deploy)*
+
+Or run locally without Docker:
+
+```bash
+cd frontend
+VITE_MOCK_API=true pnpm dev
+open http://localhost:5173
+```
+
+The mock layer intercepts all API calls at the JS level (RTK Query baseQuery + global fetch + simulated SSE stream) — no backend or database needed.
+
+---
+
+## Quick Start (Full Stack)
 
 ```bash
 cp .env.example .env   # edit LLM_BASE_URL, LLM_API_KEY, LLM_MODEL
@@ -74,7 +92,7 @@ open http://localhost:5173
 | **LLM** | OpenAI-compatible (DeepSeek / OpenAI / any compatible provider) |
 | **Executor** | Docker SDK + Kubernetes Job (dual-mode) |
 | **Testing** | pytest (96) + vitest (8) + Playwright E2E |
-| **Deployment** | Docker Compose / kind K8s / Cloudflare Tunnel |
+| **Deployment** | Docker Compose / kind K8s / Netlify (frontend demo) |
 
 ---
 

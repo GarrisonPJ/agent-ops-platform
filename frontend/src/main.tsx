@@ -6,6 +6,11 @@ import { store } from "./store";
 import App from "./App";
 import "./index.css";
 
+/* ── Mock API: intercept direct fetch() calls ─────────────────── */
+if (import.meta.env.VITE_MOCK_API === "true") {
+  import("./services/mock/handlers").then((mod) => mod.installFetchMock());
+}
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <Provider store={store}>

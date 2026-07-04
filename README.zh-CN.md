@@ -54,7 +54,25 @@ Policy Router      → 注入下一次 Agent 执行
 
 ---
 
-## 快速开始
+## 在线 Demo（纯前端）
+
+无需后端即可体验完整 UI — 部署在 Netlify，所有数据由前端 Mock：
+
+[**在线体验 →**](https://agentops-demo.netlify.app) *（部署后替换为实际地址）*
+
+或本地无需 Docker 直接运行：
+
+```bash
+cd frontend
+VITE_MOCK_API=true pnpm dev
+open http://localhost:5173
+```
+
+Mock 层在 JS 层面拦截所有 API 调用（RTK Query baseQuery + 全局 fetch + 模拟 SSE 流），无需后端或数据库即可完整浏览所有页面。
+
+---
+
+## 快速开始（全栈）
 
 ```bash
 cp .env.example .env   # 编辑 LLM_BASE_URL, LLM_API_KEY, LLM_MODEL
@@ -74,7 +92,7 @@ open http://localhost:5173
 | **LLM** | OpenAI-compatible（DeepSeek / OpenAI / 任何兼容 provider） |
 | **执行器** | Docker SDK + Kubernetes Job（双模） |
 | **测试** | pytest (96) + vitest (8) + Playwright E2E |
-| **部署** | Docker Compose / kind K8s / Cloudflare Tunnel |
+| **部署** | Docker Compose / kind K8s / Netlify（前端 Demo） |
 
 ---
 

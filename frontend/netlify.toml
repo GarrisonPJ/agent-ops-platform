@@ -1,0 +1,9 @@
+[build]
+  base = "frontend"
+  command = "VITE_MOCK_API=true pnpm build"
+  publish = "dist"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
