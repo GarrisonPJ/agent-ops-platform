@@ -117,15 +117,19 @@ export async function mockHandler(
 
   /* ── Tools ───────────────────────────────────────────────────── */
   if (method === "GET" && path === "/tools") {
-    return jsonResponse(toolState);
+    return jsonResponse(toolState.map((t) => ({ ...t })));
   }
 
   if (method === "PATCH" && path.includes("/tools/") && path.endsWith("/toggle")) {
     const name = path.split("/")[2];
     const tool = toolState.find((t) => t.name === name);
     if (!tool) return errorResponse(404, `Tool not found: ${name}`);
-    tool.enabled = !tool.enabled;
-    return jsonResponse({ name, enabled: tool.enabled });
+    /* Create new reference so RTK Query detects the change */
+    toolState = toolState.map((t) =>
+      t.name === name ? { ...t, enabled: !t.enabled } : t,
+    );
+    const updated = toolState.find((t) => t.name === name)!;
+    return jsonResponse({ name, enabled: updated.enabled });
   }
 
   /* ── Compare ─────────────────────────────────────────────────── */
