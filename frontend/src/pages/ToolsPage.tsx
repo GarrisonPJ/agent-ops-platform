@@ -103,6 +103,12 @@ function ToolCard({ tool }: { tool: ToolInfo }) {
 export default function ToolsPage() {
   const { data: tools, isLoading } = useGetToolsQuery();
 
+  /* Distribute tools into 3 independent flex columns (row-major: 0,1,2 → 3,4,5 → …) */
+  const columns: ToolInfo[][] = [[], [], []];
+  if (tools) {
+    tools.forEach((tool, i) => columns[i % 3].push(tool));
+  }
+
   return (
     <div className="flex-1 flex flex-col">
       {/* ── Title ──────────────────────────────────── */}
@@ -122,9 +128,13 @@ export default function ToolsPage() {
         {isLoading ? (
           <LoadingSkeleton variant="cards" />
         ) : tools && tools.length > 0 ? (
-          <div className="columns-1 md:columns-3 gap-5 [&>div]:break-inside-avoid [&>div]:mb-5">
-            {tools.map((tool) => (
-              <ToolCard key={tool.name} tool={tool} />
+          <div className="hidden md:flex gap-5 items-start">
+            {columns.map((col, ci) => (
+              <div key={ci} className="flex-1 flex flex-col gap-5">
+                {col.map((tool) => (
+                  <ToolCard key={tool.name} tool={tool} />
+                ))}
+              </div>
             ))}
           </div>
         ) : (
@@ -133,6 +143,15 @@ export default function ToolsPage() {
             message="No Tools Registered"
             description="Register a tool to give the agent new capabilities."
           />
+        )}
+
+        {/* Mobile: single column */}
+        {tools && tools.length > 0 && (
+          <div className="flex md:hidden flex-col gap-5">
+            {tools.map((tool) => (
+              <ToolCard key={tool.name} tool={tool} />
+            ))}
+          </div>
         )}
       </motion.div>
     </div>
