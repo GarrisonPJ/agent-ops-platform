@@ -31,7 +31,7 @@ function ToolCard({ tool }: { tool: ToolInfo }) {
 
   return (
     <div
-      className={`bg-bg-card border shadow-inner-glow rounded-xl p-5 flex flex-col transition-colors duration-150 ease-out ${
+      className={`bg-bg-card border shadow-inner-glow rounded-xl p-5 flex flex-col transition-colors duration-150 ease-out relative ${
         enabled
           ? "border-border/60 hover:bg-white/[0.02] hover:border-border"
           : "border-white/[0.03]"
@@ -82,7 +82,7 @@ function ToolCard({ tool }: { tool: ToolInfo }) {
         {expanded ? "Hide schema" : "View schema"}
       </button>
 
-      {/* Expandable schema */}
+      {/* Floating schema overlay — does NOT push siblings */}
       <AnimatePresence>
         {expanded && (
           <motion.div
@@ -90,7 +90,7 @@ function ToolCard({ tool }: { tool: ToolInfo }) {
             animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={{ duration: 0.2, ease: "easeOut" }}
-            className="mt-4 bg-white/[0.01] border border-white/[0.03] shadow-inner-glow rounded-lg p-4 overflow-x-auto overflow-hidden schema-scroll"
+            className="absolute top-full left-0 right-0 z-10 mt-1 bg-bg-card border border-white/[0.12] shadow-xl rounded-lg p-4 overflow-x-auto overflow-y-auto max-h-72 schema-scroll"
           >
             <JsonView data={tool.parameters} shouldExpandNode={allExpanded} style={proMaxJsonStyles} />
           </motion.div>
