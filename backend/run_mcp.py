@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 
+from app.executor import create_executor
 from app.mcp_server import run_server
 from app.tool_registry import ToolRegistry
 
@@ -15,7 +16,8 @@ logging.getLogger("mcp").setLevel(logging.WARNING)
 async def main() -> None:
     registry = ToolRegistry.get_instance()
     registry.register_demo_tools()
-    await run_server(registry)
+    executor = create_executor()
+    await run_server(registry, executor)
 
 
 if __name__ == "__main__":

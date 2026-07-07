@@ -14,6 +14,7 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import TextContent, Tool as MCPTool
 
+from app.executor import Executor, create_executor
 from app.tool_registry import Tool, ToolRegistry
 
 logger = logging.getLogger("agentops.mcp")
@@ -44,39 +45,13 @@ async def _init_db() -> aiosqlite.Connection:
     return db
 
 
-_MOCK_PODS = {
-    "pods": [
-        {"name": "nginx-7d9f-abc12", "namespace": "default", "status": "Running", "restarts": 0},
-        {"name": "api-6b5f-xyz78", "namespace": "default", "status": "Running", "restarts": 2},
-    ]
-}
-
-_MOCK_LOGS = {
-    "logs": "[INFO] Server started\n[DEBUG] Config loaded\n[INFO] GET /health 200",
-}
-
-_MOCK_HTTP = {"status_code": 200, "body": '{"ok":true}', "headers": {"content-type": "application/json"}}
-
-
-def _mock_result(tool: Tool, arguments: dict) -> dict:
-    name = tool.name
-    if name == "kubectl_get_pods":
-        return {"tool": name, "arguments": arguments, "pods": _MOCK_PODS["pods"],
-                "namespace": arguments.get("NAMESPACE", "default")}
-    if name == "docker_logs":
-        return {"tool": name, "arguments": arguments, "logs": _MOCK_LOGS["logs"],
-                "container": arguments.get("CONTAINER", "?")}
-    if name == "http_request":
-        return {"tool": name, "arguments": arguments, **_MOCK_HTTP}
-    return {"tool": name, "arguments": arguments, "error": "unknown tool"}
-
-
 def _tool_to_mcp(t: Tool) -> MCPTool:
     return MCPTool(name=t.name, description=t.description, inputSchema=t.parameters)
 
 
-def create_app(registry: ToolRegistry | None = None) -> Server:
+def create_app(registry: ToolRegistry | None = None, executor: Executor | None = None) -> Server:
     reg = registry or ToolRegistry.get_instance()
+    exec_ = executor or create_executor()
     app = Server("agentops-mcp")
 
     @app.list_tools()
@@ -91,28 +66,37 @@ def create_app(registry: ToolRegistry | None = None) -> Server:
         args = arguments or {}
         started_at = time.time()
         t0 = time.perf_counter()
-        result = _mock_result(tool, args)
+        exec_result = await exec_.execute(tool, args)
         elapsed_ms = int((time.perf_counter() - t0) * 1000)
+        result = {
+            "tool": name,
+            "arguments": args,
+            "output": exec_result.output,
+            "status": exec_result.status,
+            "latency_ms": exec_result.latency_ms,
+            "execution_id": exec_result.execution_id,
+        }
 
+        db = await _init_db()
         try:
-            db = await _init_db()
             await db.execute(
                 "INSERT INTO mcp_trajectories (id,tool_name,arguments,result,status,started_at,elapsed_ms) "
                 "VALUES (?,?,?,?,?,?,?)",
                 (str(uuid.uuid4()), name, json.dumps(args), json.dumps(result),
-                 "ok", started_at, elapsed_ms),
+                 exec_result.status, started_at, elapsed_ms),
             )
             await db.commit()
-            await db.close()
         except Exception:
             logger.warning("Failed to log MCP trajectory", exc_info=True)
+        finally:
+            await db.close()
 
         return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
     return app
 
 
-async def run_server(registry: ToolRegistry | None = None) -> None:
-    app = create_app(registry)
+async def run_server(registry: ToolRegistry | None = None, executor: Executor | None = None) -> None:
+    app = create_app(registry, executor)
     async with stdio_server() as (read, write):
         await app.run(read, write)
