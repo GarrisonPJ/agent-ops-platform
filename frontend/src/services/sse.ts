@@ -1,17 +1,8 @@
 import type { Step } from "../types";
+import { StepSchema } from "./sse-schema";
 import { createMockEventSource } from "./mock/handlers";
 
-interface DoneEvent {
-  type: "done";
-  trajectory_id: string;
-}
-
-interface ErrorEvent {
-  type: "error";
-  message: string;
-}
-
-type StreamEvent = Step | DoneEvent | ErrorEvent;
+type RawStreamEvent = Record<string, unknown>;
 
 const IS_MOCK = import.meta.env.VITE_MOCK_API === "true";
 
@@ -30,16 +21,27 @@ export function subscribeToAgentStream(
   const eventSource = new EventSource(`/api/agents/${trajectoryId}/stream`);
 
   eventSource.onmessage = (event: MessageEvent) => {
-    const data = JSON.parse(event.data) as StreamEvent;
+    let data: RawStreamEvent;
+    try {
+      data = JSON.parse(event.data);
+    } catch {
+      console.warn("[SSE] Failed to parse event data:", event.data);
+      return;
+    }
 
-    if ("type" in data && data.type === "done") {
+    if (data.type === "done") {
       onDone();
       eventSource.close();
-    } else if ("type" in data && data.type === "error") {
-      onError(data.message);
+    } else if (data.type === "error") {
+      onError(typeof data.message === "string" ? data.message : String(data.message));
       eventSource.close();
     } else {
-      onStep(data as Step);
+      const result = StepSchema.safeParse(data);
+      if (result.success) {
+        onStep(result.data);
+      } else {
+        console.warn("[SSE] Invalid step payload dropped:", event.data, result.error);
+      }
     }
   };
 

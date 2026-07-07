@@ -8,7 +8,7 @@ export interface Step {
   } | null;
   observation: string;
   latency_ms: number;
-  started_at: string | number;  // float in SSE events, ISO string from DB
+  started_at: string;  // normalized to ISO 8601 at the SSE parse boundary
   context_window: {
     used: number;
     limit: number;
@@ -94,7 +94,7 @@ export interface BenchmarkRanking {
   trajectory_id: string;
   rank: number;
   score: number;
-  status: string;
+  status: "running" | "success" | "failed";
 }
 
 export interface BenchmarkBestWorst {
