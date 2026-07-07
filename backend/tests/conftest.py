@@ -18,6 +18,18 @@ def _compile_jsonb_sqlite(element: Any, compiler: Any, **kw: Any) -> str:
     return compiler.visit_JSON(element, **kw)
 
 
+# Allow pgvector Vector columns to work with SQLite (testing only).
+# The Vector type is a UserDefinedType; on SQLite we store as BLOB.
+try:
+    from pgvector.sqlalchemy import Vector
+
+    @compiles(Vector, "sqlite")
+    def _compile_vector_sqlite(element: Any, compiler: Any, **kw: Any) -> str:
+        return "BLOB"
+except ImportError:
+    pass
+
+
 @pytest_asyncio.fixture
 async def session() -> AsyncSession:  # type: ignore[misc]
     """Create a fresh in-memory SQLite database for each test."""
