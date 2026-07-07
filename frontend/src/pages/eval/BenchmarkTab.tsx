@@ -24,6 +24,7 @@ import {
   useLazyExportTrajectoryQuery,
 } from "../../services/api";
 import { formatTime } from "../../lib/utils";
+import { formatMutationError } from "../../lib/formatMutationError";
 import { toast } from "../../lib/toast";
 
 export default function BenchmarkTab() {
@@ -95,12 +96,7 @@ export default function BenchmarkTab() {
       setResult(res);
       toast.success(`Benchmark complete: ${res.completed}/${res.n_runs} runs`);
     } catch (err: unknown) {
-      const msg =
-        err instanceof Error
-          ? err.message
-          : typeof err === "object" && err !== null && "data" in err
-            ? JSON.stringify((err as { data: unknown }).data)
-            : "Benchmark run failed";
+      const msg = formatMutationError(err);
       setError(msg);
       toast.error(msg);
     } finally {
@@ -129,12 +125,7 @@ export default function BenchmarkTab() {
       trajectory_id: trajectoryId,
     });
     if (res.error) {
-      const msg =
-        typeof res.error === "object" &&
-        res.error !== null &&
-        "data" in res.error
-          ? String((res.error as { data: unknown }).data)
-          : "Export failed";
+      const msg = formatMutationError(res.error);
       setError(msg);
       toast.error(msg);
       return;
@@ -529,7 +520,7 @@ function ResultRow({
         </span>
       </td>
       <td className="px-4 py-3">
-        <StatusBadge status={row.status} />
+        <StatusBadge status={row.status as "success" | "failed" | "running"} />
       </td>
       <td className="px-4 py-3 text-right">
         <div className="flex items-center justify-end gap-2">
@@ -555,7 +546,7 @@ function ResultRow({
             >
               <Download className="w-3.5 h-3.5" />
               Export
-              <ChevronDown className="w-3 h-3" />
+              <CaretDown className="w-3 h-3" />
             </button>
 
             {openExportId === row.trajectory_id && (

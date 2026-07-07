@@ -17,6 +17,7 @@ import {
   useAnalyzeTrajectoryMutation,
 } from "../../services/api";
 import { toast } from "../../lib/toast";
+import { formatMutationError } from "../../lib/formatMutationError";
 
 export default function FailuresTab() {
   // ── state ─────────────────────────────────────────────────────────
@@ -41,12 +42,7 @@ export default function FailuresTab() {
       }).unwrap();
       setFailureReport(res);
     } catch (err: unknown) {
-      const msg =
-        err instanceof Error
-          ? err.message
-          : typeof err === "object" && err !== null && "data" in err
-            ? JSON.stringify((err as { data: unknown }).data)
-            : "Analysis failed";
+      const msg = formatMutationError(err);
       setFailureError(msg);
       toast.error(msg);
     } finally {

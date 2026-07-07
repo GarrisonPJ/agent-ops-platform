@@ -2,7 +2,7 @@ import { CheckCircle, XCircle } from "@phosphor-icons/react";
 import { motion } from "framer-motion";
 
 interface StatusBadgeProps {
-  status: "success" | "failed" | "running" | string;
+  status: "success" | "failed" | "running";
   label?: string;
   variant?: "default" | "compact" | "dot";
 }

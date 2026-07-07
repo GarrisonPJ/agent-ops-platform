@@ -16,6 +16,7 @@ import { useAgentStream } from "../hooks/useAgentStream";
 import { useRunAgentMutation } from "../services/api";
 import StepCard from "../components/StepCard";
 import { cn, formatTime } from "../lib/utils";
+import { formatMutationError } from "../lib/formatMutationError";
 import StepInspector from "../components/StepInspector";
 
 export default function RunPage() {
@@ -71,8 +72,8 @@ export default function RunPage() {
     try {
       const response = await runAgent({ task: task.trim() }).unwrap();
       setTrajectoryId(response.trajectory_id);
-    } catch {
-      setSubmitError("Failed to start task");
+    } catch (err: unknown) {
+      setSubmitError(formatMutationError(err));
       setExecuting(false);
     }
   }, [task, isStarting, executing, runAgent]);

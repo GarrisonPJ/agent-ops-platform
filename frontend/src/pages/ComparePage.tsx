@@ -5,6 +5,7 @@ import TrajectorySelector from "../components/TrajectorySelector";
 import CompareTimeline from "../components/CompareTimeline";
 import ErrorBanner from "../components/ErrorBanner";
 import { useGetTracesQuery, useCompareTrajectoriesMutation } from "../services/api";
+import { formatMutationError } from "../lib/formatMutationError";
 import type { CompareResponse } from "../types";
 
 export default function ComparePage() {
@@ -48,12 +49,7 @@ export default function ComparePage() {
       setCompareData(result);
       setFocusedTrajectory(0);
     } catch (err: unknown) {
-      const msg =
-        err instanceof Error
-          ? err.message
-          : typeof err === "object" && err !== null && "data" in err
-            ? JSON.stringify((err as { data: unknown }).data)
-            : "Comparison failed";
+      const msg = formatMutationError(err);
       setError(msg);
     }
   }, [selectedIds, compareTrajectories]);
