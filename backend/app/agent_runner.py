@@ -82,15 +82,41 @@ async def execute_agent(
         # ── Policy injection ─────────────────────────────────────────
         if policy:
             runtime.apply_policy(policy.patch)
+        else:
+            runtime.reset_policy()
+
+        # ── Long-term memory: retrieve similar past trajectories ────
+        enriched_task = task
+        try:
+            from app.memory import Embedder, MemoryRetriever
+
+            async with Embedder(
+                settings.llm_base_url,
+                settings.llm_api_key,
+                settings.llm_embedding_model,
+            ) as embedder:
+                task_embedding = await embedder.embed(task)
+                if task_embedding:
+                    retriever = MemoryRetriever(session)
+                    similar = await retriever.query(task_embedding)
+                    if similar:
+                        prefix = "Relevant past sessions:\n"
+                        prefix += "\n".join(f"- {s}" for s in similar)
+                        enriched_task = f"{prefix}\n\nCurrent task: {task}"
+        except Exception:
+            logger.exception("Memory retrieval failed (non-fatal)")
+            enriched_task = task
 
         try:
             async for step in runtime.run(
-                task=task,
+                task=enriched_task,
                 tools=tool_schemas,
                 llm=llm,
                 context_manager=context_manager,
                 max_steps=settings.llm_max_steps,
                 max_tokens=settings.llm_max_tokens,
+                event_bus=event_bus if publish_sse else None,
+                trajectory_id=trajectory_id,
             ):
                 # Check for cancellation before persisting the step
                 if is_cancelled(trajectory_id):
@@ -113,6 +139,31 @@ async def execute_agent(
             await repo.update_trajectory_status(trajectory_id, final_status)
             await _score_trajectory(repo, trajectory_id)
             await session.commit()
+
+            # ── Long-term memory: store trajectory embedding ─────────
+            if final_status == "success":
+                try:
+                    from app.memory import Embedder, store_trajectory_memory
+
+                    # Before embedding for storage, get original task from DB
+                    trajectory_record = await repo.get_trajectory(trajectory_id)
+                    summary = trajectory_record.task if trajectory_record else task
+
+                    async with Embedder(
+                        settings.llm_base_url,
+                        settings.llm_api_key,
+                        settings.llm_embedding_model,
+                    ) as embedder:
+                        embedding = await embedder.embed(summary)
+                        if embedding:
+                            await store_trajectory_memory(
+                                session, trajectory_id, embedding, summary
+                            )
+                            await session.commit()
+                except Exception:
+                    logger.exception(
+                        "Failed to store trajectory memory (non-fatal)"
+                    )
 
             if publish_sse:
                 await event_bus.publish(

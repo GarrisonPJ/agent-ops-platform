@@ -12,7 +12,7 @@ from logging import getLogger
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_runner import execute_agent, run_agent_background
-from app.config import Settings
+from app.config import Settings, settings
 from app.context_manager import ContextManager
 from app.executor import create_executor
 from app.llm import OpenAICompatibleProvider
