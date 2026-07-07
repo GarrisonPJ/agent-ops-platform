@@ -39,6 +39,7 @@ class Tool:
     timeout_ms: int | None = None
     resource_limits: dict | None = None
     enabled: bool = True
+    trigger_condition: str | None = None
 
 
 # ── Conversion helpers ────────────────────────────────────────────────────
@@ -49,11 +50,15 @@ def tool_to_schema(tool: Tool) -> dict:
 
     The result can be passed directly to ``LLMProvider.chat(tools=[...])``.
     """
+    description = tool.description
+    if tool.trigger_condition is not None:
+        description = f"{description}\n\nWhen to use: {tool.trigger_condition}"
+
     return {
         "type": "function",
         "function": {
             "name": tool.name,
-            "description": tool.description,
+            "description": description,
             "parameters": tool.parameters,
         },
     }
@@ -118,6 +123,11 @@ class ToolRegistry:
                     "Retrieve a list of pods from a Kubernetes namespace "
                     "in JSON format."
                 ),
+                trigger_condition=(
+                    "Use when you need to inspect running pods in a "
+                    "Kubernetes cluster, such as checking pod status, "
+                    "finding pod names, or debugging deployment issues."
+                ),
                 parameters={
                     "type": "object",
                     "properties": {
@@ -136,6 +146,11 @@ class ToolRegistry:
             Tool(
                 name="docker_logs",
                 description="Fetch logs from a running Docker container.",
+                trigger_condition=(
+                    "Use when you need to examine log output from a "
+                    "Docker container, such as debugging runtime errors "
+                    "or monitoring application output."
+                ),
                 parameters={
                     "type": "object",
                     "properties": {
@@ -154,6 +169,11 @@ class ToolRegistry:
             Tool(
                 name="http_request",
                 description="Send an HTTP request using curl.",
+                trigger_condition=(
+                    "Use when you need to query an external API or "
+                    "retrieve web content via HTTP, such as fetching "
+                    "data from REST endpoints or checking service health."
+                ),
                 parameters={
                     "type": "object",
                     "properties": {
