@@ -34,11 +34,13 @@ class ContextManager:
         self,
         model: str = "gpt-4o",
         context_limit: int | None = None,
+        max_observation_tokens: int = 2000,
     ) -> None:
         self._encoding = tiktoken.get_encoding(
             tiktoken.encoding_name_for_model(model)
         )
         self._context_limit = context_limit
+        self._max_observation_tokens = max_observation_tokens
 
     # ------------------------------------------------------------------
     # Public API
@@ -47,6 +49,25 @@ class ContextManager:
     def estimate_tokens(self, messages: list[Message]) -> int:
         """Return the estimated token count for a list of messages."""
         return sum(self._tokens_for_message(m) for m in messages)
+
+    def format_observation(
+        self,
+        content: str,
+        max_tokens: int | None = None,
+    ) -> str:
+        """Truncate *content* to *max_tokens* tokens if it exceeds the limit.
+
+        Truncated output gets ``[... truncated to N tokens]`` appended so the
+        LLM is aware of the truncation.  Content that fits within the limit is
+        returned unchanged.
+        """
+        max_tokens = self._max_observation_tokens if max_tokens is None else max_tokens
+        tokens = self._encoding.encode(content)
+        if len(tokens) <= max_tokens:
+            return content
+
+        truncated = self._encoding.decode(tokens[:max_tokens])
+        return truncated + f"[... truncated to {max_tokens} tokens]"
 
     def manage(
         self,
