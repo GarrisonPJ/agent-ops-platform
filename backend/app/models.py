@@ -14,6 +14,14 @@ from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
+try:
+    from pgvector.sqlalchemy import Vector as PgVector
+
+    HAS_PGVECTOR = True
+except ImportError:
+    HAS_PGVECTOR = False
+    PgVector = None
+
 
 class Base(DeclarativeBase):
     pass
@@ -87,4 +95,24 @@ class TrajectoryPolicyMap(Base):
     policy_version_id: Mapped[str] = mapped_column(
         String, ForeignKey("policy_versions.version_id"), primary_key=True
     )
+
+
+if HAS_PGVECTOR:
+
+    class TrajectoryEmbedding(Base):
+        """pgvector embedding of a completed trajectory summary.
+
+        One-to-one with ``trajectories`` — ``id`` is both PK and FK.
+        """
+
+        __tablename__ = "trajectory_embeddings"
+
+        id: Mapped[str] = mapped_column(
+            String, ForeignKey("trajectories.id"), primary_key=True
+        )
+        embedding = mapped_column(PgVector(1536))  # type: ignore[var-annotated]
+        summary: Mapped[str] = mapped_column(Text)
+        created_at: Mapped[datetime] = mapped_column(
+            DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+        )
 

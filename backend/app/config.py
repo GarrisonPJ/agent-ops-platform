@@ -39,6 +39,9 @@ class Settings:
     llm_max_steps: int = field(
         default_factory=lambda: int(os.getenv("LLM_MAX_STEPS", "15"))
     )
+    llm_embedding_model: str = field(
+        default_factory=lambda: os.getenv("LLM_EMBEDDING_MODEL", "text-embedding-3-small")
+    )
 
     # App
     cors_origins: list[str] = field(

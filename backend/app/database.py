@@ -36,6 +36,12 @@ async def init_db() -> None:
     from app.models import Base  # noqa: F811
 
     async with engine.begin() as conn:
+        # Enable required PostgreSQL extensions before table creation
+        try:
+            await conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
+        except Exception:
+            pass  # SQLite doesn't support PostgreSQL extensions — no-op
+
         await conn.run_sync(Base.metadata.create_all)
 
         # Run pending migrations (safe thanks to IF NOT EXISTS)
