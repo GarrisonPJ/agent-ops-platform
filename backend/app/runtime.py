@@ -12,12 +12,13 @@ generator.  Each iteration:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import time
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from logging import getLogger
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from app.context_manager import ContextInfo, ContextManager
 from app.llm import (
@@ -29,6 +30,7 @@ from app.llm import (
 )
 
 if TYPE_CHECKING:
+    from app.event_bus import EventBus
     from app.executor import Executor
     from app.policy_compiler import PolicyPatch
     from app.tool_registry import ToolRegistry
@@ -42,6 +44,16 @@ You are an autonomous AI agent that follows the **ReAct** pattern:
 2. **Act** — Call one of the provided tools when you need information or want \
 to perform an action.
 3. **Observe** — Use the tool result to inform your next thought.
+
+You have access to the following tools — use them when appropriate.
+If you already know the answer, respond with a final answer directly.
+
+## Tool-use guidelines
+
+- Don't call the same tool twice with identical arguments.
+- If a tool returns an error, try a different tool or approach before giving up.
+- Prefer tools that directly answer the user's question over exploratory tools.
+- If you already have the information needed, provide a final answer directly.
 
 Always respond in one of two ways:
 
@@ -57,9 +69,6 @@ Always respond in one of two ways:
   "thought": "I have enough information to answer.",
   "answer": "The final answer to the user's request."
 }
-
-You have access to the following tools — use them when appropriate.
-If you already know the answer, respond with a final answer directly.
 """
 
 
@@ -100,10 +109,14 @@ class AgentRuntime:
         self,
         tool_executor: Executor | None = None,
         tool_registry: ToolRegistry | None = None,
+        event_bus: EventBus | None = None,
+        trajectory_id: str | None = None,
     ) -> None:
         self._history: list[Message] = []
         self._tool_executor = tool_executor
         self._tool_registry = tool_registry
+        self._event_bus = event_bus
+        self._trajectory_id = trajectory_id
         self._policy_patch: dict | None = None
         self._context_strategy: str | None = None
         self._tool_priority_bias: dict | None = None
@@ -120,6 +133,35 @@ class AgentRuntime:
         self._context_strategy = patch.patch.get("context_strategy")
         self._tool_priority_bias = patch.patch.get("tool_priority_bias")
 
+    def reset_policy(self) -> None:
+        """Clear injected policy state. Call when starting a run without a policy."""
+        self._policy_patch = None
+        self._context_strategy = None
+        self._tool_priority_bias = None
+
+    @staticmethod
+    def _classify_error(exc: Exception) -> Literal["transient", "semantic", "infra"]:
+        """Categorize an exception for L1/L2/L3 exception layering.
+
+        *transient* — recoverable via retry (connection timeout, rate-limit, 5xx).
+        *semantic* — tool-level failure (tool timeout, bad exit).
+        *infra* — infrastructure failure (Docker daemon down, retry budget exhausted).
+        """
+        if isinstance(exc, asyncio.TimeoutError):
+            return "semantic"
+        if isinstance(exc, (TimeoutError, ConnectionError)):
+            return "transient"
+        status = getattr(exc, "status_code", None)
+        if status is not None and status in (429, 500, 502, 503, 504):
+            return "transient"
+        exc_str = str(exc)
+        if "429" in exc_str:
+            return "transient"
+        for code in ("500", "502", "503", "504"):
+            if code in exc_str:
+                return "transient"
+        return "infra"
+
     async def run(
         self,
         task: str,
@@ -128,6 +170,8 @@ class AgentRuntime:
         context_manager: ContextManager,
         max_steps: int = 15,
         max_tokens: int = 4096,
+        event_bus: EventBus | None = None,
+        trajectory_id: str | None = None,
     ) -> AsyncIterator[Step]:
         """Execute the ReAct loop, yielding one ``Step`` at a time.
 
@@ -145,7 +189,13 @@ class AgentRuntime:
             Maximum number of LLM calls before the loop is aborted.
         max_tokens:
             Maximum token budget for context window management.
+        event_bus:
+            Optional event bus for publishing runtime events.
+        trajectory_id:
+            Optional trajectory ID to associate with published events.
         """
+        self._event_bus = event_bus
+        self._trajectory_id = trajectory_id
         self._history = [
             Message(role="system", content=_REACT_SYSTEM_PROMPT),
             Message(role="user", content=task),
@@ -242,8 +292,60 @@ class AgentRuntime:
                             tool_latency_ms = result.latency_ms
                             container_id = result.execution_id
                         except Exception as exc:
-                            logger.exception("Tool execution failed")
-                            observation = f"Tool execution error: {exc}"
+                            category = self._classify_error(exc)
+                            if category == "transient":
+                                # L1: Retry with exponential backoff (1s, 2s, 4s)
+                                last_exc = exc
+                                last_category = category
+                                retry_ok = False
+                                for attempt in range(3):
+                                    await asyncio.sleep(2**attempt)
+                                    try:
+                                        result = await self._tool_executor.execute(
+                                            tool, tc.arguments
+                                        )
+                                        observation = result.output
+                                        tool_latency_ms = result.latency_ms
+                                        container_id = result.execution_id
+                                        retry_ok = True
+                                        break
+                                    except Exception as retry_exc:
+                                        logger.debug(
+                                            "Tool %s retry %d/%d after: %s",
+                                            tc.name, attempt + 1, 3, retry_exc,
+                                        )
+                                        last_exc = retry_exc
+                                        last_category = self._classify_error(
+                                            retry_exc
+                                        )
+                                        if last_category != "transient":
+                                            break
+                                if not retry_ok:
+                                    exc = last_exc
+                                    category = (
+                                        "infra"
+                                        if last_category == "transient"
+                                        else last_category
+                                    )
+
+                            if category == "semantic":
+                                # L2: Degrade to structured observation
+                                logger.warning(
+                                    "Tool %s failed (semantic): %s", tc.name, exc
+                                )
+                                observation = f"[Tool error: {exc}]"
+                            else:
+                                # L3: System error + SSE error event
+                                reason = str(exc)
+                                observation = f"[System error: {reason}]"
+                                logger.exception(
+                                    "Tool execution failed for %s", tc.name
+                                )
+                                if self._event_bus and self._trajectory_id:
+                                    await self._event_bus.publish(
+                                        self._trajectory_id,
+                                        {"type": "error", "message": reason},
+                                    )
                     elif tool is not None and not tool.enabled:
                         observation = (
                             f"Tool '{tc.name}' is currently disabled. "
@@ -271,7 +373,7 @@ class AgentRuntime:
                 self._history.append(
                     Message(
                         role="tool",
-                        content=observation,
+                        content=context_manager.format_observation(observation),
                         tool_call_id=tc.id,
                     )
                 )
