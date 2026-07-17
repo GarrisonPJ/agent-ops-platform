@@ -7,7 +7,7 @@ Experiment → Baseline → Trace → Analysis → Candidate Policy
            → Replay → Comparison → Human Activate or Reject
 ```
 
-This file defines the shared vocabulary and invariants for Phase 1. Product and implementation changes must preserve this loop or justify a new ADR.
+This file defines the shared vocabulary and invariants for the implemented Phase 1 loop. Phase 1 is complete and verified. Product and implementation changes must preserve these invariants or justify a new ADR; future milestones are tracked in [ROADMAP.md](ROADMAP.md).
 
 ## Domain vocabulary
 
@@ -24,7 +24,7 @@ This file defines the shared vocabulary and invariants for Phase 1. Product and 
 | RunAnalysis | Deterministic failure dimensions, evidence, dominant type, and failure rate for one run. |
 | Policy | Experiment-scoped candidate patch derived from one failed baseline and optionally validated by one replay. |
 | PolicyPatch | Phase 1 patch with only `instruction_patch`, `tool_priority`, and `max_steps`. |
-| Recorded Preview | Static-hosting adapter that replays Golden E2E fixtures and never implements backend business rules. |
+| Recorded Preview | Offline-development and regression adapter that replays Golden E2E fixtures and never implements backend business rules. |
 
 ## State machines
 
@@ -32,14 +32,16 @@ Run:
 
 ```text
 queued → claimed → running
-running → succeeded | failed | cancelled | timed_out
-queued | claimed | running → cancelling → cancelled
+queued → cancelled
+claimed | running → cancelling → cancelled
+claimed | running → succeeded | failed | cancelled | timed_out
 ```
 
 Policy:
 
 ```text
 candidate → replaying → validated
+replaying → candidate (replay fails or does not improve the score)
 candidate | validated → rejected
 validated → active
 active → superseded
@@ -109,6 +111,12 @@ Frontend state follows the project convention:
 ## Phase 1 non-goals
 
 Kubernetes, Docker socket execution, MCP, vector memory, training export, framework adapters, real model providers, arbitrary command execution, accounts, multi-tenancy, billing, and automatic activation are outside the current product.
+
+## Planned evolution
+
+The next milestones are Runner recovery, an OpenAI-compatible provider, and observability/operational hardening. Recorded Preview remains a testing adapter, not a separate delivery track. Kubernetes, MCP, vector memory, arbitrary execution, multi-tenancy, and automatic policy activation stay deferred until a measured requirement promotes them.
+
+Roadmap changes do not alter these domain invariants by themselves. Update this file and add an ADR before a milestone changes state ownership, recovery semantics, trust boundaries, or activation rules. See [ROADMAP.md](ROADMAP.md).
 
 ## ADR index
 

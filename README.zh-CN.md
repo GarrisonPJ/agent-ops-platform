@@ -16,7 +16,7 @@ Experiment → Baseline → Trace → Failure Analysis → Candidate Policy
 
 这个仓库刻意保持聚焦。Phase 1 的目标是证明一条完整、确定、可复现的闭环，而不是堆叠彼此无关的基础设施能力。
 
-## 60 秒演示
+## 确定性 Golden 流程
 
 内置场景用于调查 checkout API 延迟：
 
@@ -41,7 +41,7 @@ make demo
 打开 [http://localhost:5173](http://localhost:5173)。Golden 闭环通常会在 30 秒内完成。
 
 ```bash
-make logs      # 查看 API、Runner、Web、PostgreSQL 日志
+make logs      # 查看 API、Runner 与 Web 日志
 make down      # 停止完整环境
 make test      # 后端、前端、Rust 与契约测试
 ```
@@ -51,9 +51,9 @@ make test      # 后端、前端、Rust 与契约测试
 | 模式 | 用途 | 实际运行内容 |
 |---|---|---|
 | 本地真实环境 | 验证完整端到端行为 | React、FastAPI、PostgreSQL、Rust Runner、确定性 Python Agent |
-| Static Preview | Vercel/Netlify 求职展示 | React 与 Golden E2E 录制 fixtures |
+| Recorded Preview | 离线 UI 开发与确定性回归检查 | React 与 Golden E2E 录制 fixtures |
 
-启动静态预览：
+启动 Recorded Preview：
 
 ```bash
 cd frontend
@@ -121,7 +121,7 @@ contracts/    版本化 JSON Schema 与跨语言 Golden fixtures
 infra/docker/ 聚焦后的本地 Compose 环境
 scripts/      真实环境 Golden E2E
 docs/adr/     架构决策
-.scratch/     Phase 1 PRD 与 issue
+ROADMAP.zh-CN.md 当前工程里程碑与能力提升门槛
 ```
 
 ## 验证
@@ -142,11 +142,11 @@ CI 覆盖 Python、数据库迁移、TypeScript、Recorded Preview 契约、Rust
 
 Phase 1 不包含 Kubernetes Executor、Docker Socket、MCP Server、向量记忆、Training Export、多框架适配、真实模型 Provider、任意代码执行、账户、多租户、计费或自动激活 Policy。
 
-只有出现可验证的产品需求时，这些能力才会回到主线。下一阶段计划是 Runner 恢复能力和真实 OpenAI-compatible Provider，详见 [.scratch/focused-closed-loop/PRD.md](.scratch/focused-closed-loop/PRD.md)。
+这些能力继续暂缓，只有可量化需求才能将其提升到主线。当前优先级是 Runner Recovery、真实 OpenAI-compatible Provider 和运维加固，详见 [ROADMAP.zh-CN.md](ROADMAP.zh-CN.md)。
 
-## 这个项目展示什么
+## 项目方向
 
-AgentOps 是面向全栈与 AI-native 岗位的求职项目。它的核心不是功能数量，而是一个可审查的系统闭环：产品交互、持久化流式事件、状态机不变量、跨语言类型契约，以及 Rust 的安全进程监督。
+AgentOps 将持续打磨为可靠的闭环评测系统。工程优先级由可恢复执行、持久状态、明确不变量、跨语言类型契约、可观测故障和安全进程监督决定，而不是由功能数量决定。
 
 ## License
 

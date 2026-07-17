@@ -10,9 +10,9 @@ contained Docker and Kubernetes executor paths. Run events, cancellation, and
 tool state were partly process-local, so a visible trace was not a durable
 record and horizontal API replicas were not safe.
 
-The portfolio product is now focused on one user journey: run a baseline,
-diagnose the failure, review a policy, replay it, and explicitly adopt or
-reject the result.
+The system is now focused on one user journey: run a baseline, diagnose the
+failure, review a policy, replay it, and explicitly adopt or reject the
+result.
 
 ## Decision
 

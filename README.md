@@ -16,7 +16,7 @@ Experiment → Baseline → Trace → Failure Analysis → Candidate Policy
 
 This repository is intentionally focused. Phase 1 proves one complete, deterministic loop instead of presenting unrelated infrastructure features.
 
-## The 60-second demo
+## Deterministic Golden workflow
 
 The built-in scenario investigates checkout API latency:
 
@@ -41,7 +41,7 @@ make demo
 Open [http://localhost:5173](http://localhost:5173). The Golden loop normally completes in under 30 seconds.
 
 ```bash
-make logs      # follow API, Runner, Web, and PostgreSQL
+make logs      # follow API, Runner, and Web
 make down      # stop the stack
 make test      # backend, frontend, Rust, and contract checks
 ```
@@ -51,9 +51,9 @@ make test      # backend, frontend, Rust, and contract checks
 | Mode | Purpose | What runs |
 |---|---|---|
 | Local live stack | Real end-to-end behavior | React, FastAPI, PostgreSQL, Rust Runner, deterministic Python agent |
-| Static preview | Vercel/Netlify portfolio preview | React plus recorded Golden E2E fixtures |
+| Recorded preview | Offline UI development and deterministic regression checks | React plus recorded Golden E2E fixtures |
 
-Start the static preview with:
+Start the recorded preview with:
 
 ```bash
 cd frontend
@@ -121,7 +121,7 @@ contracts/    Versioned JSON Schemas and cross-language Golden fixtures
 infra/docker/ Focused local Compose stack
 scripts/      Real-stack Golden E2E
 docs/adr/     Architecture decisions
-.scratch/     Phase 1 PRD and issue records
+ROADMAP.md    Current engineering milestones and promotion gates
 ```
 
 ## Verification
@@ -142,11 +142,11 @@ CI covers Python, migrations, TypeScript, recorded-preview contracts, Rust proto
 
 Phase 1 has no Kubernetes executor, Docker socket, MCP server, vector memory, training export, framework adapters, real model provider, arbitrary code execution, accounts, multi-tenancy, billing, or automatic policy activation.
 
-Those features return only when a measured product requirement justifies them. The next planned work is Runner recovery and a real OpenAI-compatible provider; see [.scratch/focused-closed-loop/PRD.md](.scratch/focused-closed-loop/PRD.md).
+Those capabilities remain deferred until a measured requirement promotes them. Current priorities are Runner recovery, a real OpenAI-compatible provider, and operational hardening; see [ROADMAP.md](ROADMAP.md).
 
-## Why this project exists
+## Project direction
 
-AgentOps is a portfolio project for full-stack and AI-native engineering roles. Its main claim is not feature count; it is a reviewable systems loop across product UX, durable streaming, state-machine invariants, typed cross-language contracts, and safe Rust process supervision.
+AgentOps is developed as a reliable closed-loop evaluation system. Work is prioritized by recoverable execution, durable state, explicit invariants, typed cross-language contracts, observable failures, and safe process supervision rather than by feature count.
 
 ## License
 
