@@ -1,258 +1,152 @@
 <p align="center">
-  <a href="README.zh-CN.md">中文</a> |
-  <a href="README.md">English</a>
+  <a href="README.md">English</a> ·
+  <a href="README.zh-CN.md">中文</a>
 </p>
 
-<p align="center">
-  <img src="https://img.shields.io/badge/version-0.4-blue?style=flat-square" alt="version">
-  <img src="https://img.shields.io/badge/python-3.12-3776AB?style=flat-square&logo=python" alt="python">
-  <img src="https://img.shields.io/badge/react-19-61DAFB?style=flat-square&logo=react" alt="react">
-  <img src="https://img.shields.io/badge/tests-104_passed-2dd4bf?style=flat-square" alt="tests">
-  <img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="license">
-</p>
+# AgentOps
 
-<h1 align="center">AgentOps Platform</h1>
-<p align="center"><strong>AI Agent 基础设施平台</strong> — 任务执行 → 轨迹回放 → 闭环自优化 → 训练数据导出</p>
-<p align="center">自驱动的 Agent 评测与改进系统，让 Agent 在运行中自动变得更聪明</p>
+**一个用于运行、诊断、改进和验证工具型 AI Agent 的全栈评测工作台。**
 
----
+AgentOps 把一次失败执行变成可审查的改进闭环：
 
-## 页面预览
-
-<p align="center">
-  <img src="docs/screenshots/traces.png" width="48%" alt="轨迹列表">
-  <img src="docs/screenshots/compare.png" width="48%" alt="多轨迹对比">
-</p>
-<p align="center">
-  <img src="docs/screenshots/eval-policies.png" width="48%" alt="策略时间线">
-  <img src="docs/screenshots/eval-failures.png" width="48%" alt="故障分析">
-</p>
-
----
-
-## 闭环自优化（v0.4 核心能力）
-
-平台自动发现失败模式、编写改进策略、A/B 验证、采纳或回滚——全程无需人工干预。
-
-```
-Task → Run(Policy vN) → Trajectory → Score
-  ↓
-Failure Analyzer   → 四维度故障分类（Planning / Execution / Context / Budget）
-  ↓
-Policy Compiler    → 规则引擎生成 PolicyPatch（prompt_suffix / max_steps / strategy / tool_bias）
-  ↓
-Policy Store       → 版本化存储（v1→v2→v3）+ 人工审核队列
-  ↓
-Auto-replay        → 新 Policy 下重跑失败轨迹 → 三段式判定（激活 / 回滚 / 待审）
-  ↓
-Policy Router      → 注入下一次 Agent 执行
-  ↓
-[循环]
+```text
+Experiment → Baseline → Trace → Failure Analysis → Candidate Policy
+           → Replay → Before / After → 人工 Activate 或 Reject
 ```
 
-触发条件：≥10 条新 trajectory 或距上次编译 ≥30 分钟。策略以 **prompt 级注入**（不修改模型权重），适配任何云端 LLM。
+这个仓库刻意保持聚焦。Phase 1 的目标是证明一条完整、确定、可复现的闭环，而不是堆叠彼此无关的基础设施能力。
 
----
+## 60 秒演示
 
-## 在线 Demo（纯前端）
+内置场景用于调查 checkout API 延迟：
 
-无需后端即可体验完整 UI — 部署在 Netlify，所有数据由前端 Mock：
+1. Baseline 重复读取相同日志，耗尽六步预算后失败。
+2. 确定性规则分析器依据事件证据识别出 **Planning** 与 **Budget** 问题。
+3. AgentOps 生成一个有类型约束的候选策略：禁止相同调用重复，依次检查 health、metrics 和证据相关 logs。
+4. Rust Runner 使用相同 EvaluationSpec 和 Seed 发起 Replay。
+5. Replay 用三步定位依赖异常，并得到更高分数。
+6. Candidate 不会自动生效，必须由人选择 **Activate** 或 **Reject**。
 
-[**在线体验 →**](https://agentops-demo.netlify.app) *（部署后替换为实际地址）*
+整个流程不需要 LLM Key，也不依赖外部服务。
 
-或本地无需 Docker 直接运行：
+## 启动真实闭环
+
+需要 Docker Compose 与 Make。
+
+```bash
+cp .env.example .env
+make demo
+```
+
+打开 [http://localhost:5173](http://localhost:5173)。Golden 闭环通常会在 30 秒内完成。
+
+```bash
+make logs      # 查看 API、Runner、Web、PostgreSQL 日志
+make down      # 停止完整环境
+make test      # 后端、前端、Rust 与契约测试
+```
+
+## 真实环境与录制预览
+
+| 模式 | 用途 | 实际运行内容 |
+|---|---|---|
+| 本地真实环境 | 验证完整端到端行为 | React、FastAPI、PostgreSQL、Rust Runner、确定性 Python Agent |
+| Static Preview | Vercel/Netlify 求职展示 | React 与 Golden E2E 录制 fixtures |
+
+启动静态预览：
 
 ```bash
 cd frontend
-VITE_MOCK_API=true pnpm dev
-open http://localhost:5173
+npm ci
+VITE_MOCK_API=true npm run dev
 ```
 
-Mock 层在 JS 层面拦截所有 API 调用（RTK Query baseQuery + 全局 fetch + 模拟 SSE 流），无需后端或数据库即可完整浏览所有页面。
+此模式会持续显示 **Recorded Demo Data**。Fixture 只按时间顺序回放真实闭环中持久化的事件，不会在 TypeScript 中重新实现评分、分析、策略编译或状态机。
 
----
+## 架构
 
-## 快速开始（全栈）
+```mermaid
+flowchart LR
+    UI["React 工作台"] -->|"typed HTTP"| API["FastAPI Control Plane"]
+    API -->|"唯一数据库访问者"| DB[("PostgreSQL")]
+    API -->|"先持久化，再 SSE"| UI
+    Runner["Rust Execution Plane"] -->|"claim / heartbeat / events / complete"| API
+    Runner -->|"stdin EvaluationSpec<br/>stdout JSONL"| Agent["Allowlisted Python Scenario"]
+```
+
+| 层 | 职责 |
+|---|---|
+| React + RTK Query | Experiment 流程、可恢复 Trace、Analysis、Improve、Replay 对比与人工决策 |
+| FastAPI | Experiment、Run/Policy 状态机、Lease、持久化、评分、分析和 SSE |
+| Rust Runner | 进程组、Heartbeat/Cancel、Timeout、有界 JSONL、事件重试和退出清理 |
+| PostgreSQL | Experiment、Run、Job、有序事件、Analysis 与 Policy |
+| Python Demo Agent | 唯一确定、在白名单内的 checkout latency 场景 |
+
+Python Pydantic 类型是协议 v1 的事实来源。版本化 JSON Schema 与 Golden fixtures 位于 [contracts/v1](contracts/v1)，Rust Serde 类型在 CI 中验证同一批 fixtures。
+
+## 可靠性与安全边界
+
+- FastAPI 是 PostgreSQL 的唯一读写者。
+- RunEvent 提交成功后才会通过 SSE 发布。
+- 重连使用 `after=<sequence>`；`run_id + sequence` 唯一，重复上传幂等。
+- Runner API 使用 Bearer Token，并校验 runner identity、lease 与 run。
+- 过期 Lease 不能继续上报或完成非终态任务；终态重复完成仍保持幂等。
+- Job 只包含白名单 `scenario_id`，API 用户不能提交 executable 或 shell 命令。
+- Runner 分离 command 与 args，不连接 Docker daemon，也不直连数据库。
+- JSONL 单行默认最多 64 KiB，总输出默认最多 1 MiB。
+- Linux/WSL 子进程运行在独立进程组；取消时先 SIGTERM，两秒后 SIGKILL。
+- 产品事件仅展示 `decision_summary`，不记录或暗示隐藏 Chain-of-Thought。
+- Policy 必须在 Replay 成功且分数提升后，由人显式激活。
+
+## 产品范围
+
+Phase 1 只保留四个产品路由：
+
+```text
+/experiments
+/experiments/new
+/experiments/:experimentId
+/runs/:runId?view=trace|analysis|improve
+```
+
+Run 状态明确区分 `queued`、`claimed`、`running`、`cancelling`、`succeeded`、`failed`、`cancelled` 和 `timed_out`。
+
+## 仓库结构
+
+```text
+backend/      FastAPI Control Plane、Alembic、确定性 Agent
+frontend/     React 工作台与 Recorded Preview Adapter
+runner/       Rust workspace：protocol、runner、CLI
+contracts/    版本化 JSON Schema 与跨语言 Golden fixtures
+infra/docker/ 聚焦后的本地 Compose 环境
+scripts/      真实环境 Golden E2E
+docs/adr/     架构决策
+.scratch/     Phase 1 PRD 与 issue
+```
+
+## 验证
 
 ```bash
-cp .env.example .env   # 编辑 LLM_BASE_URL, LLM_API_KEY, LLM_MODEL
-docker compose -f infra/docker/docker-compose.yml up -d
-open http://localhost:5173
+make check-contracts
+make test-backend
+make test-frontend
+make test-rust
+
+# 面向已启动的真实环境
+python3 scripts/golden_e2e.py
 ```
 
----
+CI 覆盖 Python、数据库迁移、TypeScript、Recorded Preview 契约、Rust 协议与进程监督、Compose 配置，以及真实 Golden 闭环。
 
-## 技术栈
+## 明确不做
 
-| 层 | 技术 |
-|----|------|
-| **前端** | React 19, TypeScript, Vite 6, Tailwind v4, Redux Toolkit, RTK Query, TanStack Table, framer-motion, Phosphor Icons, Recharts |
-| **后端** | Python 3.12, FastAPI, SQLAlchemy (async), asyncpg, docker-py, tiktoken, httpx |
-| **数据库** | PostgreSQL 16-alpine |
-| **LLM** | OpenAI-compatible（DeepSeek / OpenAI / 任何兼容 provider） |
-| **执行器** | Docker SDK + Kubernetes Job（双模） |
-| **测试** | pytest (96) + vitest (8) + Playwright E2E |
-| **部署** | Docker Compose / kind K8s / Netlify（前端 Demo） |
+Phase 1 不包含 Kubernetes Executor、Docker Socket、MCP Server、向量记忆、Training Export、多框架适配、真实模型 Provider、任意代码执行、账户、多租户、计费或自动激活 Policy。
 
----
+只有出现可验证的产品需求时，这些能力才会回到主线。下一阶段计划是 Runner 恢复能力和真实 OpenAI-compatible Provider，详见 [.scratch/focused-closed-loop/PRD.md](.scratch/focused-closed-loop/PRD.md)。
 
-## 核心特性
+## 这个项目展示什么
 
-### Agent 运行时
-- **ReAct 循环** — think → act → observe，while 直到 final answer
-- **SSE 流式推送** — 每步实时推送到前端
-- **Policy 注入** — 活跃 Policy 的 suffix / tool_bias / context_strategy / max_steps 自动注入
-- **多框架适配** — LangChain + OpenAI Agents SDK
-- **DeepSeek 思考模式** — 完整支持 `reasoning_content` 往返传递
-
-### 闭环自优化
-- **Failure Analyzer** — 四维度多标签故障分类，纯规则引擎
-- **Policy Compiler** — 差异化阈值 + 6 条组合规则 C1-C6
-- **Policy Store** — UUID + 自增 display 双字段版本管理
-- **Auto-replay** — 新 Policy 下重跑失败轨迹，≥10% 激活 / ≤-5% 回滚
-- **自动触发** — Agent 完成即检查，事件/时间双驱动
-- **人工审核** — 三维超标 → ReviewQueue → Approve / Reject
-
-### 工具执行层
-- Docker + K8s Job 双模执行器，资源隔离
-- Tool Registry 统一注册，在线 enable/disable
-- MCP Server — Tool Registry → MCP JSON-RPC stdio transport
-
-### 可观测性
-- **轨迹回放** — 播放/暂停/步进/倍速（0.5x~4x），键盘快捷键
-- **Token 用量** — 每步 prompt/completion tokens + context window 进度条
-- **多轨迹对比** — 独立列布局，工具差异琥珀色高亮
-
-### 评测系统
-- **四维评分** — success + cost + latency + tool_failure
-- **Benchmark** — asyncio.gather 并发 N 次，自动排名
-- **Failure 图表** — Recharts 雷达图 + 柱状图
-- **Policy Timeline** — 时间轴可视化，绿/黄/红状态区分
-- **训练数据导出** — OpenAI SFT / RLHF 对 / JSONL
-
-### 设计系统
-- Geist + Geist Mono 字体，暗色主题 (#030303)
-- 钴蓝 (#4b8cf7) + 琥珀金 (#f5a623) 双 accent
-- 状态管理：RTK Query → Redux → useState 三级约定
-- motion 编排 + CSS timeline 动画 + 进度条探照灯
-
----
-
-## 项目结构
-
-```
-agent-ops-platform/
-├── backend/
-│   ├── app/
-│   │   ├── main.py               # FastAPI 路由 + 应用入口
-│   │   ├── orchestrator.py       # Agent 依赖图工厂
-│   │   ├── runtime.py            # ReAct 循环 + Policy 注入
-│   │   ├── agent_runner.py       # Agent 生命周期（评分/取消/闭环触发）
-│   │   ├── failure_analyzer.py   # 故障分析器（四维度纯规则）
-│   │   ├── policy_compiler.py    # Policy 编译器 + PolicyPatch
-│   │   ├── policy_store.py       # Policy CRUD + Policy 类型
-│   │   ├── policy_pipeline.py    # 闭环管道入口 run_closed_loop
-│   │   ├── auto_replay.py        # 自动回放 + 三段式判定
-│   │   ├── scoring.py            # 评分引擎（纯函数）
-│   │   ├── benchmarks.py         # Benchmark 任务定义
-│   │   ├── exporters.py          # 训练数据导出
-│   │   ├── llm.py                # LLM Provider 适配
-│   │   ├── context_manager.py    # 上下文窗口管理 + strategy
-│   │   ├── trajectory_repo.py    # 轨迹 CRUD
-│   │   ├── models.py             # ORM（trajectories/steps/policies）
-│   │   ├── config.py             # 配置 + 闭环阈值常量
-│   │   └── serializer.py         # 序列化（render_scoring_view）
-│   └── tests/                    # 96 tests
-├── frontend/
-│   ├── src/
-│   │   ├── pages/
-│   │   │   ├── RunPage.tsx           # Agent 执行
-│   │   │   ├── TraceListPage.tsx     # 轨迹列表
-│   │   │   ├── ComparePage.tsx       # 多轨迹对比
-│   │   │   ├── EvalPage.tsx          # 评测面板外壳
-│   │   │   └── eval/
-│   │   │       ├── BenchmarkTab.tsx  # Benchmark + 排名
-│   │   │       ├── FailuresTab.tsx   # Failure 分布图表
-│   │   │       └── PoliciesTab.tsx   # Policy 时间线 + 审核
-│   │   ├── components/              # 22+ UI 组件
-│   │   ├── hooks/                   # usePolicyActions, useAgentStream...
-│   │   └── services/                # RTK Query API
-│   └── tests/                       # Playwright E2E
-├── infra/                           # Docker Compose + K8s 配置
-├── docs/                            # 设计文档 + 截图
-└── .scratch/                        # PRD + Issue 追踪
-```
-
----
-
-## API
-
-### Agent
-
-| Method | Path | 说明 |
-|--------|------|------|
-| `POST` | `/api/agents/run` | 提交任务（可选 `policy_id`） |
-| `GET` | `/api/agents/:id/stream` | SSE 实时推送 |
-| `POST` | `/api/agents/:id/cancel` | 取消运行中任务 |
-
-### 轨迹
-
-| Method | Path | 说明 |
-|--------|------|------|
-| `GET` | `/api/traces` | 列表（`?status=&tool=`） |
-| `GET` | `/api/traces/:id` | 详情 + score + breakdown |
-| `POST` | `/api/compare` | 多轨迹并排对比 |
-
-### 工具
-
-| Method | Path | 说明 |
-|--------|------|------|
-| `GET` | `/api/tools` | 工具目录 |
-| `PATCH` | `/api/tools/:name/toggle` | 在线启停 |
-
-### 评测与分析
-
-| Method | Path | 说明 |
-|--------|------|------|
-| `POST` | `/api/eval/score` | 评分（支持自定义权重） |
-| `POST` | `/api/eval/analyze` | 故障维度分析 |
-| `GET` | `/api/eval/analysis/summary` | 聚合故障分布 |
-| `GET` | `/api/eval/benchmarks` | Benchmark 任务 |
-| `POST` | `/api/eval/benchmark` | 并发跑 Benchmark |
-| `GET` | `/api/eval/export` | 导出训练数据 |
-
-### Policy 管理
-
-| Method | Path | 说明 |
-|--------|------|------|
-| `GET` | `/api/eval/policies` | 版本列表 |
-| `GET` | `/api/eval/policies/active` | 当前活跃 Policy |
-| `GET` | `/api/eval/policies/:id` | Policy 详情 |
-| `POST` | `/api/eval/policies/:id/approve` | 批准 |
-| `POST` | `/api/eval/policies/:id/reject` | 驳回 |
-| `POST` | `/api/eval/policies/compile` | 手动编译 |
-| `POST` | `/api/eval/policies/:id/replay` | Auto-replay |
-| `GET` | `/api/eval/policies/warmup-status` | 冷启动进度 |
-
----
-
-## 测试
-
-```bash
-# 后端 — 96 tests
-cd backend && uv run pytest tests/ -v
-
-# 前端 — 8 unit tests
-cd frontend && pnpm vitest run
-
-# TypeScript
-cd frontend && npx tsc -b
-
-# E2E（需后端运行）
-cd frontend && pnpm playwright test
-```
-
----
+AgentOps 是面向全栈与 AI-native 岗位的求职项目。它的核心不是功能数量，而是一个可审查的系统闭环：产品交互、持久化流式事件、状态机不变量、跨语言类型契约，以及 Rust 的安全进程监督。
 
 ## License
 
