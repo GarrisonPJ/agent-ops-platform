@@ -1,0 +1,14 @@
+# The API image needs only runtime source, migrations, and the locked manifest.
+*
+!.dockerignore
+!Dockerfile
+!pyproject.toml
+!uv.lock
+!alembic.ini
+!alembic/
+!alembic/**
+!app/
+!app/**
+
+app/**/__pycache__/
+app/**/*.py[cod]

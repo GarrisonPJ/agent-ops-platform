@@ -6,16 +6,19 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   backend:
     runs-on: ubuntu-latest
+    timeout-minutes: 8
     defaults:
       run:
         working-directory: backend
-
     services:
       postgres:
-        image: pgvector/pgvector:pg16
+        image: postgres:16-alpine
         env:
           POSTGRES_USER: agentops
           POSTGRES_PASSWORD: agentops
@@ -23,49 +26,106 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd pg_isready
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
+          --health-cmd "pg_isready -U agentops -d agentops_test"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 15
+    env:
+      DATABASE_URL: postgresql+asyncpg://agentops:agentops@localhost:5432/agentops_test
     steps:
       - uses: actions/checkout@v4
-
       - uses: astral-sh/setup-uv@v5
         with:
-          version: "latest"
-
-      - name: Install dependencies
+          version: "0.11.14"
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+      - name: Install locked dependencies
         run: uv sync --frozen
-
-      - name: Test (pytest)
-        env:
-          TEST_DATABASE_URL: postgresql+asyncpg://agentops:agentops@localhost:5432/agentops_test
-        run: uv run pytest tests/ -q --tb=short
+      - name: Verify generated protocol schemas
+        run: |
+          PYTHONPATH=. uv run python scripts/export_protocol_schema.py
+          git diff --exit-code -- ../contracts/v1/*.schema.json
+      - name: Test control plane
+        run: uv run pytest phase1_tests/ -q --tb=short
+      - name: Verify migration round trip
+        run: |
+          uv run alembic upgrade head
+          uv run alembic downgrade base
+          uv run alembic upgrade head
 
   frontend:
     runs-on: ubuntu-latest
+    timeout-minutes: 8
     defaults:
       run:
         working-directory: frontend
     steps:
       - uses: actions/checkout@v4
-
-      - uses: pnpm/action-setup@v4
-        with:
-          version: latest
-
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
-          cache-dependency-path: frontend/pnpm-lock.yaml
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install locked dependencies
+        run: npm ci
       - name: Type check
-        run: npx tsc --noEmit
+        run: npm run typecheck
+      - name: Test live and recorded adapters
+        run: npm test
+      - name: Build
+        run: npm run build
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Test recorded product loop
+        run: npm run e2e:recorded
 
-      - name: Unit tests
-        run: npx vitest run
+  rust:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    defaults:
+      run:
+        working-directory: runner
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.96.0
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: runner
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+      - name: Lint
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: Test protocol and process supervision
+        run: cargo test --workspace --locked
+
+  compose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate focused Compose stack
+        run: docker compose -f infra/docker/docker-compose.phase1.yml config --quiet
+
+  golden-e2e:
+    needs: [backend, frontend, rust, compose]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start real stack
+        run: docker compose -f infra/docker/docker-compose.phase1.yml up -d --build
+      - name: Run Golden closed loop
+        run: python3 scripts/golden_e2e.py
+      - name: Show service state
+        if: always()
+        run: docker compose -f infra/docker/docker-compose.phase1.yml ps
+      - name: Show failure logs
+        if: failure()
+        run: docker compose -f infra/docker/docker-compose.phase1.yml logs --no-color --tail=200
+      - name: Stop stack
+        if: always()
+        run: docker compose -f infra/docker/docker-compose.phase1.yml down --volumes

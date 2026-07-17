@@ -1,0 +1,17 @@
+# The Runner image only needs Rust sources and the deterministic Python agent.
+# Deny everything else by default so local caches, Git data, and untracked files
+# never enter the Docker build context.
+*
+!.dockerignore
+!runner/
+!runner/**
+!backend/
+!backend/app/
+!backend/app/**
+!backend/pyproject.toml
+!backend/uv.lock
+
+runner/target/
+runner/**/target/
+backend/app/**/__pycache__/
+backend/app/**/*.py[cod]
