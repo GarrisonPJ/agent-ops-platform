@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "run_id": "00000000-0000-4000-8000-000000000001",
+  "sequence": 2,
+  "occurred_at": "2026-07-16T00:00:00Z",
+  "type": "step_completed",
+  "payload": {
+    "index": 0,
+    "decision_summary": "Check service health before querying logs.",
+    "tool_call": {
+      "name": "check_service_health",
+      "arguments": {
+        "service": "checkout-api"
+      }
+    },
+    "observation": "Service is healthy but latency is elevated.",
+    "latency_ms": 32,
+    "token_prompt": 72,
+    "token_completion": 24,
+    "context_window": {
+      "used": 1200,
+      "limit": 8192
+    }
+  }
+}

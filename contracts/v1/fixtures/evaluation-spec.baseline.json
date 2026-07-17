@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "run_id": "00000000-0000-4000-8000-000000000001",
+  "experiment_id": "00000000-0000-4000-8000-000000000002",
+  "scenario_id": "checkout-api-latency",
+  "task": "Investigate checkout API latency",
+  "seed": 42,
+  "policy": null,
+  "limits": {
+    "timeout_ms": 60000,
+    "max_output_bytes": 1048576
+  }
+}
