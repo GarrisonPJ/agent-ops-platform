@@ -1,1 +1,0 @@
-export const TRAJECTORY_COLORS = ["#22C55E", "#3B82F6", "#F59E0B", "#A855F7", "#EC4899"];

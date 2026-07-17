@@ -1,0 +1,502 @@
+{
+  "experiment": {
+    "id": "00000000-0000-4000-8000-000000000101",
+    "name": "Checkout latency investigation",
+    "task": "Investigate checkout API latency",
+    "scenario_id": "checkout-api-latency",
+    "created_at": "2026-07-16T08:00:00Z",
+    "runs": [
+      {
+        "id": "00000000-0000-4000-8000-000000000103",
+        "experiment_id": "00000000-0000-4000-8000-000000000101",
+        "kind": "replay",
+        "source_run_id": "00000000-0000-4000-8000-000000000102",
+        "policy_id": "00000000-0000-4000-8000-000000000104",
+        "status": "succeeded",
+        "score": 0.99576,
+        "metrics": {
+          "steps": 3,
+          "latency_ms": 121,
+          "token_prompt": 225,
+          "token_completion": 78,
+          "total_tokens": 303,
+          "score_breakdown": {
+            "success_reward": 1,
+            "cost_penalty": -0.00303,
+            "latency_penalty": -0.00121,
+            "tool_failure_penalty": 0
+          }
+        },
+        "evaluation_spec": {
+          "schema_version": 1,
+          "run_id": "00000000-0000-4000-8000-000000000103",
+          "experiment_id": "00000000-0000-4000-8000-000000000101",
+          "scenario_id": "checkout-api-latency",
+          "task": "Investigate checkout API latency",
+          "seed": 42,
+          "policy": {
+            "instruction_patch": [
+              "Do not repeat a tool call with identical arguments.",
+              "Check service health, then metrics, then fetch logs supported by evidence."
+            ],
+            "tool_priority": {
+              "check_service_health": 1,
+              "query_service_metrics": 0.9,
+              "fetch_service_logs": 0.3
+            },
+            "max_steps": 6
+          },
+          "limits": {
+            "timeout_ms": 60000,
+            "max_output_bytes": 1048576
+          }
+        },
+        "error": null,
+        "queued_at": "2026-07-16T08:01:00Z",
+        "started_at": "2026-07-16T08:01:01Z",
+        "completed_at": "2026-07-16T08:01:02Z"
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000102",
+        "experiment_id": "00000000-0000-4000-8000-000000000101",
+        "kind": "baseline",
+        "source_run_id": null,
+        "policy_id": null,
+        "status": "failed",
+        "score": -0.01221,
+        "metrics": {
+          "steps": 6,
+          "latency_ms": 570,
+          "token_prompt": 477,
+          "token_completion": 174,
+          "total_tokens": 651,
+          "score_breakdown": {
+            "success_reward": 0,
+            "cost_penalty": -0.00651,
+            "latency_penalty": -0.0057,
+            "tool_failure_penalty": 0
+          }
+        },
+        "evaluation_spec": {
+          "schema_version": 1,
+          "run_id": "00000000-0000-4000-8000-000000000102",
+          "experiment_id": "00000000-0000-4000-8000-000000000101",
+          "scenario_id": "checkout-api-latency",
+          "task": "Investigate checkout API latency",
+          "seed": 42,
+          "policy": null,
+          "limits": {
+            "timeout_ms": 60000,
+            "max_output_bytes": 1048576
+          }
+        },
+        "error": "agent exited with exit status: 1",
+        "queued_at": "2026-07-16T08:00:01Z",
+        "started_at": "2026-07-16T08:00:02Z",
+        "completed_at": "2026-07-16T08:00:03Z"
+      }
+    ],
+    "active_policy": null,
+    "candidate_policy": {
+      "id": "00000000-0000-4000-8000-000000000104",
+      "experiment_id": "00000000-0000-4000-8000-000000000101",
+      "source_run_id": "00000000-0000-4000-8000-000000000102",
+      "parent_policy_id": null,
+      "replay_run_id": "00000000-0000-4000-8000-000000000103",
+      "status": "validated",
+      "patch": {
+        "instruction_patch": [
+          "Do not repeat a tool call with identical arguments.",
+          "Check service health, then metrics, then fetch logs supported by evidence."
+        ],
+        "tool_priority": {
+          "check_service_health": 1,
+          "query_service_metrics": 0.9,
+          "fetch_service_logs": 0.3
+        },
+        "max_steps": 6
+      },
+      "rationale": "The baseline repeated the same log query until its step budget was exhausted. The candidate enforces an evidence-first tool order.",
+      "score_delta": 1.00797,
+      "reject_reason": null,
+      "created_at": "2026-07-16T08:00:04Z"
+    }
+  },
+  "secondary_experiment": {
+    "id": "00000000-0000-4000-8000-000000000105",
+    "name": "Fresh checkout investigation",
+    "task": "Investigate checkout API latency",
+    "scenario_id": "checkout-api-latency",
+    "created_at": "2026-07-15T14:20:00Z",
+    "runs": [],
+    "active_policy": null,
+    "candidate_policy": null
+  },
+  "baseline_analysis": {
+    "run_id": "00000000-0000-4000-8000-000000000102",
+    "dimensions": {
+      "planning": 0.6666666666666666,
+      "budget": 0.16666666666666666
+    },
+    "evidence": [
+      {
+        "dimension": "planning",
+        "step_index": 2,
+        "reason": "Circular reasoning detected: tool 'fetch_service_logs' called 3 times with identical arguments",
+        "severity": 1,
+        "details": {
+          "tool": "fetch_service_logs",
+          "repetitions": 3
+        }
+      },
+      {
+        "dimension": "planning",
+        "step_index": 3,
+        "reason": "Circular reasoning detected: tool 'fetch_service_logs' called 4 times with identical arguments",
+        "severity": 1,
+        "details": {
+          "tool": "fetch_service_logs",
+          "repetitions": 4
+        }
+      },
+      {
+        "dimension": "planning",
+        "step_index": 4,
+        "reason": "Circular reasoning detected: tool 'fetch_service_logs' called 5 times with identical arguments",
+        "severity": 1,
+        "details": {
+          "tool": "fetch_service_logs",
+          "repetitions": 5
+        }
+      },
+      {
+        "dimension": "planning",
+        "step_index": 5,
+        "reason": "Circular reasoning detected: tool 'fetch_service_logs' called 6 times with identical arguments",
+        "severity": 1,
+        "details": {
+          "tool": "fetch_service_logs",
+          "repetitions": 6
+        }
+      },
+      {
+        "dimension": "budget",
+        "step_index": 5,
+        "reason": "Budget exhausted: 6 steps reached the maximum of 6 without success",
+        "severity": 1,
+        "details": {
+          "step_count": 6,
+          "max_steps": 6
+        }
+      }
+    ],
+    "dominant_type": "planning",
+    "failure_rate": 0.6666666666666666
+  },
+  "replay_analysis": {
+    "run_id": "00000000-0000-4000-8000-000000000103",
+    "dimensions": {},
+    "evidence": [],
+    "dominant_type": null,
+    "failure_rate": 0
+  },
+  "events": {
+    "00000000-0000-4000-8000-000000000102": [
+      {
+        "schema_version": 1,
+        "run_id": "00000000-0000-4000-8000-000000000102",
+        "sequence": 1,
+        "occurred_at": "2026-07-16T08:00:02Z",
+        "type": "run_started",
+        "payload": {}
+      },
+      {
+        "schema_version": 1,
+        "run_id": "00000000-0000-4000-8000-000000000102",
+        "sequence": 2,
+        "occurred_at": "2026-07-16T08:00:02Z",
+        "type": "process_output",
+        "payload": {
+          "stream": "stdout",
+          "content": "Starting baseline evaluation"
+        }
+      },
+      {
+        "schema_version": 1,
+        "run_id": "00000000-0000-4000-8000-000000000102",
+        "sequence": 3,
+        "occurred_at": "2026-07-16T08:00:02Z",
+        "type": "step_completed",
+        "payload": {
+          "index": 0,
+          "decision_summary": "Fetch logs again without gathering a new signal.",
+          "tool_call": {
+            "name": "fetch_service_logs",
+            "arguments": {
+              "service": "checkout-api",
+              "window": "5m"
+            }
+          },
+          "observation": "The same noisy request samples are returned; the cause is still inconclusive.",
+          "latency_ms": 85,
+          "token_prompt": 72,
+          "token_completion": 24,
+          "context_window": {
+            "used": 1200,
+            "limit": 8192
+          }
+        }
+      },
+      {
+        "schema_version": 1,
+        "run_id": "00000000-0000-4000-8000-000000000102",
+        "sequence": 4,
+        "occurred_at": "2026-07-16T08:00:02Z",
+        "type": "step_completed",
+        "payload": {
+          "index": 1,
+          "decision_summary": "Fetch logs again without gathering a new signal.",
+          "tool_call": {
+            "name": "fetch_service_logs",
+            "arguments": {
+              "service": "checkout-api",
+              "window": "5m"
+            }
+          },
+          "observation": "The same noisy request samples are returned; the cause is still inconclusive.",
+          "latency_ms": 89,
+          "token_prompt": 75,
+          "token_completion": 26,
+          "context_window": {
+            "used": 1380,
+            "limit": 8192
+          }
+        }
+      },
+      {
+        "schema_version": 1,
+        "run_id": "00000000-0000-4000-8000-000000000102",
+        "sequence": 5,
+        "occurred_at": "2026-07-16T08:00:02Z",
+        "type": "step_completed",
+        "payload": {
+          "index": 2,
+          "decision_summary": "Fetch logs again without gathering a new signal.",
+          "tool_call": {
+            "name": "fetch_service_logs",
+            "arguments": {
+              "service": "checkout-api",
+              "window": "5m"
+            }
+          },
+          "observation": "The same noisy request samples are returned; the cause is still inconclusive.",
+          "latency_ms": 93,
+          "token_prompt": 78,
+          "token_completion": 28,
+          "context_window": {
+            "used": 1560,
+            "limit": 8192
+          }
+        }
+      },
+      {
+        "schema_version": 1,
+        "run_id": "00000000-0000-4000-8000-000000000102",
+        "sequence": 6,
+        "occurred_at": "2026-07-16T08:00:02Z",
+        "type": "step_completed",
+        "payload": {
+          "index": 3,
+          "decision_summary": "Fetch logs again without gathering a new signal.",
+          "tool_call": {
+            "name": "fetch_service_logs",
+            "arguments": {
+              "service": "checkout-api",
+              "window": "5m"
+            }
+          },
+          "observation": "The same noisy request samples are returned; the cause is still inconclusive.",
+          "latency_ms": 97,
+          "token_prompt": 81,
+          "token_completion": 30,
+          "context_window": {
+            "used": 1740,
+            "limit": 8192
+          }
+        }
+      },
+      {
+        "schema_version": 1,
+        "run_id": "00000000-0000-4000-8000-000000000102",
+        "sequence": 7,
+        "occurred_at": "2026-07-16T08:00:02Z",
+        "type": "step_completed",
+        "payload": {
+          "index": 4,
+          "decision_summary": "Fetch logs again without gathering a new signal.",
+          "tool_call": {
+            "name": "fetch_service_logs",
+            "arguments": {
+              "service": "checkout-api",
+              "window": "5m"
+            }
+          },
+          "observation": "The same noisy request samples are returned; the cause is still inconclusive.",
+          "latency_ms": 101,
+          "token_prompt": 84,
+          "token_completion": 32,
+          "context_window": {
+            "used": 1920,
+            "limit": 8192
+          }
+        }
+      },
+      {
+        "schema_version": 1,
+        "run_id": "00000000-0000-4000-8000-000000000102",
+        "sequence": 8,
+        "occurred_at": "2026-07-16T08:00:02Z",
+        "type": "step_completed",
+        "payload": {
+          "index": 5,
+          "decision_summary": "Fetch logs again without gathering a new signal.",
+          "tool_call": {
+            "name": "fetch_service_logs",
+            "arguments": {
+              "service": "checkout-api",
+              "window": "5m"
+            }
+          },
+          "observation": "The same noisy request samples are returned; the cause is still inconclusive.",
+          "latency_ms": 105,
+          "token_prompt": 87,
+          "token_completion": 34,
+          "context_window": {
+            "used": 2100,
+            "limit": 8192
+          }
+        }
+      },
+      {
+        "schema_version": 1,
+        "run_id": "00000000-0000-4000-8000-000000000102",
+        "sequence": 9,
+        "occurred_at": "2026-07-16T08:00:03Z",
+        "type": "run_failed",
+        "payload": {
+          "status": "failed",
+          "error": "agent exited with exit status: 1"
+        }
+      }
+    ],
+    "00000000-0000-4000-8000-000000000103": [
+      {
+        "schema_version": 1,
+        "run_id": "00000000-0000-4000-8000-000000000103",
+        "sequence": 1,
+        "occurred_at": "2026-07-16T08:01:01Z",
+        "type": "run_started",
+        "payload": {}
+      },
+      {
+        "schema_version": 1,
+        "run_id": "00000000-0000-4000-8000-000000000103",
+        "sequence": 2,
+        "occurred_at": "2026-07-16T08:01:01Z",
+        "type": "process_output",
+        "payload": {
+          "stream": "stdout",
+          "content": "Applying candidate policy"
+        }
+      },
+      {
+        "schema_version": 1,
+        "run_id": "00000000-0000-4000-8000-000000000103",
+        "sequence": 3,
+        "occurred_at": "2026-07-16T08:01:01Z",
+        "type": "step_completed",
+        "payload": {
+          "index": 0,
+          "decision_summary": "Establish whether the service is healthy before reading broad logs.",
+          "tool_call": {
+            "name": "check_service_health",
+            "arguments": {
+              "service": "checkout-api"
+            }
+          },
+          "observation": "Service is healthy but checkout latency is elevated.",
+          "latency_ms": 32,
+          "token_prompt": 72,
+          "token_completion": 24,
+          "context_window": {
+            "used": 1200,
+            "limit": 8192
+          }
+        }
+      },
+      {
+        "schema_version": 1,
+        "run_id": "00000000-0000-4000-8000-000000000103",
+        "sequence": 4,
+        "occurred_at": "2026-07-16T08:01:01Z",
+        "type": "step_completed",
+        "payload": {
+          "index": 1,
+          "decision_summary": "Use metrics to localize the latency bottleneck.",
+          "tool_call": {
+            "name": "query_service_metrics",
+            "arguments": {
+              "service": "checkout-api",
+              "metric": "dependency_latency"
+            }
+          },
+          "observation": "Payment dependency p95 increased from 110ms to 1.8s.",
+          "latency_ms": 41,
+          "token_prompt": 75,
+          "token_completion": 26,
+          "context_window": {
+            "used": 1380,
+            "limit": 8192
+          }
+        }
+      },
+      {
+        "schema_version": 1,
+        "run_id": "00000000-0000-4000-8000-000000000103",
+        "sequence": 5,
+        "occurred_at": "2026-07-16T08:01:01Z",
+        "type": "step_completed",
+        "payload": {
+          "index": 2,
+          "decision_summary": "Fetch only the evidence-backed payment timeout logs.",
+          "tool_call": {
+            "name": "fetch_service_logs",
+            "arguments": {
+              "service": "checkout-api",
+              "query": "payment dependency timeout"
+            }
+          },
+          "observation": "Requests are delayed by payment-gateway connection pool saturation.",
+          "latency_ms": 48,
+          "token_prompt": 78,
+          "token_completion": 28,
+          "context_window": {
+            "used": 1560,
+            "limit": 8192
+          }
+        }
+      },
+      {
+        "schema_version": 1,
+        "run_id": "00000000-0000-4000-8000-000000000103",
+        "sequence": 6,
+        "occurred_at": "2026-07-16T08:01:02Z",
+        "type": "run_completed",
+        "payload": {
+          "status": "succeeded",
+          "error": null
+        }
+      }
+    ]
+  }
+}

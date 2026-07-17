@@ -2,20 +2,15 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { Provider } from "react-redux";
 import { BrowserRouter } from "react-router-dom";
-import { store } from "./store";
-import App from "./App";
+import Phase1App from "./Phase1App";
+import { phase1Store } from "./store/phase1Store";
 import "./index.css";
-
-/* ── Mock API: intercept direct fetch() calls ─────────────────── */
-if (import.meta.env.VITE_MOCK_API === "true") {
-  import("./services/mock/handlers").then((mod) => mod.installFetchMock());
-}
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <Provider store={store}>
+    <Provider store={phase1Store}>
       <BrowserRouter>
-        <App />
+        <Phase1App />
       </BrowserRouter>
     </Provider>
   </StrictMode>,
