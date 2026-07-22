@@ -91,6 +91,7 @@ Python Pydantic models own protocol v1. Versioned JSON Schemas and Golden fixtur
 - Reconnects use `after=<sequence>`; `run_id + sequence` is unique and uploads are idempotent.
 - Runner APIs require a bearer token and validate the runner identity, lease, and run.
 - Expired leases cannot append events or complete a non-terminal run; repeated terminal completion remains idempotent.
+- When a lease expires, the next authenticated claim increments the Attempt, fences the old lease, and resumes from the next event sequence.
 - Jobs select an allowlisted `scenario_id`; API clients cannot provide an executable or shell command.
 - Runner commands and arguments are separate. It never connects to Docker or the database.
 - JSONL lines are capped at 64 KiB and combined output at 1 MiB by default.
@@ -142,7 +143,7 @@ CI covers Python, migrations, TypeScript, recorded-preview contracts, Rust proto
 
 Phase 1 has no Kubernetes executor, Docker socket, MCP server, vector memory, training export, framework adapters, real model provider, arbitrary code execution, accounts, multi-tenancy, billing, or automatic policy activation.
 
-Those capabilities remain deferred until a measured requirement promotes them. Current priorities are Runner recovery, a real OpenAI-compatible provider, and operational hardening; see [ROADMAP.md](ROADMAP.md).
+Those capabilities remain deferred until a measured requirement promotes them. Current priorities are a real OpenAI-compatible provider and operational hardening; see [ROADMAP.md](ROADMAP.md).
 
 ## Project direction
 

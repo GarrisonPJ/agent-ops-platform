@@ -75,6 +75,7 @@ class RunnerJob(Base):
     runner_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     cancel_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    recovery_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class RunEvent(Base):

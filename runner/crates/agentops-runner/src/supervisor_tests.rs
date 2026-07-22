@@ -166,6 +166,9 @@ fn claim(timeout_ms: u64) -> ClaimResponse {
     ClaimResponse {
         lease_id: "lease-1".into(),
         lease_expires_at: "2026-07-16T00:00:15Z".into(),
+        attempt: 1,
+        next_sequence: 1,
+        recovery_reason: None,
         run: ClaimedRun {
             run_id: spec.run_id.clone(),
             evaluation_spec: spec,

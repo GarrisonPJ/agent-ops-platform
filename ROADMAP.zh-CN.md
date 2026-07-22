@@ -16,6 +16,7 @@ Phase 1 已完成并通过验收：
 - FastAPI 负责领域状态、持久化、Lease、评分、分析和 Policy 决策。
 - PostgreSQL 持久化 Run、Job、有序事件、Analysis 与 Policy。
 - Rust Runner 领取带 Lease 的 Job，监督白名单 Python 进程，重试事件上传，并处理取消与超时。
+- 过期 Runner Lease 会在领取时回收，支持 Attempt 隔离、按 Sequence 重启、取消意图保留和有界耗尽。
 - React 提供 Experiment、Trace、Analysis、Improve、Replay 及人工激活/拒绝流程。
 - Python、TypeScript 与 Rust 共同验证协议 v1 fixtures。
 - CI 验证契约、迁移、后端行为、前端适配器、Rust 进程监督、Compose 和真实 Golden 闭环。
@@ -25,14 +26,14 @@ Phase 1 已完成并通过验收：
 
 | 优先级 | 里程碑 | 状态 | 结果 |
 |---|---|---|---|
-| P0 | Phase 1.1 — Runner Recovery | 下一项 | Runner 崩溃或失联后，Run 不会永久卡住。 |
-| P1 | Phase 1.2 — OpenAI-compatible Provider | 已规划 | 真实模型复用同一套受监督、有类型、可持久化的流程，同时 CI 不依赖外部 API。 |
+| P0 | Phase 1.1 — Runner Recovery | 已完成 | Runner 崩溃或失联后，Run 不会永久卡住。 |
+| P1 | Phase 1.2 — OpenAI-compatible Provider | 下一项 | 真实模型复用同一套受监督、有类型、可持久化的流程，同时 CI 不依赖外部 API。 |
 | P2 | Phase 1.3 — 可观测性与运维加固 | 已规划 | 可以依据持久信号诊断队列、Lease、Runner、Provider 与迁移故障。 |
 | Gate | 安全与访问控制 | 条件触发 | 在引入有副作用工具、不可信用户或共享/公网运行前必须完成。 |
 
 ## Phase 1.1 — Runner Recovery
 
-实现前先通过 ADR 明确“部分 Trace 已持久化”时的恢复语义：继续同一 Attempt、确定性重启，还是创建关联 Retry Attempt。不能把不兼容的事件历史静默混在一起。
+ADR-0002 已确定采用同一个逻辑 Run 的确定性重启语义。已接受事件保持不可变；每次重试追加新的 Attempt 标记并继续全局 Sequence，分析只计算最近一次 Attempt 的事件片段。
 
 范围：
 
@@ -43,6 +44,14 @@ Phase 1 已完成并通过验收：
 - 保留已接受事件，维持 Sequence 与幂等不变量。
 - Job 恢复期间保留取消意图。
 - 增加真实环境故障测试：运行中终止 Runner，启动替代 Runner，并验证最终状态。
+
+实现结果：
+
+- 过期的 claimed、running 和 cancelling Lease 会在下一次认证 claim 时回收。
+- 替代 Runner 的 claim 会递增 Attempt、返回下一个事件 Sequence，并隔离旧 Lease。
+- 取消意图会跨恢复保留；总共允许三次 Attempt，耗尽后进入有文档定义的 failed 或 cancelled 终态。
+- 后端测试覆盖恢复、旧 Lease 隔离、取消和耗尽。
+- Compose 故障测试会在运行中终止 Runner，等待 Lease 过期，启动替代 Runner，并验证 Attempt 2 完成。
 
 验收：
 

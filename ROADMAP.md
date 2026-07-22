@@ -16,6 +16,7 @@ Phase 1 is complete and verified:
 - FastAPI owns domain state, persistence, leases, scoring, analysis, and policy decisions.
 - PostgreSQL stores runs, jobs, ordered events, analyses, and policies.
 - The Rust Runner claims leased jobs, supervises an allowlisted Python process, retries event delivery, and enforces cancellation and timeout.
+- Expired Runner leases are reclaimed with attempt fencing, sequence-aware restart, cancellation preservation, and bounded exhaustion.
 - React provides the Experiment, Trace, Analysis, Improve, replay, and human activation/rejection workflow.
 - Python, TypeScript, and Rust validate shared protocol v1 fixtures.
 - CI verifies contracts, migrations, backend behavior, frontend adapters, Rust supervision, Compose, and the real Golden loop.
@@ -25,14 +26,14 @@ Phase 1 is complete and verified:
 
 | Priority | Milestone | Status | Outcome |
 |---|---|---|---|
-| P0 | Phase 1.1 — Runner recovery | Next | A crashed or disconnected Runner cannot strand a Run indefinitely. |
-| P1 | Phase 1.2 — OpenAI-compatible provider | Planned | Real model execution uses the same supervised, typed, persisted workflow without making CI depend on an external API. |
+| P0 | Phase 1.1 — Runner recovery | Complete | A crashed or disconnected Runner cannot strand a Run indefinitely. |
+| P1 | Phase 1.2 — OpenAI-compatible provider | Next | Real model execution uses the same supervised, typed, persisted workflow without making CI depend on an external API. |
 | P2 | Phase 1.3 — Observability and operational hardening | Planned | Operators can diagnose queue, lease, Runner, provider, and migration failures from durable signals. |
 | Gate | Safety and access control | Trigger-based | Required before side-effecting tools, untrusted users, or shared/public operation enter scope. |
 
 ## Phase 1.1 — Runner recovery
 
-Before implementation, record the recovery semantics for a partially persisted trace in an ADR: resume the same attempt, restart deterministically, or create a linked retry attempt. The design must not silently mix incompatible event histories.
+ADR-0002 records deterministic restart of the same logical Run. Accepted events remain immutable; each retry appends a new attempt marker and continues the global sequence, while analysis scores only the latest attempt segment.
 
 Scope:
 
@@ -43,6 +44,14 @@ Scope:
 - Preserve already accepted events and maintain sequence/idempotency invariants.
 - Preserve cancellation intent while a job is being recovered.
 - Add a real-stack fault test that terminates the Runner mid-run, starts a replacement, and verifies the final state.
+
+Implementation result:
+
+- Expired claimed, running, and cancelling leases are reclaimed on the next authenticated claim.
+- A replacement claim increments Attempt, returns the next event sequence, and fences the old lease.
+- Cancellation intent survives recovery; three total attempts are allowed before a documented failed or cancelled terminal state.
+- Backend tests cover recovery, stale-lease fencing, cancellation, and exhaustion.
+- The Compose fault test terminates a Runner mid-run, waits for lease expiry, starts the replacement, and verifies Attempt 2 completion.
 
 Acceptance:
 

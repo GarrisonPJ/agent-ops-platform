@@ -49,6 +49,11 @@ active → superseded
 
 Terminal run states and rejected/superseded policies never transition again.
 
+Recovery transitions are:
+
+claimed/running/cancelling -- expired lease --> queued with a new Attempt
+claimed/running/cancelling -- exhausted attempts --> failed or cancelled
+
 ## Core invariants
 
 1. FastAPI is the only database reader and writer.
@@ -114,7 +119,7 @@ Kubernetes, Docker socket execution, MCP, vector memory, training export, framew
 
 ## Planned evolution
 
-The next milestones are Runner recovery, an OpenAI-compatible provider, and observability/operational hardening. Recorded Preview remains a testing adapter, not a separate delivery track. Kubernetes, MCP, vector memory, arbitrary execution, multi-tenancy, and automatic policy activation stay deferred until a measured requirement promotes them.
+Runner recovery is implemented. The next milestones are an OpenAI-compatible provider and observability/operational hardening. Recorded Preview remains a testing adapter, not a separate delivery track. Kubernetes, MCP, vector memory, arbitrary execution, multi-tenancy, and automatic policy activation stay deferred until a measured requirement promotes them.
 
 Roadmap changes do not alter these domain invariants by themselves. Update this file and add an ADR before a milestone changes state ownership, recovery semantics, trust boundaries, or activation rules. See [ROADMAP.md](ROADMAP.md).
 
@@ -123,3 +128,4 @@ Roadmap changes do not alter these domain invariants by themselves. Update this 
 | ID | Decision | Status |
 |---|---|---|
 | [0001](docs/adr/0001-python-control-plane-rust-execution-plane.md) | Python control plane and Rust execution plane | Accepted |
+| [0002](docs/adr/0002-runner-recovery.md) | Deterministic Runner recovery | Accepted |

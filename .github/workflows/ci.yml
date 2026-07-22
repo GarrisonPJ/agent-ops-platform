@@ -120,6 +120,8 @@ jobs:
         run: docker compose -f infra/docker/docker-compose.phase1.yml up -d --build
       - name: Run Golden closed loop
         run: python3 scripts/golden_e2e.py
+      - name: Run Runner recovery fault test
+        run: python3 scripts/recovery_e2e.py
       - name: Show service state
         if: always()
         run: docker compose -f infra/docker/docker-compose.phase1.yml ps

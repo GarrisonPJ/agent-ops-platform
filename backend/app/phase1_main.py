@@ -52,6 +52,7 @@ from app.phase1_service import (
     get_analysis,
     heartbeat,
     list_experiments,
+    next_event_sequence,
     persist_events,
     reject_policy,
     replay_policy,
@@ -289,6 +290,9 @@ def create_app(
         return ClaimResponse(
             lease_id=job.lease_id or "",
             lease_expires_at=job.lease_expires_at,
+            attempt=job.attempt,
+            next_sequence=await next_event_sequence(db, run.id),
+            recovery_reason=job.recovery_reason,
             run=ClaimedRun(
                 run_id=run.id,
                 evaluation_spec=run.evaluation_spec,

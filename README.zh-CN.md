@@ -91,6 +91,7 @@ Python Pydantic 类型是协议 v1 的事实来源。版本化 JSON Schema 与 G
 - 重连使用 `after=<sequence>`；`run_id + sequence` 唯一，重复上传幂等。
 - Runner API 使用 Bearer Token，并校验 runner identity、lease 与 run。
 - 过期 Lease 不能继续上报或完成非终态任务；终态重复完成仍保持幂等。
+- Lease 过期后，下一次认证 claim 会递增 Attempt、隔离旧 Lease，并从下一个事件 Sequence 继续。
 - Job 只包含白名单 `scenario_id`，API 用户不能提交 executable 或 shell 命令。
 - Runner 分离 command 与 args，不连接 Docker daemon，也不直连数据库。
 - JSONL 单行默认最多 64 KiB，总输出默认最多 1 MiB。
@@ -142,7 +143,7 @@ CI 覆盖 Python、数据库迁移、TypeScript、Recorded Preview 契约、Rust
 
 Phase 1 不包含 Kubernetes Executor、Docker Socket、MCP Server、向量记忆、Training Export、多框架适配、真实模型 Provider、任意代码执行、账户、多租户、计费或自动激活 Policy。
 
-这些能力继续暂缓，只有可量化需求才能将其提升到主线。当前优先级是 Runner Recovery、真实 OpenAI-compatible Provider 和运维加固，详见 [ROADMAP.zh-CN.md](ROADMAP.zh-CN.md)。
+这些能力继续暂缓，只有可量化需求才能将其提升到主线。当前优先级是真实 OpenAI-compatible Provider 和运维加固，详见 [ROADMAP.zh-CN.md](ROADMAP.zh-CN.md)。
 
 ## 项目方向
 

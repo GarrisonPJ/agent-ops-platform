@@ -118,6 +118,9 @@ impl Worker {
         if claim.run.run_id != claim.run.evaluation_spec.run_id {
             bail!("claim run_id does not match EvaluationSpec");
         }
+        if claim.attempt == 0 || claim.next_sequence == 0 {
+            bail!("claim recovery metadata must contain positive attempt and sequence");
+        }
 
         let mut child = self.spawn_agent(&claim.run.evaluation_spec).await?;
         let stdout = child.stdout.take().context("agent stdout is unavailable")?;
@@ -125,12 +128,20 @@ impl Worker {
         let stderr_task = tokio::spawn(drain_stderr(stderr));
 
         let execution = async {
+            let mut next_sequence = claim.next_sequence;
             self.upload_event(
                 &claim,
-                envelope(&claim.run.run_id, 1, "run_started", json!({})),
+                envelope(
+                    &claim.run.run_id,
+                    next_sequence,
+                    "run_started",
+                    json!({"attempt": claim.attempt}),
+                ),
             )
             .await?;
-            self.supervise(&claim, &mut child, stdout, 2).await
+            next_sequence += 1;
+            self.supervise(&claim, &mut child, stdout, next_sequence)
+                .await
         }
         .await;
 
@@ -168,6 +179,7 @@ impl Worker {
                 outcome.next_sequence,
                 event_type,
                 json!({
+                    "attempt": claim.attempt,
                     "status": outcome.status,
                     "error": outcome.error.as_deref(),
                 }),
@@ -266,7 +278,7 @@ impl Worker {
                                     &claim.run.run_id,
                                     next_sequence,
                                     &child_event.event_type,
-                                    child_event.payload,
+                                    payload_with_attempt(child_event.payload, claim.attempt),
                                 ),
                             )
                             .await?;
@@ -542,6 +554,12 @@ fn envelope(run_id: &str, sequence: u64, event_type: &str, payload: Value) -> Ev
         event_type: event_type.into(),
         payload,
     }
+}
+
+fn payload_with_attempt(payload: Value, attempt: u32) -> Value {
+    let mut object = payload.as_object().cloned().unwrap_or_default();
+    object.insert("attempt".into(), json!(attempt));
+    Value::Object(object)
 }
 
 enum LineRead {

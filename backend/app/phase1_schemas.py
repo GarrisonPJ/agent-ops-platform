@@ -176,6 +176,9 @@ class ClaimedRun(StrictModel):
 class ClaimResponse(StrictModel):
     lease_id: str
     lease_expires_at: datetime
+    attempt: int = Field(ge=1)
+    next_sequence: int = Field(ge=1)
+    recovery_reason: str | None = None
     run: ClaimedRun
 
 

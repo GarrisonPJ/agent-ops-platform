@@ -31,6 +31,12 @@ from app.scoring import compute_score
 
 
 LEASE_SECONDS = 15
+MAX_RUN_ATTEMPTS = 3
+RECOVERABLE_RUN_STATUSES = {
+    RunStatus.CLAIMED.value,
+    RunStatus.RUNNING.value,
+    RunStatus.CANCELLING.value,
+}
 
 
 class DomainError(Exception):
@@ -213,7 +219,75 @@ async def cancel_run(db: AsyncSession, run_id: str) -> RunResponse:
     return run_response(run)
 
 
+async def _recover_expired_jobs(db: AsyncSession) -> int:
+    now = utcnow()
+    jobs = list(
+        (
+            await db.execute(
+                select(RunnerJob)
+                .join(Run, RunnerJob.run_id == Run.id)
+                .where(
+                    Run.status.in_(RECOVERABLE_RUN_STATUSES),
+                    RunnerJob.lease_id.is_not(None),
+                    RunnerJob.lease_expires_at.is_not(None),
+                    RunnerJob.lease_expires_at <= now,
+                )
+                .with_for_update(skip_locked=True)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    recovered = 0
+    for job in jobs:
+        run = await require_run(db, job.run_id)
+        previous_status = run.status
+        reason = f"runner lease expired during {previous_status} (attempt {job.attempt})"
+        if job.attempt >= MAX_RUN_ATTEMPTS:
+            status = (
+                RunStatus.CANCELLED.value
+                if job.cancel_requested_at is not None
+                else RunStatus.FAILED.value
+            )
+            error = f"{reason}; maximum of {MAX_RUN_ATTEMPTS} attempts reached"
+            run.status = status
+            run.error = error
+            run.completed_at = now
+            if run.started_at is None:
+                run.started_at = now
+            await _record_terminal_effects(
+                db,
+                run,
+                status,
+                {
+                    "recovery_reason": reason,
+                    "attempt": job.attempt,
+                },
+            )
+            job.recovery_reason = error
+        else:
+            run.status = RunStatus.QUEUED.value
+            run.queued_at = now
+            job.attempt += 1
+            job.recovery_reason = reason
+        job.lease_id = None
+        job.runner_id = None
+        job.lease_expires_at = None
+        recovered += 1
+    if recovered:
+        await db.flush()
+    return recovered
+
+
+async def next_event_sequence(db: AsyncSession, run_id: str) -> int:
+    maximum = (
+        await db.execute(select(func.max(RunEvent.sequence)).where(RunEvent.run_id == run_id))
+    ).scalar_one()
+    return int(maximum or 0) + 1
+
+
 async def claim_job(db: AsyncSession, runner_id: str) -> tuple[RunnerJob, Run] | None:
+    recovered = await _recover_expired_jobs(db)
     candidates = list(
         (
             await db.execute(
@@ -247,7 +321,10 @@ async def claim_job(db: AsyncSession, runner_id: str) -> tuple[RunnerJob, Run] |
         await db.refresh(job)
         await db.refresh(run)
         return job, run
-    await db.rollback()
+    if recovered:
+        await db.commit()
+    else:
+        await db.rollback()
     return None
 
 
@@ -282,7 +359,11 @@ async def heartbeat(
         run.status = RunStatus.RUNNING.value
         run.started_at = now
     job.lease_expires_at = now + timedelta(seconds=LEASE_SECONDS)
-    command = "cancel" if run.status == RunStatus.CANCELLING.value else "continue"
+    command = (
+        "cancel"
+        if run.status == RunStatus.CANCELLING.value or job.cancel_requested_at is not None
+        else "continue"
+    )
     await db.commit()
     return command, job.lease_expires_at
 
@@ -371,7 +452,7 @@ async def _trajectory_from_events(db: AsyncSession, run: Run) -> tuple[dict, dic
         (
             await db.execute(
                 select(RunEvent)
-                .where(RunEvent.run_id == run.id, RunEvent.event_type == "step_completed")
+                .where(RunEvent.run_id == run.id)
                 .order_by(RunEvent.sequence.asc())
             )
         )
@@ -379,7 +460,17 @@ async def _trajectory_from_events(db: AsyncSession, run: Run) -> tuple[dict, dic
         .all()
     )
     steps: list[dict] = []
-    for event in events:
+    latest_attempt_start = 0
+    for index, event in enumerate(events):
+        if event.event_type != "run_started":
+            continue
+        attempt = event.payload.get("attempt")
+        if isinstance(attempt, int) and not isinstance(attempt, bool) and attempt >= 1:
+            latest_attempt_start = index
+
+    for event in events[latest_attempt_start:]:
+        if event.event_type != "step_completed":
+            continue
         payload = event.payload
         steps.append(
             {
@@ -481,6 +572,29 @@ async def _create_candidate(db: AsyncSession, run: Run) -> None:
     )
 
 
+async def _record_terminal_effects(
+    db: AsyncSession,
+    run: Run,
+    status: str,
+    metrics: dict | None,
+) -> None:
+    await _analyze_and_score(db, run, metrics)
+    if run.kind == "baseline" and status in {
+        RunStatus.FAILED.value,
+        RunStatus.TIMED_OUT.value,
+    }:
+        await _create_candidate(db, run)
+    if run.kind == "replay" and run.policy_id:
+        policy = await require_policy(db, run.policy_id)
+        baseline = await require_run(db, run.source_run_id or policy.source_run_id)
+        policy.score_delta = (run.score or 0.0) - (baseline.score or 0.0)
+        policy.status = (
+            PolicyStatus.VALIDATED.value
+            if status == RunStatus.SUCCEEDED.value and policy.score_delta > 0
+            else PolicyStatus.CANDIDATE.value
+        )
+
+
 async def complete_job(
     db: AsyncSession,
     *,
@@ -498,7 +612,7 @@ async def complete_job(
     expires_at = _aware(job.lease_expires_at)
     if expires_at is None or expires_at <= utcnow():
         raise DomainError(409, "LEASE_EXPIRED", "Runner lease has expired")
-    if run.status == RunStatus.CANCELLING.value:
+    if run.status == RunStatus.CANCELLING.value or job.cancel_requested_at is not None:
         status = RunStatus.CANCELLED.value
     run.status = status
     run.error = error
@@ -506,21 +620,7 @@ async def complete_job(
     if run.started_at is None:
         run.started_at = run.completed_at
 
-    await _analyze_and_score(db, run, metrics)
-    if run.kind == "baseline" and status in {
-        RunStatus.FAILED.value,
-        RunStatus.TIMED_OUT.value,
-    }:
-        await _create_candidate(db, run)
-    if run.kind == "replay" and run.policy_id:
-        policy = await require_policy(db, run.policy_id)
-        baseline = await require_run(db, run.source_run_id or policy.source_run_id)
-        policy.score_delta = (run.score or 0.0) - (baseline.score or 0.0)
-        policy.status = (
-            PolicyStatus.VALIDATED.value
-            if status == RunStatus.SUCCEEDED.value and policy.score_delta > 0
-            else PolicyStatus.CANDIDATE.value
-        )
+    await _record_terminal_effects(db, run, status, metrics)
     await db.commit()
     await db.refresh(run)
     return run_response(run)

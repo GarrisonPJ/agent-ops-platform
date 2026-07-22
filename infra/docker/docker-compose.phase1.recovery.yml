@@ -1,0 +1,6 @@
+services:
+  runner:
+    environment:
+      AGENTOPS_AGENT_ARGS: '["-m","app.recovery_agent"]'
+      AGENTOPS_RECOVERY_MARKER: /tmp/agentops-recovery-marker
+      AGENTOPS_RUNNER_ID: recovery-runner

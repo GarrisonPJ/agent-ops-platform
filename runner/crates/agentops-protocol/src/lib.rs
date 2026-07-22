@@ -214,6 +214,9 @@ pub struct ClaimedRun {
 pub struct ClaimResponse {
     pub lease_id: String,
     pub lease_expires_at: String,
+    pub attempt: u32,
+    pub next_sequence: u64,
+    pub recovery_reason: Option<String>,
     pub run: ClaimedRun,
 }
 
