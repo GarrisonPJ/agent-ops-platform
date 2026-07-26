@@ -21,6 +21,8 @@ export const policyStatusSchema = z.enum([
   "superseded",
 ]);
 
+export const executionModeSchema = z.enum(["fixture", "provider"]);
+
 export const policyPatchSchema = z
   .object({
     instruction_patch: z.array(z.string().min(1).max(500)).max(10),
@@ -37,6 +39,7 @@ export const evaluationSpecSchema = z
     scenario_id: z.literal("checkout-api-latency"),
     task: z.string().min(1).max(4_000),
     seed: z.number().int().min(0).max(2_147_483_647),
+    execution_mode: executionModeSchema.optional(),
     policy: policyPatchSchema.nullable(),
     limits: z
       .object({
@@ -99,6 +102,7 @@ export const experimentSchema = z
     name: z.string().min(1),
     task: z.string().min(1),
     scenario_id: z.literal("checkout-api-latency"),
+    execution_mode: executionModeSchema.optional(),
     created_at: z.string().min(1),
     runs: z.array(runSchema),
     active_policy: policySchema.nullable(),
@@ -156,6 +160,7 @@ export const recordedJourneySchema = z
 
 export type RunStatus = z.infer<typeof runStatusSchema>;
 export type PolicyStatus = z.infer<typeof policyStatusSchema>;
+export type ExecutionMode = z.infer<typeof executionModeSchema>;
 export type PolicyPatch = z.infer<typeof policyPatchSchema>;
 export type EvaluationSpec = z.infer<typeof evaluationSpecSchema>;
 export type RunMetrics = z.infer<typeof runMetricsSchema>;

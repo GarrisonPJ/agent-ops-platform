@@ -17,6 +17,7 @@ from app.phase1_schemas import (
     EvaluationLimits,
     EvaluationSpec,
     EventEnvelope,
+    ExecutionMode,
     ExperimentCreate,
     ExperimentResponse,
     PolicyPatch,
@@ -131,6 +132,7 @@ async def experiment_response(db: AsyncSession, experiment: Experiment) -> Exper
         name=experiment.name,
         task=experiment.task,
         scenario_id=experiment.scenario_id,
+        execution_mode=ExecutionMode(experiment.execution_mode),
         created_at=experiment.created_at,
         runs=[run_response(item) for item in runs],
         active_policy=policy_response(active) if active else None,
@@ -140,7 +142,11 @@ async def experiment_response(db: AsyncSession, experiment: Experiment) -> Exper
 
 async def create_experiment(db: AsyncSession, data: ExperimentCreate) -> ExperimentResponse:
     experiment = Experiment(
-        id=new_id(), name=data.name.strip(), task=data.task.strip(), scenario_id=data.scenario_id
+        id=new_id(),
+        name=data.name.strip(),
+        task=data.task.strip(),
+        scenario_id=data.scenario_id,
+        execution_mode=data.execution_mode.value,
     )
     db.add(experiment)
     await db.commit()
@@ -169,6 +175,7 @@ def _evaluation_spec(
     run_id: str,
     experiment: Experiment,
     seed: int,
+    execution_mode: ExecutionMode | None = None,
     policy: PolicyPatch | None = None,
 ) -> EvaluationSpec:
     return EvaluationSpec(
@@ -177,6 +184,7 @@ def _evaluation_spec(
         scenario_id=SCENARIO_ID,
         task=experiment.task,
         seed=seed,
+        execution_mode=execution_mode or ExecutionMode(experiment.execution_mode),
         policy=policy,
         limits=EvaluationLimits(),
     )
@@ -468,7 +476,8 @@ async def _trajectory_from_events(db: AsyncSession, run: Run) -> tuple[dict, dic
         if isinstance(attempt, int) and not isinstance(attempt, bool) and attempt >= 1:
             latest_attempt_start = index
 
-    for event in events[latest_attempt_start:]:
+    latest_events = events[latest_attempt_start:]
+    for event in latest_events:
         if event.event_type != "step_completed":
             continue
         payload = event.payload
@@ -504,7 +513,89 @@ async def _trajectory_from_events(db: AsyncSession, run: Run) -> tuple[dict, dic
         "token_completion": completion_tokens,
         "total_tokens": prompt_tokens + completion_tokens,
     }
+    metrics.update(_provider_metrics(latest_events))
     return trajectory, metrics
+
+
+def _provider_metrics(events: list[RunEvent]) -> dict[str, object]:
+    """Project safe provider telemetry from the latest immutable attempt."""
+
+    model: str | None = None
+    latency_ms = 0
+    request_count = 0
+    prompt_tokens = 0
+    completion_tokens = 0
+    saw_provider = False
+    provider_error: dict[str, object] | None = None
+
+    for event in events:
+        if event.event_type != "process_output":
+            continue
+        payload = event.payload
+        provider = payload.get("provider")
+        if isinstance(provider, dict):
+            saw_provider = True
+            raw_model = provider.get("model")
+            if isinstance(raw_model, str) and raw_model.strip():
+                model = raw_model.strip()[:200]
+            latency_ms += _nonnegative_metric(provider.get("latency_ms"))
+            request_count += _nonnegative_metric(provider.get("request_count"))
+            prompt_tokens += _nonnegative_metric(provider.get("token_prompt"))
+            completion_tokens += _nonnegative_metric(provider.get("token_completion"))
+
+        parsed_error = _provider_error(payload.get("provider_error"))
+        if parsed_error is not None:
+            provider_error = parsed_error
+
+    metrics: dict[str, object] = {}
+    if saw_provider:
+        provider_metrics: dict[str, object] = {
+            "latency_ms": latency_ms,
+            "request_count": request_count,
+            "token_prompt": prompt_tokens,
+            "token_completion": completion_tokens,
+            "total_tokens": prompt_tokens + completion_tokens,
+        }
+        if model is not None:
+            provider_metrics["model"] = model
+        metrics["provider"] = provider_metrics
+    if provider_error is not None:
+        metrics["provider_error"] = provider_error
+    return metrics
+
+
+def _provider_error(value: object) -> dict[str, object] | None:
+    if not isinstance(value, dict):
+        return None
+    code = value.get("code")
+    message = value.get("message")
+    if not isinstance(code, str) or not code or not isinstance(message, str) or not message:
+        return None
+    retryable = value.get("retryable")
+    attempts = value.get("attempts")
+    return {
+        "code": code[:100],
+        "message": message[:500],
+        "retryable": retryable if isinstance(retryable, bool) else False,
+        "attempts": _nonnegative_metric(attempts),
+    }
+
+
+def _nonnegative_metric(value: object) -> int:
+    if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+        return value
+    return 0
+
+
+def _provider_terminal_error(metrics: dict) -> str | None:
+    provider_error = metrics.get("provider_error")
+    if not isinstance(provider_error, dict):
+        return None
+    code = provider_error.get("code")
+    message = provider_error.get("message")
+    if not isinstance(code, str) or not code or not isinstance(message, str) or not message:
+        return None
+    return f"{code}: {message}"
 
 
 async def _analyze_and_score(
@@ -621,6 +712,10 @@ async def complete_job(
         run.started_at = run.completed_at
 
     await _record_terminal_effects(db, run, status, metrics)
+    if status == RunStatus.FAILED.value and (
+        run.error is None or run.error.startswith("agent exited with")
+    ):
+        run.error = _provider_terminal_error(run.metrics) or run.error
     await db.commit()
     await db.refresh(run)
     return run_response(run)
@@ -655,6 +750,7 @@ async def replay_policy(db: AsyncSession, policy_id: str) -> PolicyResponse:
         run_id=run_id,
         experiment=experiment,
         seed=baseline_spec.seed,
+        execution_mode=baseline_spec.execution_mode,
         policy=PolicyPatch.model_validate(policy.patch),
     )
     run = Run(

@@ -113,6 +113,34 @@ describe("recorded demo handlers", () => {
     });
   });
 
+
+  it("keeps the selected provider mode as recorded response data", async () => {
+    const createdResponse = await recordedHandler(
+      "POST",
+      "/experiments",
+      {
+        name: "Provider recording",
+        task: "Investigate checkout API latency",
+        scenario_id: "checkout-api-latency",
+        execution_mode: "provider",
+      },
+    );
+    expect(createdResponse).toMatchObject({
+      data: { execution_mode: "provider" },
+    });
+    if (!("data" in createdResponse)) return;
+    const experimentId = (createdResponse.data as { id: string }).id;
+
+    const baselineResponse = await recordedHandler(
+      "POST",
+      `/experiments/${experimentId}/runs`,
+      {},
+    );
+    expect(baselineResponse).toMatchObject({
+      data: { evaluation_spec: { execution_mode: "provider" } },
+    });
+  });
+
   it("reports unknown routes with the shared API error shape", async () => {
     const response = await recordedHandler("GET", "/unknown");
     expect(response).toMatchObject({

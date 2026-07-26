@@ -36,6 +36,11 @@ class PolicyStatus(StrEnum):
     SUPERSEDED = "superseded"
 
 
+class ExecutionMode(StrEnum):
+    FIXTURE = "fixture"
+    PROVIDER = "provider"
+
+
 TERMINAL_RUN_STATUSES = {
     RunStatus.SUCCEEDED.value,
     RunStatus.FAILED.value,
@@ -75,6 +80,7 @@ class EvaluationSpec(StrictModel):
     scenario_id: Literal["checkout-api-latency"] = SCENARIO_ID
     task: str = Field(min_length=1, max_length=4_000)
     seed: int = Field(default=42, ge=0, le=2_147_483_647)
+    execution_mode: ExecutionMode = ExecutionMode.FIXTURE
     policy: PolicyPatch | None = None
     limits: EvaluationLimits = Field(default_factory=EvaluationLimits)
 
@@ -99,6 +105,7 @@ class ExperimentCreate(StrictModel):
     name: str = Field(min_length=1, max_length=200)
     task: str = Field(min_length=1, max_length=4_000)
     scenario_id: Literal["checkout-api-latency"] = SCENARIO_ID
+    execution_mode: ExecutionMode = ExecutionMode.FIXTURE
 
 
 class RunCreate(StrictModel):
@@ -144,6 +151,7 @@ class ExperimentResponse(BaseModel):
     name: str
     task: str
     scenario_id: str
+    execution_mode: ExecutionMode = ExecutionMode.FIXTURE
     created_at: datetime
     runs: list[RunResponse] = Field(default_factory=list)
     active_policy: PolicyResponse | None = None

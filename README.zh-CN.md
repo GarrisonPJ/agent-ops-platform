@@ -29,6 +29,20 @@ Experiment → Baseline → Trace → Failure Analysis → Candidate Policy
 
 整个流程不需要 LLM Key，也不依赖外部服务。
 
+## 可选 OpenAI-compatible Provider
+
+Fixture 仍是默认的确定性 CI 与 Golden 路径。Experiment 也可以选择 `provider`；API 和浏览器只会发送这个模式，Provider 的运行配置只存在于 Runner：
+
+```bash
+AGENTOPS_PROVIDER_BASE_URL=https://provider.example/v1
+AGENTOPS_PROVIDER_API_KEY=replace-me
+AGENTOPS_PROVIDER_MODEL=checkout-model
+AGENTOPS_PROVIDER_TIMEOUT_MS=10000
+AGENTOPS_PROVIDER_MAX_RETRIES=1
+```
+
+使用 Compose 时，把这些值写入被忽略的 `.env`，然后执行 `make demo`；只有 `runner` 服务会接收它们。创建 Experiment 时选择 **OpenAI-compatible provider**。Python 边界只调用 `/chat/completions`，只允许三个 checkout fixture 工具，支持 timeout、有限重试与取消，并持久化安全的模型、延迟、请求次数和 token 指标；不会持久化凭证、endpoint 或隐藏推理。配置缺失或 Provider 失败会产生结构化的 Run 终态错误。CI 使用本地 fake compatible server，真实 Provider 检查必须显式开启。
+
 ## 启动真实闭环
 
 需要 Docker Compose 与 Make。
@@ -50,7 +64,7 @@ make test      # 后端、前端、Rust 与契约测试
 
 | 模式 | 用途 | 实际运行内容 |
 |---|---|---|
-| 本地真实环境 | 验证完整端到端行为 | React、FastAPI、PostgreSQL、Rust Runner、确定性 Python Agent |
+| 本地真实环境 | 验证完整端到端行为 | React、FastAPI、PostgreSQL、Rust Runner、Fixture 或显式启用的 Provider Python Agent |
 | Recorded Preview | 离线 UI 开发与确定性回归检查 | React 与 Golden E2E 录制 fixtures |
 
 启动 Recorded Preview：
@@ -72,6 +86,7 @@ flowchart LR
     API -->|"先持久化，再 SSE"| UI
     Runner["Rust Execution Plane"] -->|"claim / heartbeat / events / complete"| API
     Runner -->|"stdin EvaluationSpec<br/>stdout JSONL"| Agent["Allowlisted Python Scenario"]
+    Agent -->|"显式启用 /chat/completions"| Provider["OpenAI-compatible Provider"]
 ```
 
 | 层 | 职责 |
@@ -80,7 +95,7 @@ flowchart LR
 | FastAPI | Experiment、Run/Policy 状态机、Lease、持久化、评分、分析和 SSE |
 | Rust Runner | 进程组、Heartbeat/Cancel、Timeout、有界 JSONL、事件重试和退出清理 |
 | PostgreSQL | Experiment、Run、Job、有序事件、Analysis 与 Policy |
-| Python Demo Agent | 唯一确定、在白名单内的 checkout latency 场景 |
+| Python Agent | 同一白名单 checkout 场景的确定性 Fixture 路径与最小化、显式启用的 Provider 路径 |
 
 Python Pydantic 类型是协议 v1 的事实来源。版本化 JSON Schema 与 Golden fixtures 位于 [contracts/v1](contracts/v1)，Rust Serde 类型在 CI 中验证同一批 fixtures。
 
@@ -92,7 +107,9 @@ Python Pydantic 类型是协议 v1 的事实来源。版本化 JSON Schema 与 G
 - Runner API 使用 Bearer Token，并校验 runner identity、lease 与 run。
 - 过期 Lease 不能继续上报或完成非终态任务；终态重复完成仍保持幂等。
 - Lease 过期后，下一次认证 claim 会递增 Attempt、隔离旧 Lease，并从下一个事件 Sequence 继续。
-- Job 只包含白名单 `scenario_id`，API 用户不能提交 executable 或 shell 命令。
+- Job 只包含白名单 `scenario_id`；API 用户只可选择 `fixture` 或 `provider`，不能提交 executable、shell 命令、Provider URL、模型或凭证。
+- Provider 配置只传入 Runner。Provider 调用是有界、可取消的 `/chat/completions` 请求，并且只能选择 checkout fixture 工具。
+- 最新 Attempt 的 Provider 模型标识、延迟、请求次数和 token 用量会写入 Run metrics；凭证、endpoint 与隐藏推理不会写入。
 - Runner 分离 command 与 args，不连接 Docker daemon，也不直连数据库。
 - JSONL 单行默认最多 64 KiB，总输出默认最多 1 MiB。
 - Linux/WSL 子进程运行在独立进程组；取消时先 SIGTERM，两秒后 SIGKILL。
@@ -115,7 +132,7 @@ Run 状态明确区分 `queued`、`claimed`、`running`、`cancelling`、`succee
 ## 仓库结构
 
 ```text
-backend/      FastAPI Control Plane、Alembic、确定性 Agent
+backend/      FastAPI Control Plane、Alembic migrations、Fixture 与 Provider Python Agent
 frontend/     React 工作台与 Recorded Preview Adapter
 runner/       Rust workspace：protocol、runner、CLI
 contracts/    版本化 JSON Schema 与跨语言 Golden fixtures
@@ -141,9 +158,9 @@ CI 覆盖 Python、数据库迁移、TypeScript、Recorded Preview 契约、Rust
 
 ## 明确不做
 
-Phase 1 不包含 Kubernetes Executor、Docker Socket、MCP Server、向量记忆、Training Export、多框架适配、真实模型 Provider、任意代码执行、账户、多租户、计费或自动激活 Policy。
+Phase 1 不包含 Kubernetes Executor、Docker Socket、MCP Server、向量记忆、Training Export、多框架适配、用户提供的 Provider endpoint 或凭证、任意代码执行、账户、多租户、计费或自动激活 Policy。
 
-这些能力继续暂缓，只有可量化需求才能将其提升到主线。当前优先级是真实 OpenAI-compatible Provider 和运维加固，详见 [ROADMAP.zh-CN.md](ROADMAP.zh-CN.md)。
+这些能力继续暂缓，只有可量化需求才能将其提升到主线。当前优先级是可观测性与运维加固，详见 [ROADMAP.zh-CN.md](ROADMAP.zh-CN.md)。
 
 ## 项目方向
 

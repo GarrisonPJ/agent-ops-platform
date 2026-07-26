@@ -13,11 +13,12 @@ This file defines the shared vocabulary and invariants for the implemented Phase
 
 | Term | Definition |
 |---|---|
-| Experiment | Stable container for a task and allowlisted scenario. A policy is active only inside its experiment. |
-| EvaluationSpec | Versioned, immutable execution input: run/experiment IDs, scenario, task, seed, limits, and optional policy patch. |
+| Experiment | Stable container for a task, allowlisted scenario, and selected execution mode. A policy is active only inside its experiment. |
+| EvaluationSpec | Versioned, immutable execution input: run/experiment IDs, scenario, task, seed, execution mode, limits, and optional policy patch. |
+| ExecutionMode | `fixture` keeps the deterministic Golden path; `provider` delegates reasoning to the Runner-configured OpenAI-compatible boundary while retaining the same allowlisted tools. |
 | Run | One baseline or replay attempt with an explicit lifecycle, score, metrics, and immutable EvaluationSpec. |
 | Baseline | A run without a candidate policy. The Golden baseline fails by exhausting its step budget. |
-| Replay | A run derived from a baseline. It preserves scenario, task, seed, and limits while adding one candidate policy. |
+| Replay | A run derived from a baseline. It preserves scenario, task, seed, execution mode, and limits while adding one candidate policy. |
 | RunnerJob | The claim and lease record that authorizes one Rust Runner to execute a run. |
 | RunEvent | Durable, ordered execution fact. The unique key is `run_id + sequence`. |
 | Trace | The ordered projection of persisted RunEvents shown in the UI. It is not a separate source of truth. |
@@ -61,11 +62,11 @@ claimed/running/cancelling -- exhausted attempts --> failed or cancelled
 3. Event sequences begin at one, increase contiguously, and are idempotent on retry.
 4. A lease binds one `runner_id`, `lease_id`, and `run_id`; an expired lease cannot mutate a non-terminal run.
 5. Repeated event upload, replay request, and terminal completion return the existing result.
-6. Baseline and replay share scenario, task, seed, and limits. Only run identity and candidate policy differ.
+6. Baseline and replay share scenario, task, seed, execution mode, and limits. Only run identity and candidate policy differ.
 7. A policy is validated only when its replay succeeds with a positive score delta.
 8. An experiment has at most one active policy; activating a new one atomically supersedes the previous one.
 9. Activation is always a human action. Analysis and compilation are deterministic in Phase 1.
-10. API clients select an allowlisted `scenario_id`; they never provide an executable, command, provider, or arbitrary code.
+10. API clients select an allowlisted `scenario_id` and `execution_mode`; they never provide an executable, command, provider URL, model, credential, or arbitrary code.
 11. Product events expose a concise `decision_summary`, not hidden chain-of-thought.
 
 ## Golden scenario
@@ -104,7 +105,7 @@ SSE clients reconnect with `after=<lastSequence>`. The API replays later persist
 | React | Workflow UI and client-side presentation state | Scoring, analysis, policy compilation, run state machine |
 | FastAPI | Domain state, persistence, leases, scoring, analysis, policy decisions | Child process supervision |
 | Rust Runner | Process group, JSONL transport, heartbeat, retry, cancel, timeout | Database access, scoring, policy logic |
-| Python Agent | Deterministic scenario behavior | Run lifecycle or persistence |
+| Python Agent | Deterministic fixture behavior or narrow provider orchestration for the allowlisted scenario | Run lifecycle, persistence, arbitrary tools, or arbitrary execution |
 | PostgreSQL | Durable system facts | Workflow behavior |
 
 Frontend state follows the project convention:
@@ -115,11 +116,11 @@ Frontend state follows the project convention:
 
 ## Phase 1 non-goals
 
-Kubernetes, Docker socket execution, MCP, vector memory, training export, framework adapters, real model providers, arbitrary command execution, accounts, multi-tenancy, billing, and automatic activation are outside the current product.
+Kubernetes, Docker socket execution, MCP, vector memory, training export, framework adapters, user-supplied provider endpoints or credentials, arbitrary command execution, accounts, multi-tenancy, billing, and automatic activation are outside the current product.
 
 ## Planned evolution
 
-Runner recovery is implemented. The next milestones are an OpenAI-compatible provider and observability/operational hardening. Recorded Preview remains a testing adapter, not a separate delivery track. Kubernetes, MCP, vector memory, arbitrary execution, multi-tenancy, and automatic policy activation stay deferred until a measured requirement promotes them.
+Runner recovery and the narrow OpenAI-compatible provider boundary are implemented. The next milestone is observability and operational hardening. Recorded Preview remains a testing adapter, not a separate delivery track. Kubernetes, MCP, vector memory, arbitrary execution, multi-tenancy, and automatic policy activation stay deferred until a measured requirement promotes them.
 
 Roadmap changes do not alter these domain invariants by themselves. Update this file and add an ADR before a milestone changes state ownership, recovery semantics, trust boundaries, or activation rules. See [ROADMAP.md](ROADMAP.md).
 
@@ -129,3 +130,4 @@ Roadmap changes do not alter these domain invariants by themselves. Update this 
 |---|---|---|
 | [0001](docs/adr/0001-python-control-plane-rust-execution-plane.md) | Python control plane and Rust execution plane | Accepted |
 | [0002](docs/adr/0002-runner-recovery.md) | Deterministic Runner recovery | Accepted |
+| [0003](docs/adr/0003-openai-compatible-provider-boundary.md) | Narrow OpenAI-compatible provider boundary | Accepted |

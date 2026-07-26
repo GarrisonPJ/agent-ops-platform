@@ -236,3 +236,125 @@ async def test_sequence_gap_and_conflict_are_rejected(api) -> None:
     )
     assert conflict.status_code == 409
     assert conflict.json()["code"] == "EVENT_CONFLICT"
+
+
+@pytest.mark.asyncio
+async def test_provider_mode_persists_safe_metadata_and_respects_cancellation(api) -> None:
+    client, _ = api
+    blocked = await client.post(
+        "/api/experiments",
+        json={
+            "name": "Provider checkout",
+            "task": "Investigate checkout API latency",
+            "execution_mode": "provider",
+            "base_url": "https://provider.example/v1",
+        },
+    )
+    assert blocked.status_code == 422
+
+    experiment_response = await client.post(
+        "/api/experiments",
+        json={
+            "name": "Provider checkout",
+            "task": "Investigate checkout API latency",
+            "execution_mode": "provider",
+        },
+    )
+    assert experiment_response.status_code == 201
+    experiment = experiment_response.json()
+    assert experiment["execution_mode"] == "provider"
+
+    run_response = await client.post(f"/api/experiments/{experiment['id']}/runs", json={})
+    assert run_response.status_code == 201
+    run = run_response.json()
+    job = await claim(client)
+    assert job["run"]["evaluation_spec"]["execution_mode"] == "provider"
+
+    provider_error = {
+        "code": "PROVIDER_TIMEOUT",
+        "message": "Provider request timed out",
+        "retryable": True,
+        "attempts": 2,
+    }
+    assert await upload(
+        client,
+        job,
+        [
+            envelope(run["id"], 1, "run_started", {"attempt": 1}),
+            envelope(
+                run["id"],
+                2,
+                "process_output",
+                {
+                    "stream": "stderr",
+                    "content": "Provider execution failed.",
+                    "provider": {
+                        "model": "checkout-model",
+                        "latency_ms": 125,
+                        "request_count": 2,
+                        "token_prompt": 31,
+                        "token_completion": 0,
+                    },
+                    "provider_error": provider_error,
+                },
+            ),
+        ],
+    ) == 2
+    completed = await client.post(
+        f"/api/internal/runner/jobs/{job['lease_id']}/complete",
+        headers=AUTH,
+        json={
+            "runner_id": "runner-1",
+            "status": "failed",
+            "error": "agent exited with exit status: 1",
+        },
+    )
+    assert completed.status_code == 200
+    completed_run = completed.json()
+    assert completed_run["status"] == "failed"
+    assert completed_run["error"] == "PROVIDER_TIMEOUT: Provider request timed out"
+    assert completed_run["metrics"]["provider"] == {
+        "model": "checkout-model",
+        "latency_ms": 125,
+        "request_count": 2,
+        "token_prompt": 31,
+        "token_completion": 0,
+        "total_tokens": 31,
+    }
+    assert completed_run["metrics"]["provider_error"] == provider_error
+
+    cancelled_run_response = await client.post(
+        f"/api/experiments/{experiment['id']}/runs", json={}
+    )
+    assert cancelled_run_response.status_code == 201
+    cancelled_run = cancelled_run_response.json()
+    cancelled_job = await claim(client)
+    assert await upload(
+        client,
+        cancelled_job,
+        [
+            envelope(cancelled_run["id"], 1, "run_started", {"attempt": 1}),
+            envelope(
+                cancelled_run["id"],
+                2,
+                "process_output",
+                {"stream": "stderr", "content": "Provider execution failed.", "provider_error": provider_error},
+            ),
+        ],
+    ) == 2
+    cancelling = await client.post(f"/api/runs/{cancelled_run['id']}/cancel")
+    assert cancelling.status_code == 200
+    assert cancelling.json()["status"] == "cancelling"
+    cancelled = await client.post(
+        f"/api/internal/runner/jobs/{cancelled_job['lease_id']}/complete",
+        headers=AUTH,
+        json={
+            "runner_id": "runner-1",
+            "status": "failed",
+            "error": "agent exited with exit status: 1",
+        },
+    )
+    assert cancelled.status_code == 200
+    assert cancelled.json()["status"] == "cancelled"
+    assert cancelled.json()["error"] == "agent exited with exit status: 1"
+    assert cancelled.json()["metrics"]["provider_error"] == provider_error

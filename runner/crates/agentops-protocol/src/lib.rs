@@ -85,6 +85,14 @@ impl ExecutionLimits {
     }
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ExecutionMode {
+    #[default]
+    Fixture,
+    Provider,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
 pub struct EvaluationSpec {
@@ -94,6 +102,8 @@ pub struct EvaluationSpec {
     pub scenario_id: String,
     pub task: String,
     pub seed: u64,
+    #[serde(default)]
+    pub execution_mode: ExecutionMode,
     pub policy: Option<PolicyPatch>,
     #[serde(default)]
     pub limits: ExecutionLimits,
@@ -275,6 +285,7 @@ mod tests {
             scenario_id: "checkout-api-latency".into(),
             task: "Investigate checkout latency".into(),
             seed: 42,
+            execution_mode: ExecutionMode::Fixture,
             policy: None,
             limits: ExecutionLimits::default(),
         }
@@ -287,6 +298,14 @@ mod tests {
         let decoded: EvaluationSpec = serde_json::from_str(&encoded).unwrap();
         assert_eq!(decoded, original);
         assert!(decoded.validate().is_ok());
+    }
+
+    #[test]
+    fn defaults_execution_mode_for_older_specs() {
+        let mut value = serde_json::to_value(spec()).unwrap();
+        value.as_object_mut().unwrap().remove("execution_mode");
+        let decoded: EvaluationSpec = serde_json::from_value(value).unwrap();
+        assert_eq!(decoded.execution_mode, ExecutionMode::Fixture);
     }
 
     #[test]

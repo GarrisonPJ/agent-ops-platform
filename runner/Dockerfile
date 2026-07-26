@@ -18,7 +18,7 @@ WORKDIR /workspace/backend
 COPY backend/app/ ./app/
 COPY --from=rust-builder /src/runner/target/release/agentops /usr/local/bin/agentops
 
-RUN pip install --no-cache-dir "pydantic>=2.10,<3" \
+RUN pip install --no-cache-dir "pydantic>=2.10,<3" "httpx>=0.28,<1" \
     && useradd --create-home --uid 10001 runner \
     && chown -R runner:runner /workspace
 USER runner

@@ -8,6 +8,7 @@ and maps the process exit code to the terminal run status.
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 import os
 import sys
@@ -15,7 +16,8 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from app.phase1_schemas import EvaluationSpec
+from app.phase1_provider import run_provider_agent
+from app.phase1_schemas import EvaluationSpec, ExecutionMode
 
 
 def _emit(event_type: str, payload: dict) -> None:
@@ -113,6 +115,8 @@ def main() -> int:
     if spec.scenario_id != "checkout-api-latency":
         print(f"unsupported scenario: {spec.scenario_id}", file=sys.stderr)
         return 2
+    if spec.execution_mode == ExecutionMode.PROVIDER:
+        return asyncio.run(run_provider_agent(spec, _emit))
     return _replay() if spec.policy is not None else _baseline()
 
 

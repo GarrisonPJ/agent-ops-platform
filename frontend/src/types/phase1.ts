@@ -1,6 +1,7 @@
 import type {
   EvaluationSpec,
   EventEnvelope,
+  ExecutionMode,
   Experiment,
   FailureEvidence,
   Policy,
@@ -16,6 +17,7 @@ import type {
 export type {
   EvaluationSpec,
   EventEnvelope,
+  ExecutionMode,
   Experiment,
   FailureEvidence,
   Policy,
@@ -56,4 +58,5 @@ export interface CreateExperimentRequest {
   name: string;
   task: string;
   scenario_id: "checkout-api-latency";
+  execution_mode: ExecutionMode;
 }

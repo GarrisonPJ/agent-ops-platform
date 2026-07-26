@@ -21,6 +21,14 @@
       "title": "EvaluationLimits",
       "type": "object"
     },
+    "ExecutionMode": {
+      "enum": [
+        "fixture",
+        "provider"
+      ],
+      "title": "ExecutionMode",
+      "type": "string"
+    },
     "PolicyPatch": {
       "additionalProperties": false,
       "properties": {
@@ -59,6 +67,10 @@
   },
   "additionalProperties": false,
   "properties": {
+    "execution_mode": {
+      "$ref": "#/$defs/ExecutionMode",
+      "default": "fixture"
+    },
     "experiment_id": {
       "title": "Experiment Id",
       "type": "string"

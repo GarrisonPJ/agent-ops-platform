@@ -1,6 +1,6 @@
 import type { FetchArgs } from "@reduxjs/toolkit/query";
 import type { BaseQueryFn } from "@reduxjs/toolkit/query/react";
-import type { Experiment, Policy, Run } from "../../types/phase1";
+import type { ExecutionMode, Experiment, Policy, Run } from "../../types/phase1";
 import {
   BASELINE_RUN_ID,
   CANDIDATE_POLICY_ID,
@@ -62,12 +62,18 @@ export async function recordedHandler(
   }
 
   if (method === "POST" && path === "/experiments") {
-    const request = body as { name?: string; task?: string };
+    const request = body as {
+      name?: string;
+      task?: string;
+      execution_mode?: ExecutionMode;
+    };
+    const executionMode = request.execution_mode ?? "fixture";
     const created: Experiment = {
       id: `exp-recorded-${experiments.length + 1}`,
       name: request.name?.trim() || "Recorded experiment",
       task: request.task?.trim() || goldenExperiment.task,
       scenario_id: "checkout-api-latency",
+      execution_mode: executionMode,
       created_at: "2026-07-16T09:00:00Z",
       runs: [],
       active_policy: null,
@@ -90,6 +96,7 @@ export async function recordedHandler(
         ...baselineRun.evaluation_spec,
         experiment_id: experiment.id,
         task: experiment.task,
+        execution_mode: experiment.execution_mode ?? "fixture",
       },
     };
     const policy: Policy = {
@@ -189,6 +196,7 @@ export async function recordedHandler(
         ...replayRun.evaluation_spec,
         experiment_id: experiment.id,
         task: experiment.task,
+        execution_mode: experiment.execution_mode ?? "fixture",
         policy: policy.patch,
       },
     };

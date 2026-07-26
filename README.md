@@ -29,6 +29,20 @@ The built-in scenario investigates checkout API latency:
 
 No LLM key or external service is required.
 
+## Optional OpenAI-compatible provider
+
+Fixture execution remains the default, deterministic CI and Golden path. An Experiment may instead select `provider`; the API and browser still send only that mode. The Runner alone receives the operator configuration:
+
+```bash
+AGENTOPS_PROVIDER_BASE_URL=https://provider.example/v1
+AGENTOPS_PROVIDER_API_KEY=replace-me
+AGENTOPS_PROVIDER_MODEL=checkout-model
+AGENTOPS_PROVIDER_TIMEOUT_MS=10000
+AGENTOPS_PROVIDER_MAX_RETRIES=1
+```
+
+With Compose, place these values in the ignored `.env` file and run `make demo`; only the `runner` service receives them. Select **OpenAI-compatible provider** when creating the Experiment. The Python boundary calls `/chat/completions`, permits only the three checkout fixture tools, honors timeout/retry/cancellation, and records safe model, latency, request-count, and token metrics. It never persists the credential, endpoint, or hidden reasoning. Missing or failed configuration produces a structured terminal Run error. CI uses a local fake compatible server; live-provider checks are explicitly opt-in.
+
 ## Run the real stack
 
 Requirements: Docker with Compose and Make.
@@ -50,7 +64,7 @@ make test      # backend, frontend, Rust, and contract checks
 
 | Mode | Purpose | What runs |
 |---|---|---|
-| Local live stack | Real end-to-end behavior | React, FastAPI, PostgreSQL, Rust Runner, deterministic Python agent |
+| Local live stack | Real end-to-end behavior | React, FastAPI, PostgreSQL, Rust Runner, fixture or opt-in provider-backed Python agent |
 | Recorded preview | Offline UI development and deterministic regression checks | React plus recorded Golden E2E fixtures |
 
 Start the recorded preview with:
@@ -72,6 +86,7 @@ flowchart LR
     API -->|"persist, then SSE"| UI
     Runner["Rust execution plane"] -->|"claim / heartbeat / events / complete"| API
     Runner -->|"stdin EvaluationSpec<br/>stdout JSONL"| Agent["Allowlisted Python scenario"]
+    Agent -->|"opt-in /chat/completions"| Provider["OpenAI-compatible provider"]
 ```
 
 | Layer | Responsibility |
@@ -80,7 +95,7 @@ flowchart LR
 | FastAPI | Experiments, run and policy state machines, leases, persistence, scoring, analysis, SSE |
 | Rust Runner | Process groups, heartbeat/cancel, timeout, bounded JSONL, event retry, terminal cleanup |
 | PostgreSQL | Experiments, runs, jobs, ordered events, analyses, and policies |
-| Python demo agent | One deterministic, allowlisted checkout-latency scenario |
+| Python agent | Deterministic fixture path plus a narrow, opt-in provider path for the same allowlisted checkout scenario |
 
 Python Pydantic models own protocol v1. Versioned JSON Schemas and Golden fixtures live in [contracts/v1](contracts/v1); Rust Serde types validate those same fixtures in CI.
 
@@ -92,7 +107,9 @@ Python Pydantic models own protocol v1. Versioned JSON Schemas and Golden fixtur
 - Runner APIs require a bearer token and validate the runner identity, lease, and run.
 - Expired leases cannot append events or complete a non-terminal run; repeated terminal completion remains idempotent.
 - When a lease expires, the next authenticated claim increments the Attempt, fences the old lease, and resumes from the next event sequence.
-- Jobs select an allowlisted `scenario_id`; API clients cannot provide an executable or shell command.
+- Jobs select an allowlisted `scenario_id`; API clients can select only `fixture` or `provider` execution and cannot provide an executable, shell command, provider URL, model, or credential.
+- The Runner alone receives provider configuration. Provider calls are bounded, cancelable `/chat/completions` requests and can select only the checkout fixture tools.
+- Latest-attempt Provider model identity, latency, request count, and token usage are persisted as Run metrics; credentials, endpoint values, and hidden reasoning are not.
 - Runner commands and arguments are separate. It never connects to Docker or the database.
 - JSONL lines are capped at 64 KiB and combined output at 1 MiB by default.
 - Linux/WSL jobs run in their own process group; cancellation sends SIGTERM, then SIGKILL after two seconds.
@@ -115,7 +132,7 @@ Run states are explicit: `queued`, `claimed`, `running`, `cancelling`, `succeede
 ## Repository map
 
 ```text
-backend/      FastAPI control plane, Alembic migration, deterministic agent
+backend/      FastAPI control plane, Alembic migrations, fixture and provider Python agent
 frontend/     React workbench and recorded-preview adapter
 runner/       Rust workspace: protocol, runner, and CLI
 contracts/    Versioned JSON Schemas and cross-language Golden fixtures
@@ -141,9 +158,9 @@ CI covers Python, migrations, TypeScript, recorded-preview contracts, Rust proto
 
 ## Deliberate non-goals
 
-Phase 1 has no Kubernetes executor, Docker socket, MCP server, vector memory, training export, framework adapters, real model provider, arbitrary code execution, accounts, multi-tenancy, billing, or automatic policy activation.
+Phase 1 has no Kubernetes executor, Docker socket, MCP server, vector memory, training export, framework adapters, user-supplied provider endpoints or credentials, arbitrary code execution, accounts, multi-tenancy, billing, or automatic policy activation.
 
-Those capabilities remain deferred until a measured requirement promotes them. Current priorities are a real OpenAI-compatible provider and operational hardening; see [ROADMAP.md](ROADMAP.md).
+Those capabilities remain deferred until a measured requirement promotes them. The current priority is observability and operational hardening; see [ROADMAP.md](ROADMAP.md).
 
 ## Project direction
 

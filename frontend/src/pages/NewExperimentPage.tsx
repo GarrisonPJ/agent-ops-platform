@@ -4,6 +4,7 @@ import { Link, useNavigate } from "react-router-dom";
 import ErrorBanner from "../components/ErrorBanner";
 import { getApiErrorMessage } from "../lib/phase1Format";
 import { useCreateExperimentMutation } from "../services/experimentsApi";
+import type { ExecutionMode } from "../types/phase1";
 
 const DEFAULT_TASK =
   "Investigate why the checkout API latency increased after the latest deployment.";
@@ -12,6 +13,7 @@ export default function NewExperimentPage() {
   const navigate = useNavigate();
   const [name, setName] = useState("Checkout latency investigation");
   const [task, setTask] = useState(DEFAULT_TASK);
+  const [executionMode, setExecutionMode] = useState<ExecutionMode>("fixture");
   const [formError, setFormError] = useState<string | null>(null);
   const [createExperiment, { isLoading }] = useCreateExperimentMutation();
 
@@ -27,6 +29,7 @@ export default function NewExperimentPage() {
         name: name.trim(),
         task: task.trim(),
         scenario_id: "checkout-api-latency",
+        execution_mode: executionMode,
       }).unwrap();
       navigate(`/experiments/${experiment.id}`);
     } catch (error) {
@@ -80,6 +83,45 @@ export default function NewExperimentPage() {
                 ))}
               </ul>
             </div>
+          </div>
+        </fieldset>
+
+        <fieldset className="rounded-md border border-border bg-bg-card p-5 shadow-inner-glow">
+          <legend className="px-2 font-mono text-xs font-semibold uppercase tracking-wider text-fg-muted">
+            Execution mode
+          </legend>
+          <p className="text-sm leading-6 text-fg-muted">
+            Fixture is the default deterministic path. Provider mode uses the Runner's server-side OpenAI-compatible configuration; this form never collects a URL, model, or credential.
+          </p>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <label className="cursor-pointer rounded-md border border-border bg-bg-root/40 p-4 transition-colors has-[:checked]:border-accent/60 has-[:checked]:bg-accent/[0.08]">
+              <input
+                type="radio"
+                name="execution-mode"
+                value="fixture"
+                checked={executionMode === "fixture"}
+                onChange={() => setExecutionMode("fixture")}
+                className="sr-only"
+              />
+              <span className="block text-sm font-semibold">Fixture</span>
+              <span className="mt-1 block text-xs leading-5 text-fg-muted">
+                Deterministic checkout trace for CI and Golden checks.
+              </span>
+            </label>
+            <label className="cursor-pointer rounded-md border border-border bg-bg-root/40 p-4 transition-colors has-[:checked]:border-accent/60 has-[:checked]:bg-accent/[0.08]">
+              <input
+                type="radio"
+                name="execution-mode"
+                value="provider"
+                checked={executionMode === "provider"}
+                onChange={() => setExecutionMode("provider")}
+                className="sr-only"
+              />
+              <span className="block text-sm font-semibold">OpenAI-compatible provider</span>
+              <span className="mt-1 block text-xs leading-5 text-fg-muted">
+                Uses the configured model with the same allowlisted checkout tools.
+              </span>
+            </label>
           </div>
         </fieldset>
 

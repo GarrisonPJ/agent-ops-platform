@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use agentops_protocol::{
-    ClaimResponse, ClaimedRun, EvaluationSpec, ExecutionLimits, SCHEMA_VERSION,
+    ClaimResponse, ClaimedRun, EvaluationSpec, ExecutionLimits, ExecutionMode, SCHEMA_VERSION,
 };
 use serde_json::Value;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -157,6 +157,7 @@ fn claim(timeout_ms: u64) -> ClaimResponse {
         scenario_id: "checkout-api-latency".into(),
         task: "Investigate checkout latency".into(),
         seed: 42,
+        execution_mode: ExecutionMode::Fixture,
         policy: None,
         limits: ExecutionLimits {
             timeout_ms,
