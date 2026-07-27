@@ -27,7 +27,7 @@ Phase 1 已完成并通过验收：
 | 优先级 | 里程碑 | 状态 | 结果 |
 |---|---|---|---|
 | P0 | Phase 1.1 — Runner Recovery | 已完成 | Runner 崩溃或失联后，Run 不会永久卡住。 |
-| P1 | Phase 1.2 — OpenAI-compatible Provider | 下一项 | 真实模型复用同一套受监督、有类型、可持久化的流程，同时 CI 不依赖外部 API。 |
+| P1 | Phase 1.2 — OpenAI-compatible Provider | 已完成 | 真实模型复用同一套受监督、有类型、可持久化的流程，同时 CI 不依赖外部 API。 |
 | P2 | Phase 1.3 — 可观测性与运维加固 | 已规划 | 可以依据持久信号诊断队列、Lease、Runner、Provider 与迁移故障。 |
 | Gate | 安全与访问控制 | 条件触发 | 在引入有副作用工具、不可信用户或共享/公网运行前必须完成。 |
 

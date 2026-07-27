@@ -27,7 +27,7 @@ Phase 1 is complete and verified:
 | Priority | Milestone | Status | Outcome |
 |---|---|---|---|
 | P0 | Phase 1.1 — Runner recovery | Complete | A crashed or disconnected Runner cannot strand a Run indefinitely. |
-| P1 | Phase 1.2 — OpenAI-compatible provider | Next | Real model execution uses the same supervised, typed, persisted workflow without making CI depend on an external API. |
+| P1 | Phase 1.2 — OpenAI-compatible provider | Complete | Real model execution uses the same supervised, typed, persisted workflow without making CI depend on an external API. |
 | P2 | Phase 1.3 — Observability and operational hardening | Planned | Operators can diagnose queue, lease, Runner, provider, and migration failures from durable signals. |
 | Gate | Safety and access control | Trigger-based | Required before side-effecting tools, untrusted users, or shared/public operation enter scope. |
 
