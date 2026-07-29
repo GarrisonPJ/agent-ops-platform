@@ -6,7 +6,7 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision: str = "0004_observability_claim_timestamp"
+revision: str = "0004_observability_claim"
 down_revision: str | None = "0003_provider_execution_mode"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
