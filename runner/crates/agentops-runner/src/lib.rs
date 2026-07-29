@@ -127,21 +127,29 @@ impl Worker {
         let stderr = child.stderr.take().context("agent stderr is unavailable")?;
         let stderr_task = tokio::spawn(drain_stderr(stderr));
 
+        let mut event_retries = 0_u32;
         let execution = async {
             let mut next_sequence = claim.next_sequence;
-            self.upload_event(
-                &claim,
-                envelope(
-                    &claim.run.run_id,
-                    next_sequence,
-                    "run_started",
-                    json!({"attempt": claim.attempt}),
-                ),
-            )
-            .await?;
+            event_retries += self
+                .upload_event(
+                    &claim,
+                    envelope(
+                        &claim.run.run_id,
+                        next_sequence,
+                        "run_started",
+                        json!({"attempt": claim.attempt}),
+                    ),
+                )
+                .await?;
             next_sequence += 1;
-            self.supervise(&claim, &mut child, stdout, next_sequence)
-                .await
+            self.supervise(
+                &claim,
+                &mut child,
+                stdout,
+                next_sequence,
+                &mut event_retries,
+            )
+            .await
         }
         .await;
 
@@ -172,20 +180,21 @@ impl Worker {
             "cancelled" => "run_cancelled",
             _ => "run_failed",
         };
-        self.upload_event(
-            &claim,
-            envelope(
-                &claim.run.run_id,
-                outcome.next_sequence,
-                event_type,
-                json!({
-                    "attempt": claim.attempt,
-                    "status": outcome.status,
-                    "error": outcome.error.as_deref(),
-                }),
-            ),
-        )
-        .await?;
+        event_retries += self
+            .upload_event(
+                &claim,
+                envelope(
+                    &claim.run.run_id,
+                    outcome.next_sequence,
+                    event_type,
+                    json!({
+                        "attempt": claim.attempt,
+                        "status": outcome.status,
+                        "error": outcome.error.as_deref(),
+                    }),
+                ),
+            )
+            .await?;
         self.complete(
             &claim,
             outcome.status,
@@ -194,6 +203,7 @@ impl Worker {
                 "stdout_bytes": outcome.stdout_bytes,
                 "stderr_bytes": stderr_capture.total_bytes,
                 "total_output_bytes": total_output_bytes,
+                "event_retries": event_retries,
             }),
         )
         .await
@@ -205,6 +215,7 @@ impl Worker {
         child: &mut Child,
         stdout: R,
         mut next_sequence: u64,
+        event_retries: &mut u32,
     ) -> Result<TerminalOutcome> {
         let mut reader = BufReader::new(stdout);
         let mut heartbeat_tick = interval(Duration::from_secs(2));
@@ -272,7 +283,7 @@ impl Worker {
                                     stdout_bytes,
                                 ));
                             }
-                            self.upload_event(
+                            *event_retries = event_retries.saturating_add(self.upload_event(
                                 claim,
                                 envelope(
                                     &claim.run.run_id,
@@ -281,7 +292,7 @@ impl Worker {
                                     payload_with_attempt(child_event.payload, claim.attempt),
                                 ),
                             )
-                            .await?;
+                            .await?);
                             next_sequence += 1;
                         }
                     }
@@ -420,7 +431,7 @@ impl Worker {
         }
     }
 
-    async fn upload_event(&self, claim: &ClaimResponse, event: EventEnvelope) -> Result<()> {
+    async fn upload_event(&self, claim: &ClaimResponse, event: EventEnvelope) -> Result<u32> {
         event.validate().map_err(anyhow::Error::msg)?;
         let expected_sequence = event.sequence;
         let events = [event];
@@ -430,6 +441,7 @@ impl Worker {
             events: &events,
         };
         let deadline = Instant::now() + NETWORK_RETRY_WINDOW;
+        let mut retries = 0_u32;
         loop {
             let result = self
                 .client
@@ -445,7 +457,7 @@ impl Worker {
                 Ok(response) if response.status().is_success() => {
                     let accepted: EventBatchResponse = response.json().await?;
                     if accepted.accepted_through >= expected_sequence {
-                        return Ok(());
+                        return Ok(retries);
                     }
                 }
                 Ok(response) if response.status().is_client_error() => {
@@ -456,6 +468,7 @@ impl Worker {
             if Instant::now() >= deadline {
                 bail!("event upload failed for 10 seconds");
             }
+            retries = retries.saturating_add(1);
             sleep(Duration::from_millis(250)).await;
         }
     }

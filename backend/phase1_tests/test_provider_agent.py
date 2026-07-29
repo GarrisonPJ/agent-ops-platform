@@ -19,6 +19,7 @@ class FakeReply:
     status: int
     body: dict[str, object]
     delay_seconds: float = 0.0
+    headers: dict[str, str] | None = None
 
 
 class FakeOpenAICompatibleServer:
@@ -53,6 +54,8 @@ class FakeOpenAICompatibleServer:
                 encoded = json.dumps(reply.body).encode()
                 self.send_response(reply.status)
                 self.send_header("Content-Type", "application/json")
+                for name, value in (reply.headers or {}).items():
+                    self.send_header(name, value)
                 self.send_header("Content-Length", str(len(encoded)))
                 self.end_headers()
                 try:
@@ -124,19 +127,23 @@ def completion(
     prompt_tokens: int = 0,
     completion_tokens: int = 0,
     reasoning_content: str | None = None,
+    response_id: str | None = None,
 ) -> dict[str, object]:
     message: dict[str, object] = {"role": "assistant", "content": content}
     if tool_calls is not None:
         message["tool_calls"] = tool_calls
     if reasoning_content is not None:
         message["reasoning_content"] = reasoning_content
-    return {
+    result: dict[str, object] = {
         "choices": [{"index": 0, "message": message, "finish_reason": "stop"}],
         "usage": {
             "prompt_tokens": prompt_tokens,
             "completion_tokens": completion_tokens,
         },
     }
+    if response_id is not None:
+        result["id"] = response_id
+    return result
 
 
 @pytest.mark.asyncio
@@ -162,6 +169,7 @@ async def test_provider_agent_uses_local_compatible_server_and_redacts_secrets(
                     ],
                     prompt_tokens=11,
                     completion_tokens=7,
+                    response_id="chatcmpl-observe-1",
                 ),
             ),
             FakeReply(
@@ -171,6 +179,7 @@ async def test_provider_agent_uses_local_compatible_server_and_redacts_secrets(
                     prompt_tokens=19,
                     completion_tokens=5,
                     reasoning_content="hidden reasoning must never persist",
+                    response_id="chatcmpl-observe-2",
                 ),
             ),
         ]
@@ -198,6 +207,10 @@ async def test_provider_agent_uses_local_compatible_server_and_redacts_secrets(
     assert sum(event["token_prompt"] for event in provider_events) == 30
     assert sum(event["token_completion"] for event in provider_events) == 12
     assert {event["model"] for event in provider_events} == {"fake-checkout-model"}
+    assert [event["request_id"] for event in provider_events] == [
+        "chatcmpl-observe-1",
+        "chatcmpl-observe-2",
+    ]
     assert [payload["tool_call"]["name"] for kind, payload in events if kind == "step_completed"] == [
         "check_service_health"
     ]

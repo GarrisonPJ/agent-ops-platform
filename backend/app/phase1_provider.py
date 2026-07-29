@@ -86,6 +86,7 @@ class ProviderError(Exception):
         retryable: bool,
         attempts: int,
         latency_ms: int = 0,
+        request_id: str | None = None,
     ) -> None:
         super().__init__(message)
         self.code = code
@@ -93,14 +94,18 @@ class ProviderError(Exception):
         self.retryable = retryable
         self.attempts = attempts
         self.latency_ms = latency_ms
+        self.request_id = request_id
 
     def payload(self) -> dict[str, object]:
-        return {
+        payload: dict[str, object] = {
             "code": self.code,
             "message": self.message,
             "retryable": self.retryable,
             "attempts": self.attempts,
         }
+        if self.request_id is not None:
+            payload["request_id"] = self.request_id
+        return payload
 
 
 @dataclass(frozen=True)
@@ -124,6 +129,7 @@ class ProviderResponse:
     usage: ProviderUsage
     latency_ms: int
     request_count: int
+    request_id: str | None
 
 
 class OpenAICompatibleProvider:
@@ -206,6 +212,7 @@ class OpenAICompatibleProvider:
                     retryable=status_code in {408, 429} or status_code >= 500,
                     attempts=attempt,
                     latency_ms=_elapsed_ms(started_at),
+                    request_id=_provider_request_id(response),
                 )
 
             if not error.retryable or attempt > self.settings.max_retries:
@@ -274,18 +281,21 @@ async def run_provider_agent(
     try:
         while step_index < max_steps:
             response = await provider.chat(messages, provider_tool_definitions())
+            provider_payload: dict[str, object] = {
+                "model": settings.model,
+                "latency_ms": response.latency_ms,
+                "request_count": response.request_count,
+                "token_prompt": response.usage.prompt_tokens,
+                "token_completion": response.usage.completion_tokens,
+            }
+            if response.request_id is not None:
+                provider_payload["request_id"] = response.request_id
             emit(
                 "process_output",
                 {
                     "stream": "stdout",
                     "content": "Provider request completed.",
-                    "provider": {
-                        "model": settings.model,
-                        "latency_ms": response.latency_ms,
-                        "request_count": response.request_count,
-                        "token_prompt": response.usage.prompt_tokens,
-                        "token_completion": response.usage.completion_tokens,
-                    },
+                    "provider": provider_payload,
                 },
             )
             if not response.tool_calls:
@@ -436,7 +446,20 @@ def _parse_response(
         ),
         latency_ms=latency_ms,
         request_count=request_count,
+        request_id=_provider_request_id(response, data),
     )
+
+
+def _provider_request_id(response: httpx.Response, data: object | None = None) -> str | None:
+    values = [response.headers.get("x-request-id"), response.headers.get("request-id")]
+    if isinstance(data, dict):
+        values.append(data.get("id"))
+    for value in values:
+        if isinstance(value, str):
+            value = value.strip()
+            if value and "://" not in value:
+                return value[:200]
+    return None
 
 
 def _parse_tool_call(item: object, attempts: int, latency_ms: int) -> ProviderToolCall:
@@ -534,13 +557,16 @@ def _emit_provider_error(
         "provider_error": error.payload(),
     }
     if model is not None:
-        payload["provider"] = {
+        provider_payload: dict[str, object] = {
             "model": model,
             "latency_ms": error.latency_ms,
             "request_count": error.attempts,
             "token_prompt": 0,
             "token_completion": 0,
         }
+        if error.request_id is not None:
+            provider_payload["request_id"] = error.request_id
+        payload["provider"] = provider_payload
     emit("process_output", payload)
 
 

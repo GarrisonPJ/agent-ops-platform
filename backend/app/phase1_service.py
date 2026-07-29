@@ -20,6 +20,14 @@ from app.phase1_schemas import (
     ExecutionMode,
     ExperimentCreate,
     ExperimentResponse,
+    JobCorrelation,
+    OperationsOverviewResponse,
+    ProviderCorrelation,
+    RunCorrelation,
+    RunDiagnosticsResponse,
+    RunOperationalMetrics,
+    RunTiming,
+    TerminalRunOutcome,
     PolicyPatch,
     PolicyResponse,
     PolicyStatus,
@@ -88,6 +96,146 @@ async def require_policy(db: AsyncSession, policy_id: str) -> Policy:
     if policy is None:
         raise DomainError(404, "POLICY_NOT_FOUND", "Policy not found")
     return policy
+
+
+
+
+def _milliseconds_between(start: datetime | None, end: datetime | None) -> int | None:
+    start = _aware(start)
+    end = _aware(end)
+    if start is None or end is None:
+        return None
+    return max(0, int((end - start).total_seconds() * 1_000))
+
+
+async def get_run_diagnostics(db: AsyncSession, run_id: str) -> RunDiagnosticsResponse:
+    run = await require_run(db, run_id)
+    job = await db.get(RunnerJob, run_id)
+    if job is None:
+        raise DomainError(500, "JOB_INVARIANT_BROKEN", "Run job is missing")
+    events = list(
+        (
+            await db.execute(
+                select(RunEvent)
+                .where(RunEvent.run_id == run_id)
+                .order_by(RunEvent.sequence.asc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+    latest_attempt_start = 0
+    for index, event in enumerate(events):
+        if event.event_type != "run_started":
+            continue
+        attempt = event.payload.get("attempt")
+        if isinstance(attempt, int) and not isinstance(attempt, bool) and attempt >= 1:
+            latest_attempt_start = index
+    event_metrics = _provider_metrics(events[latest_attempt_start:])
+    run_metrics = run.metrics if isinstance(run.metrics, dict) else {}
+    raw_provider = event_metrics.get("provider")
+    if not isinstance(raw_provider, dict):
+        raw_provider = run_metrics.get("provider")
+    raw_error = event_metrics.get("provider_error")
+    if not isinstance(raw_error, dict):
+        raw_error = run_metrics.get("provider_error")
+    provider = None
+    if isinstance(raw_provider, dict) or isinstance(raw_error, dict):
+        request_ids = (
+            [item for item in raw_provider.get("request_ids", []) if isinstance(item, str)]
+            if isinstance(raw_provider, dict)
+            else []
+        )
+        model = raw_provider.get("model") if isinstance(raw_provider, dict) else None
+        provider = ProviderCorrelation(
+            model=model if isinstance(model, str) else None,
+            request_ids=request_ids,
+            error=raw_error if isinstance(raw_error, dict) else None,
+        )
+    provider_latency_ms = (
+        _nonnegative_metric(raw_provider.get("latency_ms"))
+        if isinstance(raw_provider, dict)
+        else 0
+    )
+    provider_tokens = (
+        _nonnegative_metric(raw_provider.get("total_tokens"))
+        if isinstance(raw_provider, dict)
+        else 0
+    )
+    terminal = (
+        TerminalRunOutcome(status=RunStatus(run.status), error=run.error)
+        if run.status in TERMINAL_RUN_STATUSES
+        else None
+    )
+    return RunDiagnosticsResponse(
+        run=RunCorrelation(
+            experiment_id=run.experiment_id,
+            run_id=run.id,
+            execution_mode=ExecutionMode(run.evaluation_spec.get("execution_mode", "fixture")),
+            status=RunStatus(run.status),
+        ),
+        job=JobCorrelation(
+            run_id=job.run_id,
+            lease_id=job.lease_id,
+            runner_id=job.runner_id,
+            attempt=job.attempt,
+            recovery_reason=job.recovery_reason,
+        ),
+        provider=provider,
+        timing=RunTiming(
+            queue_latency_ms=_milliseconds_between(run.queued_at, run.claimed_at),
+            run_duration_ms=_milliseconds_between(run.started_at, run.completed_at),
+        ),
+        metrics=RunOperationalMetrics(
+            event_count=len(events),
+            event_retries=_nonnegative_metric(run_metrics.get("event_retries")),
+            lease_recoveries=max(0, job.attempt - 1),
+            provider_latency_ms=provider_latency_ms,
+            provider_tokens=provider_tokens,
+        ),
+        terminal=terminal,
+    )
+
+
+async def get_operations_overview(db: AsyncSession) -> OperationsOverviewResponse:
+    runs = list((await db.execute(select(Run))).scalars().all())
+    jobs = {
+        item.run_id: item
+        for item in (await db.execute(select(RunnerJob))).scalars().all()
+    }
+    now = utcnow()
+    runs_by_status: dict[str, int] = {}
+    terminal_outcomes: dict[str, int] = {}
+    expired_lease_count = 0
+    lease_recoveries = 0
+    event_retries = 0
+    for run in runs:
+        runs_by_status[run.status] = runs_by_status.get(run.status, 0) + 1
+        if run.status in TERMINAL_RUN_STATUSES:
+            terminal_outcomes[run.status] = terminal_outcomes.get(run.status, 0) + 1
+        metrics = run.metrics if isinstance(run.metrics, dict) else {}
+        event_retries += _nonnegative_metric(metrics.get("event_retries"))
+        job = jobs.get(run.id)
+        if job is None:
+            continue
+        lease_recoveries += max(0, job.attempt - 1)
+        expires_at = _aware(job.lease_expires_at)
+        if (
+            run.status in RECOVERABLE_RUN_STATUSES
+            and job.lease_id is not None
+            and expires_at is not None
+            and expires_at <= now
+        ):
+            expired_lease_count += 1
+    return OperationsOverviewResponse(
+        generated_at=now,
+        queue_depth=runs_by_status.get(RunStatus.QUEUED.value, 0),
+        runs_by_status=dict(sorted(runs_by_status.items())),
+        terminal_outcomes=dict(sorted(terminal_outcomes.items())),
+        expired_lease_count=expired_lease_count,
+        lease_recoveries=lease_recoveries,
+        event_retries=event_retries,
+    )
 
 
 async def experiment_response(db: AsyncSession, experiment: Experiment) -> ExperimentResponse:
@@ -276,6 +424,7 @@ async def _recover_expired_jobs(db: AsyncSession) -> int:
         else:
             run.status = RunStatus.QUEUED.value
             run.queued_at = now
+            run.claimed_at = None
             job.attempt += 1
             job.recovery_reason = reason
         job.lease_id = None
@@ -310,10 +459,11 @@ async def claim_job(db: AsyncSession, runner_id: str) -> tuple[RunnerJob, Run] |
         .all()
     )
     for run_id in candidates:
+        now = utcnow()
         claimed = await db.execute(
             update(Run)
             .where(Run.id == run_id, Run.status == RunStatus.QUEUED.value)
-            .values(status=RunStatus.CLAIMED.value)
+            .values(status=RunStatus.CLAIMED.value, claimed_at=now)
         )
         if claimed.rowcount != 1:
             continue
@@ -324,7 +474,7 @@ async def claim_job(db: AsyncSession, runner_id: str) -> tuple[RunnerJob, Run] |
             raise DomainError(500, "JOB_INVARIANT_BROKEN", "Run job is missing")
         job.lease_id = str(uuid4())
         job.runner_id = runner_id
-        job.lease_expires_at = utcnow() + timedelta(seconds=LEASE_SECONDS)
+        job.lease_expires_at = now + timedelta(seconds=LEASE_SECONDS)
         await db.commit()
         await db.refresh(job)
         await db.refresh(run)
@@ -521,6 +671,7 @@ def _provider_metrics(events: list[RunEvent]) -> dict[str, object]:
     """Project safe provider telemetry from the latest immutable attempt."""
 
     model: str | None = None
+    request_ids: list[str] = []
     latency_ms = 0
     request_count = 0
     prompt_tokens = 0
@@ -538,6 +689,9 @@ def _provider_metrics(events: list[RunEvent]) -> dict[str, object]:
             raw_model = provider.get("model")
             if isinstance(raw_model, str) and raw_model.strip():
                 model = raw_model.strip()[:200]
+            request_id = _provider_request_id(provider.get("request_id"))
+            if request_id is not None and request_id not in request_ids and len(request_ids) < 20:
+                request_ids.append(request_id)
             latency_ms += _nonnegative_metric(provider.get("latency_ms"))
             request_count += _nonnegative_metric(provider.get("request_count"))
             prompt_tokens += _nonnegative_metric(provider.get("token_prompt"))
@@ -546,6 +700,9 @@ def _provider_metrics(events: list[RunEvent]) -> dict[str, object]:
         parsed_error = _provider_error(payload.get("provider_error"))
         if parsed_error is not None:
             provider_error = parsed_error
+            request_id = parsed_error.get("request_id")
+            if isinstance(request_id, str) and request_id not in request_ids and len(request_ids) < 20:
+                request_ids.append(request_id)
 
     metrics: dict[str, object] = {}
     if saw_provider:
@@ -558,10 +715,21 @@ def _provider_metrics(events: list[RunEvent]) -> dict[str, object]:
         }
         if model is not None:
             provider_metrics["model"] = model
+        if request_ids:
+            provider_metrics["request_ids"] = request_ids
         metrics["provider"] = provider_metrics
     if provider_error is not None:
         metrics["provider_error"] = provider_error
     return metrics
+
+
+def _provider_request_id(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    value = value.strip()
+    if not value or "://" in value:
+        return None
+    return value[:200]
 
 
 def _provider_error(value: object) -> dict[str, object] | None:
@@ -573,12 +741,16 @@ def _provider_error(value: object) -> dict[str, object] | None:
         return None
     retryable = value.get("retryable")
     attempts = value.get("attempts")
-    return {
+    result: dict[str, object] = {
         "code": code[:100],
         "message": message[:500],
         "retryable": retryable if isinstance(retryable, bool) else False,
         "attempts": _nonnegative_metric(attempts),
     }
+    request_id = _provider_request_id(value.get("request_id"))
+    if request_id is not None:
+        result["request_id"] = request_id
+    return result
 
 
 def _nonnegative_metric(value: object) -> int:

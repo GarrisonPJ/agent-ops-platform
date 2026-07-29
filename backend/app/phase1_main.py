@@ -34,8 +34,10 @@ from app.phase1_schemas import (
     ExperimentResponse,
     HeartbeatRequest,
     HeartbeatResponse,
+    OperationsOverviewResponse,
     PolicyResponse,
     RejectPolicyRequest,
+    RunDiagnosticsResponse,
     RunCreate,
     RunResponse,
     TERMINAL_RUN_STATUSES,
@@ -50,6 +52,8 @@ from app.phase1_service import (
     create_experiment,
     experiment_response,
     get_analysis,
+    get_operations_overview,
+    get_run_diagnostics,
     heartbeat,
     list_experiments,
     next_event_sequence,
@@ -151,6 +155,19 @@ def create_app(
     @router.get("/health")
     async def health() -> dict[str, object]:
         return {"status": "ok", "protocol_version": 1}
+
+
+    @router.get("/operations/overview", response_model=OperationsOverviewResponse)
+    async def operations_overview(
+        db: AsyncSession = Depends(get_db),
+    ) -> OperationsOverviewResponse:
+        return await get_operations_overview(db)
+
+    @router.get("/operations/runs/{run_id}", response_model=RunDiagnosticsResponse)
+    async def operations_run_diagnostics(
+        run_id: str, db: AsyncSession = Depends(get_db)
+    ) -> RunDiagnosticsResponse:
+        return await get_run_diagnostics(db, run_id)
 
     @router.get("/experiments", response_model=list[ExperimentResponse])
     async def experiments_list(

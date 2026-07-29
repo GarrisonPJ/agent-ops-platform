@@ -284,4 +284,5 @@ print(json.dumps({"type": "process_output", "payload": {"stream": "stdout", "con
     assert_eq!(completion["status"], "succeeded");
     assert!(completion["metrics"]["stderr_bytes"].as_u64().unwrap() >= 200_000);
     assert!(server.state.event_attempts.load(Ordering::SeqCst) >= 4);
+    assert_eq!(completion["metrics"]["event_retries"], 2);
 }

@@ -129,6 +129,63 @@ class RunResponse(BaseModel):
     started_at: datetime | None
     completed_at: datetime | None
 
+class RunCorrelation(StrictModel):
+    experiment_id: str
+    run_id: str
+    execution_mode: ExecutionMode
+    status: RunStatus
+
+
+class JobCorrelation(StrictModel):
+    run_id: str
+    lease_id: str | None
+    runner_id: str | None
+    attempt: int = Field(ge=1)
+    recovery_reason: str | None
+
+
+class ProviderCorrelation(StrictModel):
+    model: str | None
+    request_ids: list[str] = Field(default_factory=list)
+    error: dict[str, object] | None
+
+
+class RunTiming(StrictModel):
+    queue_latency_ms: int | None = Field(default=None, ge=0)
+    run_duration_ms: int | None = Field(default=None, ge=0)
+
+
+class RunOperationalMetrics(StrictModel):
+    event_count: int = Field(ge=0)
+    event_retries: int = Field(ge=0)
+    lease_recoveries: int = Field(ge=0)
+    provider_latency_ms: int = Field(ge=0)
+    provider_tokens: int = Field(ge=0)
+
+
+class TerminalRunOutcome(StrictModel):
+    status: RunStatus
+    error: str | None
+
+
+class RunDiagnosticsResponse(StrictModel):
+    run: RunCorrelation
+    job: JobCorrelation
+    provider: ProviderCorrelation | None
+    timing: RunTiming
+    metrics: RunOperationalMetrics
+    terminal: TerminalRunOutcome | None
+
+
+class OperationsOverviewResponse(StrictModel):
+    generated_at: datetime
+    queue_depth: int = Field(ge=0)
+    runs_by_status: dict[str, int]
+    terminal_outcomes: dict[str, int]
+    expired_lease_count: int = Field(ge=0)
+    lease_recoveries: int = Field(ge=0)
+    event_retries: int = Field(ge=0)
+
 
 class PolicyResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
