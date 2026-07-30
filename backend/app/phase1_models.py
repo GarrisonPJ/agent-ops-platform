@@ -80,6 +80,15 @@ class RunnerJob(Base):
     recovery_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
+class RunnerPresence(Base):
+    __tablename__ = "runner_presence"
+
+    runner_id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    last_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow, index=True
+    )
+
+
 class RunEvent(Base):
     __tablename__ = "run_events"
     __table_args__ = (UniqueConstraint("run_id", "sequence", name="uq_run_events_run_sequence"), Index("ix_run_events_run_sequence", "run_id", "sequence"))

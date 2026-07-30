@@ -187,6 +187,17 @@ class OperationsOverviewResponse(StrictModel):
     event_retries: int = Field(ge=0)
 
 
+class ReadinessResponse(StrictModel):
+    status: Literal["ok", "unavailable"]
+    database: Literal["ok", "unavailable"]
+
+
+class RunnerAvailabilityResponse(StrictModel):
+    status: Literal["ok", "unavailable"]
+    active_runner_count: int = Field(ge=0)
+    freshest_heartbeat_at: datetime | None = None
+
+
 class PolicyResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

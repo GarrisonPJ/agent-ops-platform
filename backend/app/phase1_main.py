@@ -13,7 +13,8 @@ from fastapi import APIRouter, Depends, FastAPI, Header, Query, Request, Respons
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
-from sqlalchemy import select
+from sqlalchemy import select, text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -35,6 +36,8 @@ from app.phase1_schemas import (
     HeartbeatRequest,
     HeartbeatResponse,
     OperationsOverviewResponse,
+    ReadinessResponse,
+    RunnerAvailabilityResponse,
     PolicyResponse,
     RejectPolicyRequest,
     RunDiagnosticsResponse,
@@ -62,6 +65,7 @@ from app.phase1_service import (
     replay_policy,
     require_experiment,
     require_run,
+    runner_availability,
     run_response,
 )
 
@@ -155,6 +159,40 @@ def create_app(
     @router.get("/health")
     async def health() -> dict[str, object]:
         return {"status": "ok", "protocol_version": 1}
+
+
+    @router.get("/health/live")
+    async def liveness() -> dict[str, str]:
+        return {"status": "ok"}
+
+
+    @router.get("/health/ready", response_model=ReadinessResponse)
+    async def readiness(db: AsyncSession = Depends(get_db)) -> Response:
+        try:
+            await db.execute(text("SELECT 1"))
+        except SQLAlchemyError:
+            return JSONResponse(
+                status_code=503,
+                content=ReadinessResponse(status="unavailable", database="unavailable").model_dump(),
+            )
+        return JSONResponse(
+            content=ReadinessResponse(status="ok", database="ok").model_dump()
+        )
+
+
+    @router.get("/health/runner", response_model=RunnerAvailabilityResponse)
+    async def runner_readiness(db: AsyncSession = Depends(get_db)) -> Response:
+        active_count, freshest = await runner_availability(db)
+        status = "ok" if active_count else "unavailable"
+        response = RunnerAvailabilityResponse(
+            status=status,
+            active_runner_count=active_count,
+            freshest_heartbeat_at=freshest,
+        )
+        return JSONResponse(
+            status_code=200 if active_count else 503,
+            content=response.model_dump(mode="json"),
+        )
 
 
     @router.get("/operations/overview", response_model=OperationsOverviewResponse)

@@ -11,7 +11,17 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.failure_analyzer import analyze_trajectory
-from app.phase1_models import Experiment, Policy, Run, RunAnalysis, RunEvent, RunnerJob, new_id, utcnow
+from app.phase1_models import (
+    Experiment,
+    Policy,
+    Run,
+    RunAnalysis,
+    RunEvent,
+    RunnerJob,
+    RunnerPresence,
+    new_id,
+    utcnow,
+)
 from app.phase1_schemas import (
     AnalysisResponse,
     EvaluationLimits,
@@ -40,6 +50,7 @@ from app.scoring import compute_score
 
 
 LEASE_SECONDS = 15
+RUNNER_AVAILABILITY_SECONDS = 15
 MAX_RUN_ATTEMPTS = 3
 RECOVERABLE_RUN_STATUSES = {
     RunStatus.CLAIMED.value,
@@ -443,7 +454,35 @@ async def next_event_sequence(db: AsyncSession, run_id: str) -> int:
     return int(maximum or 0) + 1
 
 
+async def _record_runner_presence(
+    db: AsyncSession, runner_id: str, now: datetime | None = None
+) -> None:
+    recorded_at = now or utcnow()
+    presence = await db.get(RunnerPresence, runner_id)
+    if presence is None:
+        db.add(RunnerPresence(runner_id=runner_id, last_seen_at=recorded_at))
+    else:
+        presence.last_seen_at = recorded_at
+
+
+async def runner_availability(db: AsyncSession) -> tuple[int, datetime | None]:
+    now = utcnow()
+    cutoff = now - timedelta(seconds=RUNNER_AVAILABILITY_SECONDS)
+    active_count = (
+        await db.execute(
+            select(func.count()).select_from(RunnerPresence).where(
+                RunnerPresence.last_seen_at >= cutoff
+            )
+        )
+    ).scalar_one()
+    freshest = (
+        await db.execute(select(func.max(RunnerPresence.last_seen_at)))
+    ).scalar_one()
+    return int(active_count), _aware(freshest)
+
+
 async def claim_job(db: AsyncSession, runner_id: str) -> tuple[RunnerJob, Run] | None:
+    await _record_runner_presence(db, runner_id)
     recovered = await _recover_expired_jobs(db)
     candidates = list(
         (
@@ -479,10 +518,7 @@ async def claim_job(db: AsyncSession, runner_id: str) -> tuple[RunnerJob, Run] |
         await db.refresh(job)
         await db.refresh(run)
         return job, run
-    if recovered:
-        await db.commit()
-    else:
-        await db.rollback()
+    await db.commit()
     return None
 
 
@@ -513,6 +549,7 @@ async def heartbeat(
     if run.status in TERMINAL_RUN_STATUSES:
         raise DomainError(409, "RUN_TERMINAL", "Run is already terminal")
     now = utcnow()
+    await _record_runner_presence(db, runner_id, now)
     if run.status == RunStatus.CLAIMED.value:
         run.status = RunStatus.RUNNING.value
         run.started_at = now
