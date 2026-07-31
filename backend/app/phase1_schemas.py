@@ -261,6 +261,9 @@ class OperationsOverviewResponse(StrictModel):
 class ReadinessResponse(StrictModel):
     status: Literal["ok", "unavailable"]
     database: Literal["ok", "unavailable"]
+    schema_status: Literal["ok", "unavailable"] = Field(alias="schema")
+    schema_revision: str | None
+    expected_schema_revision: str
 
 
 class RunnerAvailabilityResponse(StrictModel):

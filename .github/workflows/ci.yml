@@ -54,6 +54,49 @@ jobs:
           uv run alembic downgrade base
           uv run alembic upgrade head
 
+  database-recovery:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    services:
+      recovery-postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: agentops
+          POSTGRES_PASSWORD: agentops
+          POSTGRES_DB: agentops_recovery_source
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U agentops -d agentops_recovery_source"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 15
+    env:
+      DATABASE_URL: postgresql+asyncpg://agentops:agentops@localhost:5432/agentops_recovery_source
+      RESTORE_DATABASE_NAME: agentops_restore_ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.11.14"
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
+      - name: Install locked dependencies
+        working-directory: backend
+        run: uv sync --frozen
+      - name: Install PostgreSQL 16 client
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y postgresql-client-16
+          pg_dump --version
+          pg_restore --version
+      - name: Migrate recovery source to Alembic Head
+        working-directory: backend
+        run: uv run alembic upgrade head
+      - name: Run backup and restore rehearsal
+        run: PYTHONPATH=backend uv run --project backend python scripts/backup_restore_e2e.py
+
   frontend:
     runs-on: ubuntu-latest
     timeout-minutes: 8
@@ -111,7 +154,7 @@ jobs:
         run: docker compose -f infra/docker/docker-compose.phase1.yml config --quiet
 
   golden-e2e:
-    needs: [backend, frontend, rust, compose]
+    needs: [backend, database-recovery, frontend, rust, compose]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:

@@ -18,6 +18,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from app.migrations import application_alembic_head
 from app.phase1_database import async_session, engine, get_db, init_db
 from app.phase1_events import event_notifier
 from app.phase1_models import Run, RunEvent
@@ -168,15 +169,40 @@ def create_app(
 
     @router.get("/health/ready", response_model=ReadinessResponse)
     async def readiness(db: AsyncSession = Depends(get_db)) -> Response:
+        expected_revision = application_alembic_head()
         try:
             await db.execute(text("SELECT 1"))
         except SQLAlchemyError:
+            response = ReadinessResponse(
+                status="unavailable",
+                database="unavailable",
+                schema="unavailable",
+                schema_revision=None,
+                expected_schema_revision=expected_revision,
+            )
             return JSONResponse(
                 status_code=503,
-                content=ReadinessResponse(status="unavailable", database="unavailable").model_dump(),
+                content=response.model_dump(mode="json", by_alias=True),
             )
+
+        try:
+            current_revision = (
+                await db.execute(text("SELECT version_num FROM alembic_version"))
+            ).scalar_one_or_none()
+        except SQLAlchemyError:
+            current_revision = None
+            await db.rollback()
+        schema_ready = current_revision == expected_revision
+        response = ReadinessResponse(
+            status="ok" if schema_ready else "unavailable",
+            database="ok",
+            schema="ok" if schema_ready else "unavailable",
+            schema_revision=current_revision,
+            expected_schema_revision=expected_revision,
+        )
         return JSONResponse(
-            content=ReadinessResponse(status="ok", database="ok").model_dump()
+            status_code=200 if schema_ready else 503,
+            content=response.model_dump(mode="json", by_alias=True),
         )
 
 

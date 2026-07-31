@@ -5,9 +5,10 @@ from collections.abc import AsyncGenerator
 
 import httpx
 import pytest_asyncio
-from sqlalchemy import event
+from sqlalchemy import event, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from app.migrations import application_alembic_head
 from app.phase1_main import create_app
 from app.phase1_models import Base
 
@@ -26,6 +27,13 @@ async def api() -> AsyncGenerator[tuple[httpx.AsyncClient, async_sessionmaker[As
     factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
+        await connection.execute(
+            text("CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL)")
+        )
+        await connection.execute(
+            text("INSERT INTO alembic_version (version_num) VALUES (:revision)"),
+            {"revision": application_alembic_head()},
+        )
     app = create_app(
         session_factory=factory,
         database_engine=engine,

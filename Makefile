@@ -1,4 +1,4 @@
-.PHONY: demo down logs contracts check-contracts test test-backend test-frontend test-rust
+.PHONY: demo down logs contracts check-contracts test test-backend test-frontend test-rust db-backup db-restore-rehearsal
 
 COMPOSE := docker compose -f infra/docker/docker-compose.phase1.yml
 
@@ -27,3 +27,13 @@ test-frontend:
 
 test-rust:
 	cd runner && cargo test --workspace --locked
+
+db-backup:
+	@test -n "$$DATABASE_URL"
+	@test -n "$(BACKUP_OUTPUT)"
+	PYTHONPATH=backend uv run --project backend python -m app.database_recovery backup --output "$(BACKUP_OUTPUT)"
+
+db-restore-rehearsal:
+	@test -n "$$DATABASE_URL"
+	@test -n "$$RESTORE_DATABASE_NAME"
+	PYTHONPATH=backend uv run --project backend python scripts/backup_restore_e2e.py
