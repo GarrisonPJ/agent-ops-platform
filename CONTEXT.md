@@ -120,7 +120,7 @@ Kubernetes, Docker socket execution, MCP, vector memory, training export, framew
 
 ## Planned evolution
 
-Runner recovery and the narrow OpenAI-compatible provider boundary are implemented. The next milestone is observability and operational hardening. Recorded Preview remains a testing adapter, not a separate delivery track. Kubernetes, MCP, vector memory, arbitrary execution, multi-tenancy, and automatic policy activation stay deferred until a measured requirement promotes them.
+Runner recovery and the narrow OpenAI-compatible provider boundary are implemented. Observability and operational hardening is in progress: durable diagnostics, API/database/Runner health signals, immutable expired-Attempt correlation, and safe Provider fingerprints are implemented, while migration-aware readiness, backup/restore rehearsal, retention enforcement, and alert classification remain. Recorded Preview remains a testing adapter, not a separate delivery track. Kubernetes, MCP, vector memory, arbitrary execution, multi-tenancy, and automatic policy activation stay deferred until a measured requirement promotes them.
 
 Roadmap changes do not alter these domain invariants by themselves. Update this file and add an ADR before a milestone changes state ownership, recovery semantics, trust boundaries, or activation rules. See [ROADMAP.md](ROADMAP.md).
 

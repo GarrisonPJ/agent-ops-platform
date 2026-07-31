@@ -6,7 +6,7 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 
-from app.phase1_models import RunEvent, RunnerJob, utcnow
+from app.phase1_models import RunEvent, RunnerAttempt, RunnerJob, utcnow
 
 
 AUTH = {"Authorization": "Bearer test-runner-token"}
@@ -211,3 +211,31 @@ async def test_expired_lease_exhaustion_marks_run_terminal(api) -> None:
         assert job.attempt == 3
         assert job.lease_id is None
         assert job.runner_id is None
+        attempts = list(
+            (
+                await db.execute(
+                    select(RunnerAttempt)
+                    .where(RunnerAttempt.run_id == run["id"])
+                    .order_by(RunnerAttempt.attempt.asc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert [
+            (item.attempt, item.runner_id, item.outcome)
+            for item in attempts
+        ] == [
+            (1, "runner-1", "recovered"),
+            (2, "runner-2", "recovered"),
+            (3, "runner-3", "failed"),
+        ]
+
+    diagnostics = await client.get(f"/api/operations/runs/{run['id']}")
+    assert diagnostics.status_code == 200
+    assert diagnostics.json()["metrics"]["lease_recoveries"] == 3
+    assert [item["attempt"] for item in diagnostics.json()["attempts"]] == [1, 2, 3]
+
+    overview = await client.get("/api/operations/overview")
+    assert overview.status_code == 200
+    assert overview.json()["lease_recoveries"] == 3

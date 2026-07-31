@@ -10,6 +10,10 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 SCENARIO_ID = "checkout-api-latency"
+MAX_PROVIDER_LATENCY_MS = 86_400_000
+MAX_PROVIDER_REQUEST_COUNT = 1_000
+MAX_PROVIDER_TOKENS = 1_000_000_000
+MAX_PROVIDER_TOTAL_TOKENS = 2_000_000_000
 
 
 class StrictModel(BaseModel):
@@ -144,10 +148,76 @@ class JobCorrelation(StrictModel):
     recovery_reason: str | None
 
 
+class AttemptCorrelation(StrictModel):
+    attempt: int = Field(ge=1)
+    lease_id: str
+    runner_id: str
+    lease_expires_at: datetime
+    recovery_reason: str
+    outcome: Literal["recovered", "failed", "cancelled"]
+    recorded_at: datetime
+
+
+class ProviderTelemetryInput(StrictModel):
+    model: str = Field(min_length=1, max_length=200)
+    latency_ms: int = Field(ge=0, le=MAX_PROVIDER_LATENCY_MS)
+    request_count: int = Field(ge=0, le=MAX_PROVIDER_REQUEST_COUNT)
+    token_prompt: int = Field(ge=0, le=MAX_PROVIDER_TOKENS)
+    token_completion: int = Field(ge=0, le=MAX_PROVIDER_TOKENS)
+    request_id: str | None = Field(default=None, min_length=1, max_length=500)
+    request_fingerprint: str | None = Field(
+        default=None, pattern=r"^sha256:[0-9a-f]{64}$"
+    )
+
+
+class ProviderTelemetryCorrelation(StrictModel):
+    model: str = Field(min_length=1, max_length=200)
+    latency_ms: int = Field(ge=0, le=MAX_PROVIDER_LATENCY_MS)
+    request_count: int = Field(ge=0, le=MAX_PROVIDER_REQUEST_COUNT)
+    token_prompt: int = Field(ge=0, le=MAX_PROVIDER_TOKENS)
+    token_completion: int = Field(ge=0, le=MAX_PROVIDER_TOKENS)
+    request_fingerprint: str | None = Field(
+        default=None, pattern=r"^sha256:[0-9a-f]{64}$"
+    )
+
+
+class ProviderErrorInput(StrictModel):
+    code: str = Field(min_length=1, max_length=100)
+    message: str = Field(min_length=1, max_length=500)
+    retryable: bool
+    attempts: int = Field(ge=0, le=100)
+    request_id: str | None = Field(default=None, min_length=1, max_length=500)
+    request_fingerprint: str | None = Field(
+        default=None, pattern=r"^sha256:[0-9a-f]{64}$"
+    )
+
+
+class ProviderErrorCorrelation(StrictModel):
+    code: str = Field(min_length=1, max_length=100)
+    message: str = Field(min_length=1, max_length=500)
+    retryable: bool
+    attempts: int = Field(ge=0, le=100)
+    request_fingerprint: str | None = Field(
+        default=None, pattern=r"^sha256:[0-9a-f]{64}$"
+    )
+
+
+class ProviderTelemetryMetrics(StrictModel):
+    model: str = Field(min_length=1, max_length=200)
+    latency_ms: int = Field(ge=0, le=MAX_PROVIDER_LATENCY_MS)
+    request_count: int = Field(ge=0, le=MAX_PROVIDER_REQUEST_COUNT)
+    token_prompt: int = Field(ge=0, le=MAX_PROVIDER_TOKENS)
+    token_completion: int = Field(ge=0, le=MAX_PROVIDER_TOKENS)
+    total_tokens: int = Field(ge=0, le=MAX_PROVIDER_TOTAL_TOKENS)
+    request_fingerprints: list[
+        Annotated[str, Field(pattern=r"^sha256:[0-9a-f]{64}$")]
+    ] = Field(default_factory=list, max_length=20)
+
+
 class ProviderCorrelation(StrictModel):
     model: str | None
-    request_ids: list[str] = Field(default_factory=list)
-    error: dict[str, object] | None
+    request_fingerprints: list[str] = Field(default_factory=list, max_length=20)
+    error: ProviderErrorCorrelation | None
 
 
 class RunTiming(StrictModel):
@@ -171,6 +241,7 @@ class TerminalRunOutcome(StrictModel):
 class RunDiagnosticsResponse(StrictModel):
     run: RunCorrelation
     job: JobCorrelation
+    attempts: list[AttemptCorrelation]
     provider: ProviderCorrelation | None
     timing: RunTiming
     metrics: RunOperationalMetrics

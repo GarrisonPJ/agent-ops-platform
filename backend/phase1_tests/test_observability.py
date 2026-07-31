@@ -1,11 +1,18 @@
 from __future__ import annotations
 
+import hashlib
 from datetime import datetime, timedelta, timezone
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select
 
-from app.phase1_models import Run, RunnerJob, utcnow
+from app.phase1_models import Run, RunEvent, RunnerJob, utcnow
+from app.phase1_schemas import (
+    MAX_PROVIDER_LATENCY_MS,
+    MAX_PROVIDER_REQUEST_COUNT,
+    MAX_PROVIDER_TOKENS,
+)
 
 
 AUTH = {"Authorization": "Bearer test-runner-token"}
@@ -36,6 +43,10 @@ async def claim(client: AsyncClient) -> dict:
     )
     assert response.status_code == 200
     return response.json()
+
+
+def fingerprint(value: str) -> str:
+    return f"sha256:{hashlib.sha256(value.encode('utf-8')).hexdigest()}"
 
 
 def event(run_id: str, sequence: int, event_type: str, payload: dict) -> dict:
@@ -70,6 +81,7 @@ async def test_run_diagnostics_projects_durable_correlation_and_metrics(api) -> 
                     "request_count": 2,
                     "token_prompt": 31,
                     "token_completion": 12,
+                    "unexpected": "provider metadata must not persist",
                 },
             },
         ),
@@ -88,7 +100,12 @@ async def test_run_diagnostics_projects_durable_correlation_and_metrics(api) -> 
             "runner_id": "runner-observer",
             "status": "failed",
             "error": "provider failed",
-            "metrics": {"event_retries": 2},
+            "metrics": {
+                "event_retries": 2,
+                "request_id": "completion-secret",
+                "provider": {"request_id": "completion-provider-secret"},
+                "unexpected": {"credential": "must be dropped"},
+            },
         },
     )
     assert completed.status_code == 200
@@ -101,6 +118,28 @@ async def test_run_diagnostics_projects_durable_correlation_and_metrics(api) -> 
         persisted.claimed_at = now - timedelta(seconds=6)
         persisted.started_at = now - timedelta(seconds=4)
         persisted.completed_at = now
+        persisted_event = (
+            await db.execute(
+                select(RunEvent)
+                .where(RunEvent.run_id == run["id"])
+                .order_by(RunEvent.sequence.asc())
+            )
+        ).scalars().all()
+        assert len(persisted_event) == 3
+        assert persisted_event[1].payload["provider"] == {
+            "model": "observability-model",
+            "latency_ms": 125,
+            "request_count": 2,
+            "token_prompt": 31,
+            "token_completion": 12,
+            "request_fingerprint": fingerprint("req-provider-123"),
+        }
+        assert "unexpected" not in persisted_event[1].payload["provider"]
+        assert "request_id" not in str(persisted_event[1].payload)
+        assert persisted.metrics["event_retries"] == 2
+        assert "completion-secret" not in str(persisted.metrics)
+        assert "completion-provider-secret" not in str(persisted.metrics)
+        assert "credential" not in str(persisted.metrics)
         await db.commit()
 
     response = await client.get(f"/api/operations/runs/{run['id']}")
@@ -121,7 +160,7 @@ async def test_run_diagnostics_projects_durable_correlation_and_metrics(api) -> 
     }
     assert diagnostic["provider"] == {
         "model": "observability-model",
-        "request_ids": ["req-provider-123"],
+        "request_fingerprints": [fingerprint("req-provider-123")],
         "error": None,
     }
     assert diagnostic["timing"] == {
@@ -136,6 +175,143 @@ async def test_run_diagnostics_projects_durable_correlation_and_metrics(api) -> 
         "provider_tokens": 43,
     }
     assert diagnostic["terminal"] == {"status": "failed", "error": "provider failed"}
+
+
+@pytest.mark.asyncio
+async def test_retry_of_legacy_provider_event_is_idempotent_and_sanitized(api) -> None:
+    client, factory = api
+    _, run = await create_baseline(client)
+    job = await claim(client)
+    raw_payload = {
+        "stream": "stderr",
+        "content": "Provider execution failed.",
+        "provider": {
+            "model": "legacy-model",
+            "request_id": "req-legacy",
+            "latency_ms": 25,
+            "request_count": 1,
+            "token_prompt": 3,
+            "token_completion": 0,
+            "unexpected": "drop me",
+        },
+        "provider_error": {
+            "code": "PROVIDER_TIMEOUT",
+            "message": "Provider request timed out",
+            "retryable": True,
+            "attempts": 2,
+            "request_id": "req-legacy-error",
+            "credential": "drop me",
+        },
+    }
+    async with factory() as db:
+        db.add(
+            RunEvent(
+                run_id=run["id"],
+                sequence=1,
+                event_type="process_output",
+                payload=raw_payload,
+                occurred_at=datetime.now(timezone.utc),
+            )
+        )
+        await db.commit()
+
+    for _ in range(2):
+        retried = await client.post(
+            f"/api/internal/runner/runs/{run['id']}/events",
+            headers=AUTH,
+            json={
+                "runner_id": "runner-observer",
+                "lease_id": job["lease_id"],
+                "events": [event(run["id"], 1, "process_output", raw_payload)],
+            },
+        )
+        assert retried.status_code == 200
+        assert retried.json()["accepted_through"] == 1
+
+    async with factory() as db:
+        persisted = (
+            await db.execute(select(RunEvent).where(RunEvent.run_id == run["id"]))
+        ).scalar_one()
+        assert persisted.payload["provider"] == {
+            "model": "legacy-model",
+            "latency_ms": 25,
+            "request_count": 1,
+            "token_prompt": 3,
+            "token_completion": 0,
+            "request_fingerprint": fingerprint("req-legacy"),
+        }
+        assert persisted.payload["provider_error"] == {
+            "code": "PROVIDER_TIMEOUT",
+            "message": "Provider request timed out",
+            "retryable": True,
+            "attempts": 2,
+            "request_fingerprint": fingerprint("req-legacy-error"),
+        }
+        assert "request_id" not in str(persisted.payload)
+        assert "drop me" not in str(persisted.payload)
+
+
+@pytest.mark.asyncio
+async def test_provider_telemetry_aggregation_saturates_at_schema_limits(api) -> None:
+    client, _ = api
+    _, run = await create_baseline(client)
+    job = await claim(client)
+    events = [event(run["id"], 1, "run_started", {"attempt": 1})]
+    for sequence in (2, 3):
+        events.append(
+            event(
+                run["id"],
+                sequence,
+                "process_output",
+                {
+                    "stream": "stdout",
+                    "content": "Provider request completed.",
+                    "provider": {
+                        "model": "boundary-model",
+                        "request_id": f"req-boundary-{sequence}",
+                        "latency_ms": 50_000_000,
+                        "request_count": 600,
+                        "token_prompt": 600_000_000,
+                        "token_completion": 600_000_000,
+                    },
+                },
+            )
+        )
+    events.append(event(run["id"], 4, "run_failed", {"attempt": 1, "status": "failed"}))
+
+    uploaded = await client.post(
+        f"/api/internal/runner/runs/{run['id']}/events",
+        headers=AUTH,
+        json={"runner_id": "runner-observer", "lease_id": job["lease_id"], "events": events},
+    )
+    assert uploaded.status_code == 200
+    completed = await client.post(
+        f"/api/internal/runner/jobs/{job['lease_id']}/complete",
+        headers=AUTH,
+        json={
+            "runner_id": "runner-observer",
+            "status": "failed",
+            "error": "provider failed",
+        },
+    )
+    assert completed.status_code == 200
+    assert completed.json()["metrics"]["provider"] == {
+        "model": "boundary-model",
+        "latency_ms": MAX_PROVIDER_LATENCY_MS,
+        "request_count": MAX_PROVIDER_REQUEST_COUNT,
+        "token_prompt": MAX_PROVIDER_TOKENS,
+        "token_completion": MAX_PROVIDER_TOKENS,
+        "total_tokens": MAX_PROVIDER_TOKENS * 2,
+        "request_fingerprints": [
+            fingerprint("req-boundary-2"),
+            fingerprint("req-boundary-3"),
+        ],
+    }
+
+    diagnostics = await client.get(f"/api/operations/runs/{run['id']}")
+    assert diagnostics.status_code == 200
+    assert diagnostics.json()["metrics"]["provider_latency_ms"] == MAX_PROVIDER_LATENCY_MS
+    assert diagnostics.json()["metrics"]["provider_tokens"] == MAX_PROVIDER_TOKENS * 2
 
 
 @pytest.mark.asyncio
@@ -275,6 +451,12 @@ async def test_run_diagnostics_uses_only_the_latest_recovered_attempt(api) -> No
     diagnostic = response.json()
     assert diagnostic["job"]["attempt"] == 2
     assert diagnostic["metrics"]["lease_recoveries"] == 1
-    assert diagnostic["provider"]["request_ids"] == ["req-current-attempt"]
+    assert len(diagnostic["attempts"]) == 1
+    assert diagnostic["attempts"][0]["attempt"] == 1
+    assert diagnostic["attempts"][0]["runner_id"] == "runner-observer"
+    assert diagnostic["attempts"][0]["outcome"] == "recovered"
+    assert diagnostic["provider"]["request_fingerprints"] == [
+        fingerprint("req-current-attempt")
+    ]
     assert diagnostic["metrics"]["provider_latency_ms"] == 20
     assert diagnostic["metrics"]["provider_tokens"] == 5

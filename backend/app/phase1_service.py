@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import uuid4
 
+from pydantic import ValidationError
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -17,6 +19,7 @@ from app.phase1_models import (
     Run,
     RunAnalysis,
     RunEvent,
+    RunnerAttempt,
     RunnerJob,
     RunnerPresence,
     new_id,
@@ -24,6 +27,7 @@ from app.phase1_models import (
 )
 from app.phase1_schemas import (
     AnalysisResponse,
+    AttemptCorrelation,
     EvaluationLimits,
     EvaluationSpec,
     EventEnvelope,
@@ -31,8 +35,16 @@ from app.phase1_schemas import (
     ExperimentCreate,
     ExperimentResponse,
     JobCorrelation,
+    MAX_PROVIDER_LATENCY_MS,
+    MAX_PROVIDER_REQUEST_COUNT,
+    MAX_PROVIDER_TOKENS,
     OperationsOverviewResponse,
     ProviderCorrelation,
+    ProviderErrorCorrelation,
+    ProviderErrorInput,
+    ProviderTelemetryCorrelation,
+    ProviderTelemetryInput,
+    ProviderTelemetryMetrics,
     RunCorrelation,
     RunDiagnosticsResponse,
     RunOperationalMetrics,
@@ -119,6 +131,119 @@ def _milliseconds_between(start: datetime | None, end: datetime | None) -> int |
     return max(0, int((end - start).total_seconds() * 1_000))
 
 
+def _provider_request_fingerprint(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip()
+    if not normalized or len(normalized) > 500:
+        return None
+    return f"sha256:{hashlib.sha256(normalized.encode('utf-8')).hexdigest()}"
+
+
+def _provider_telemetry_correlation(value: object) -> ProviderTelemetryCorrelation | None:
+    try:
+        return ProviderTelemetryCorrelation.model_validate(value)
+    except ValidationError:
+        return None
+
+
+def _provider_telemetry_metrics(value: object) -> ProviderTelemetryMetrics | None:
+    try:
+        return ProviderTelemetryMetrics.model_validate(value)
+    except ValidationError:
+        return None
+
+
+def _provider_error(value: object) -> dict[str, object] | None:
+    try:
+        parsed = ProviderErrorCorrelation.model_validate(value)
+    except ValidationError:
+        return None
+    return parsed.model_dump(mode="json", exclude_none=True)
+
+
+def _sanitize_provider_telemetry(value: object) -> dict[str, object] | None:
+    if not isinstance(value, dict):
+        return None
+    allowed = {
+        "model",
+        "latency_ms",
+        "request_count",
+        "token_prompt",
+        "token_completion",
+        "request_id",
+        "request_fingerprint",
+    }
+    try:
+        parsed = ProviderTelemetryInput.model_validate(
+            {key: value[key] for key in allowed if key in value}
+        )
+    except ValidationError:
+        return None
+    model = parsed.model.strip()
+    if not model:
+        return None
+    return ProviderTelemetryCorrelation(
+        model=model,
+        latency_ms=parsed.latency_ms,
+        request_count=parsed.request_count,
+        token_prompt=parsed.token_prompt,
+        token_completion=parsed.token_completion,
+        request_fingerprint=(
+            _provider_request_fingerprint(parsed.request_id)
+            if parsed.request_id is not None
+            else parsed.request_fingerprint
+        ),
+    ).model_dump(mode="json", exclude_none=True)
+
+
+def _sanitize_provider_error(value: object) -> dict[str, object] | None:
+    if not isinstance(value, dict):
+        return None
+    allowed = {
+        "code",
+        "message",
+        "retryable",
+        "attempts",
+        "request_id",
+        "request_fingerprint",
+    }
+    try:
+        parsed = ProviderErrorInput.model_validate(
+            {key: value[key] for key in allowed if key in value}
+        )
+    except ValidationError:
+        return None
+    return ProviderErrorCorrelation(
+        code=parsed.code,
+        message=parsed.message,
+        retryable=parsed.retryable,
+        attempts=parsed.attempts,
+        request_fingerprint=(
+            _provider_request_fingerprint(parsed.request_id)
+            if parsed.request_id is not None
+            else parsed.request_fingerprint
+        ),
+    ).model_dump(mode="json", exclude_none=True)
+
+
+def _sanitize_event_payload(_event_type: str, payload: dict) -> dict:
+    sanitized = dict(payload)
+    if "provider" in payload:
+        provider = _sanitize_provider_telemetry(payload.get("provider"))
+        if provider is None:
+            sanitized.pop("provider", None)
+        else:
+            sanitized["provider"] = provider
+    if "provider_error" in payload:
+        provider_error = _sanitize_provider_error(payload.get("provider_error"))
+        if provider_error is None:
+            sanitized.pop("provider_error", None)
+        else:
+            sanitized["provider_error"] = provider_error
+    return sanitized
+
+
 async def get_run_diagnostics(db: AsyncSession, run_id: str) -> RunDiagnosticsResponse:
     run = await require_run(db, run_id)
     job = await db.get(RunnerJob, run_id)
@@ -135,6 +260,17 @@ async def get_run_diagnostics(db: AsyncSession, run_id: str) -> RunDiagnosticsRe
         .scalars()
         .all()
     )
+    attempts = list(
+        (
+            await db.execute(
+                select(RunnerAttempt)
+                .where(RunnerAttempt.run_id == run_id)
+                .order_by(RunnerAttempt.attempt.asc())
+            )
+        )
+        .scalars()
+        .all()
+    )
     latest_attempt_start = 0
     for index, event in enumerate(events):
         if event.event_type != "run_started":
@@ -144,33 +280,27 @@ async def get_run_diagnostics(db: AsyncSession, run_id: str) -> RunDiagnosticsRe
             latest_attempt_start = index
     event_metrics = _provider_metrics(events[latest_attempt_start:])
     run_metrics = run.metrics if isinstance(run.metrics, dict) else {}
-    raw_provider = event_metrics.get("provider")
-    if not isinstance(raw_provider, dict):
-        raw_provider = run_metrics.get("provider")
-    raw_error = event_metrics.get("provider_error")
-    if not isinstance(raw_error, dict):
-        raw_error = run_metrics.get("provider_error")
+    raw_provider = _provider_telemetry_metrics(event_metrics.get("provider"))
+    if raw_provider is None:
+        raw_provider = _provider_telemetry_metrics(run_metrics.get("provider"))
+    raw_error = _provider_error(event_metrics.get("provider_error"))
+    if raw_error is None:
+        raw_error = _provider_error(run_metrics.get("provider_error"))
     provider = None
-    if isinstance(raw_provider, dict) or isinstance(raw_error, dict):
-        request_ids = (
-            [item for item in raw_provider.get("request_ids", []) if isinstance(item, str)]
-            if isinstance(raw_provider, dict)
-            else []
-        )
-        model = raw_provider.get("model") if isinstance(raw_provider, dict) else None
+    if raw_provider is not None or raw_error is not None:
         provider = ProviderCorrelation(
-            model=model if isinstance(model, str) else None,
-            request_ids=request_ids,
-            error=raw_error if isinstance(raw_error, dict) else None,
+            model=raw_provider.model if raw_provider is not None else None,
+            request_fingerprints=(
+                raw_provider.request_fingerprints if raw_provider is not None else []
+            ),
+            error=ProviderErrorCorrelation.model_validate(raw_error)
+            if raw_error is not None
+            else None,
         )
-    provider_latency_ms = (
-        _nonnegative_metric(raw_provider.get("latency_ms"))
-        if isinstance(raw_provider, dict)
-        else 0
-    )
+    provider_latency_ms = raw_provider.latency_ms if raw_provider is not None else 0
     provider_tokens = (
-        _nonnegative_metric(raw_provider.get("total_tokens"))
-        if isinstance(raw_provider, dict)
+        raw_provider.token_prompt + raw_provider.token_completion
+        if raw_provider is not None
         else 0
     )
     terminal = (
@@ -192,6 +322,18 @@ async def get_run_diagnostics(db: AsyncSession, run_id: str) -> RunDiagnosticsRe
             attempt=job.attempt,
             recovery_reason=job.recovery_reason,
         ),
+        attempts=[
+            AttemptCorrelation(
+                attempt=item.attempt,
+                lease_id=item.lease_id,
+                runner_id=item.runner_id,
+                lease_expires_at=item.lease_expires_at,
+                recovery_reason=item.recovery_reason,
+                outcome=item.outcome,
+                recorded_at=item.recorded_at,
+            )
+            for item in attempts
+        ],
         provider=provider,
         timing=RunTiming(
             queue_latency_ms=_milliseconds_between(run.queued_at, run.claimed_at),
@@ -200,7 +342,7 @@ async def get_run_diagnostics(db: AsyncSession, run_id: str) -> RunDiagnosticsRe
         metrics=RunOperationalMetrics(
             event_count=len(events),
             event_retries=_nonnegative_metric(run_metrics.get("event_retries")),
-            lease_recoveries=max(0, job.attempt - 1),
+            lease_recoveries=len(attempts),
             provider_latency_ms=provider_latency_ms,
             provider_tokens=provider_tokens,
         ),
@@ -218,7 +360,9 @@ async def get_operations_overview(db: AsyncSession) -> OperationsOverviewRespons
     runs_by_status: dict[str, int] = {}
     terminal_outcomes: dict[str, int] = {}
     expired_lease_count = 0
-    lease_recoveries = 0
+    lease_recoveries = int(
+        (await db.execute(select(func.count()).select_from(RunnerAttempt))).scalar_one()
+    )
     event_retries = 0
     for run in runs:
         runs_by_status[run.status] = runs_by_status.get(run.status, 0) + 1
@@ -229,7 +373,6 @@ async def get_operations_overview(db: AsyncSession) -> OperationsOverviewRespons
         job = jobs.get(run.id)
         if job is None:
             continue
-        lease_recoveries += max(0, job.attempt - 1)
         expires_at = _aware(job.lease_expires_at)
         if (
             run.status in RECOVERABLE_RUN_STATUSES
@@ -409,13 +552,22 @@ async def _recover_expired_jobs(db: AsyncSession) -> int:
     for job in jobs:
         run = await require_run(db, job.run_id)
         previous_status = run.status
-        reason = f"runner lease expired during {previous_status} (attempt {job.attempt})"
-        if job.attempt >= MAX_RUN_ATTEMPTS:
+        history_attempt = job.attempt
+        lease_id = job.lease_id
+        runner_id = job.runner_id
+        lease_expires_at = job.lease_expires_at
+        assert lease_id is not None
+        assert runner_id is not None
+        assert lease_expires_at is not None
+        reason = f"runner lease expired during {previous_status} (attempt {history_attempt})"
+        history_outcome = "recovered"
+        if history_attempt >= MAX_RUN_ATTEMPTS:
             status = (
                 RunStatus.CANCELLED.value
                 if job.cancel_requested_at is not None
                 else RunStatus.FAILED.value
             )
+            history_outcome = status
             error = f"{reason}; maximum of {MAX_RUN_ATTEMPTS} attempts reached"
             run.status = status
             run.error = error
@@ -428,7 +580,7 @@ async def _recover_expired_jobs(db: AsyncSession) -> int:
                 status,
                 {
                     "recovery_reason": reason,
-                    "attempt": job.attempt,
+                    "attempt": history_attempt,
                 },
             )
             job.recovery_reason = error
@@ -438,6 +590,18 @@ async def _recover_expired_jobs(db: AsyncSession) -> int:
             run.claimed_at = None
             job.attempt += 1
             job.recovery_reason = reason
+        db.add(
+            RunnerAttempt(
+                run_id=job.run_id,
+                attempt=history_attempt,
+                lease_id=lease_id,
+                runner_id=runner_id,
+                lease_expires_at=lease_expires_at,
+                recovery_reason=reason,
+                outcome=history_outcome,
+                recorded_at=now,
+            )
+        )
         job.lease_id = None
         job.runner_id = None
         job.lease_expires_at = None
@@ -600,15 +764,27 @@ async def persist_events(
         .all()
     )
     existing_by_sequence = {item.sequence: item for item in existing}
+    sanitized_payloads = {
+        event.sequence: _sanitize_event_payload(event.type, event.payload)
+        for event in events
+    }
     for event in events:
         previous = existing_by_sequence.get(event.sequence)
-        if previous and (previous.event_type != event.type or previous.payload != event.payload):
+        if previous is None:
+            continue
+        previous_payload = _sanitize_event_payload(previous.event_type, previous.payload)
+        if (
+            previous.event_type != event.type
+            or previous_payload != sanitized_payloads[event.sequence]
+        ):
             raise DomainError(
                 409,
                 "EVENT_CONFLICT",
                 "A different event already uses this sequence",
                 {"sequence": event.sequence},
             )
+        if previous.payload != previous_payload:
+            previous.payload = previous_payload
 
     pending = [item for item in events if item.sequence > accepted_through]
     expected = accepted_through + 1
@@ -628,15 +804,18 @@ async def persist_events(
         run.started_at = now
     new_payloads: list[dict[str, Any]] = []
     for event in pending:
+        payload = sanitized_payloads[event.sequence]
         row = RunEvent(
             run_id=run_id,
             sequence=event.sequence,
             event_type=event.type,
-            payload=event.payload,
+            payload=payload,
             occurred_at=event.occurred_at,
         )
         db.add(row)
-        new_payloads.append(event.model_dump(mode="json"))
+        published = event.model_dump(mode="json")
+        published["payload"] = payload
+        new_payloads.append(published)
         accepted_through = event.sequence
     await db.commit()
     return accepted_through, new_payloads
@@ -708,7 +887,7 @@ def _provider_metrics(events: list[RunEvent]) -> dict[str, object]:
     """Project safe provider telemetry from the latest immutable attempt."""
 
     model: str | None = None
-    request_ids: list[str] = []
+    request_fingerprints: list[str] = []
     latency_ms = 0
     request_count = 0
     prompt_tokens = 0
@@ -720,74 +899,61 @@ def _provider_metrics(events: list[RunEvent]) -> dict[str, object]:
         if event.event_type != "process_output":
             continue
         payload = event.payload
-        provider = payload.get("provider")
-        if isinstance(provider, dict):
+        parsed_provider = _provider_telemetry_correlation(payload.get("provider"))
+        if parsed_provider is not None:
             saw_provider = True
-            raw_model = provider.get("model")
-            if isinstance(raw_model, str) and raw_model.strip():
-                model = raw_model.strip()[:200]
-            request_id = _provider_request_id(provider.get("request_id"))
-            if request_id is not None and request_id not in request_ids and len(request_ids) < 20:
-                request_ids.append(request_id)
-            latency_ms += _nonnegative_metric(provider.get("latency_ms"))
-            request_count += _nonnegative_metric(provider.get("request_count"))
-            prompt_tokens += _nonnegative_metric(provider.get("token_prompt"))
-            completion_tokens += _nonnegative_metric(provider.get("token_completion"))
+            model = parsed_provider.model
+            latency_ms = min(
+                MAX_PROVIDER_LATENCY_MS, latency_ms + parsed_provider.latency_ms
+            )
+            request_count = min(
+                MAX_PROVIDER_REQUEST_COUNT,
+                request_count + parsed_provider.request_count,
+            )
+            prompt_tokens = min(
+                MAX_PROVIDER_TOKENS, prompt_tokens + parsed_provider.token_prompt
+            )
+            completion_tokens = min(
+                MAX_PROVIDER_TOKENS,
+                completion_tokens + parsed_provider.token_completion,
+            )
+            fingerprint = parsed_provider.request_fingerprint
+            if (
+                fingerprint is not None
+                and fingerprint not in request_fingerprints
+                and len(request_fingerprints) < 20
+            ):
+                request_fingerprints.append(fingerprint)
 
         parsed_error = _provider_error(payload.get("provider_error"))
         if parsed_error is not None:
             provider_error = parsed_error
-            request_id = parsed_error.get("request_id")
-            if isinstance(request_id, str) and request_id not in request_ids and len(request_ids) < 20:
-                request_ids.append(request_id)
+            fingerprint = parsed_error.get("request_fingerprint")
+            if (
+                isinstance(fingerprint, str)
+                and fingerprint not in request_fingerprints
+                and len(request_fingerprints) < 20
+            ):
+                request_fingerprints.append(fingerprint)
 
     metrics: dict[str, object] = {}
     if saw_provider:
-        provider_metrics: dict[str, object] = {
-            "latency_ms": latency_ms,
-            "request_count": request_count,
-            "token_prompt": prompt_tokens,
-            "token_completion": completion_tokens,
-            "total_tokens": prompt_tokens + completion_tokens,
-        }
-        if model is not None:
-            provider_metrics["model"] = model
-        if request_ids:
-            provider_metrics["request_ids"] = request_ids
-        metrics["provider"] = provider_metrics
+        provider_metrics = ProviderTelemetryMetrics(
+            model=model or "unknown",
+            latency_ms=latency_ms,
+            request_count=request_count,
+            token_prompt=prompt_tokens,
+            token_completion=completion_tokens,
+            total_tokens=prompt_tokens + completion_tokens,
+            request_fingerprints=request_fingerprints,
+        )
+        provider_payload = provider_metrics.model_dump(mode="json")
+        if not provider_payload["request_fingerprints"]:
+            provider_payload.pop("request_fingerprints")
+        metrics["provider"] = provider_payload
     if provider_error is not None:
         metrics["provider_error"] = provider_error
     return metrics
-
-
-def _provider_request_id(value: object) -> str | None:
-    if not isinstance(value, str):
-        return None
-    value = value.strip()
-    if not value or "://" in value:
-        return None
-    return value[:200]
-
-
-def _provider_error(value: object) -> dict[str, object] | None:
-    if not isinstance(value, dict):
-        return None
-    code = value.get("code")
-    message = value.get("message")
-    if not isinstance(code, str) or not code or not isinstance(message, str) or not message:
-        return None
-    retryable = value.get("retryable")
-    attempts = value.get("attempts")
-    result: dict[str, object] = {
-        "code": code[:100],
-        "message": message[:500],
-        "retryable": retryable if isinstance(retryable, bool) else False,
-        "attempts": _nonnegative_metric(attempts),
-    }
-    request_id = _provider_request_id(value.get("request_id"))
-    if request_id is not None:
-        result["request_id"] = request_id
-    return result
 
 
 def _nonnegative_metric(value: object) -> int:
@@ -813,8 +979,13 @@ async def _analyze_and_score(
     trajectory, computed_metrics = await _trajectory_from_events(db, run)
     score_result = compute_score(trajectory)
     run.score = float(score_result["score"])
+    safe_runner_metrics: dict[str, int] = {}
+    if isinstance(runner_metrics, dict) and "event_retries" in runner_metrics:
+        safe_runner_metrics["event_retries"] = _nonnegative_metric(
+            runner_metrics.get("event_retries")
+        )
     run.metrics = {
-        **(runner_metrics or {}),
+        **safe_runner_metrics,
         **computed_metrics,
         "score_breakdown": score_result["breakdown"],
     }

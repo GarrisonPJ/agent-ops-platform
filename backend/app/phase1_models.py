@@ -80,6 +80,25 @@ class RunnerJob(Base):
     recovery_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
+class RunnerAttempt(Base):
+    __tablename__ = "runner_attempts"
+    __table_args__ = (
+        UniqueConstraint("run_id", "attempt", name="uq_runner_attempts_run_attempt"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_id: Mapped[str] = mapped_column(String(36), ForeignKey("runs.id", ondelete="CASCADE"), nullable=False)
+    attempt: Mapped[int] = mapped_column(Integer, nullable=False)
+    lease_id: Mapped[str] = mapped_column(String(36), nullable=False)
+    runner_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    lease_expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    recovery_reason: Mapped[str] = mapped_column(Text, nullable=False)
+    outcome: Mapped[str] = mapped_column(String(20), nullable=False)
+    recorded_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow
+    )
+
+
 class RunnerPresence(Base):
     __tablename__ = "runner_presence"
 

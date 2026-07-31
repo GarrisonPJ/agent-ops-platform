@@ -31,6 +31,17 @@ the deterministic Golden path.
   generic failed child exit is replaced with `CODE: message` when an emitted
   provider error explains it. Credentials, endpoint values, raw request
   headers, and hidden reasoning are never persisted.
+- Provider telemetry may persist only model identity, bounded latency,
+  request/token counters, and up to 20 SHA-256 request fingerprints. A
+  provider request ID is accepted only transiently at the boundary and is
+  never stored in raw form.
+- Provider errors may persist only code, message, retryable, bounded
+  attempts, and an optional SHA-256 request fingerprint. Unknown Provider
+  fields and arbitrary completion metrics are discarded before RunEvent or
+  Run metrics persistence.
+- Alembic revision `0006_runner_attempts` rewrites legacy RunEvent and Run
+  metrics Provider metadata to the same allowlists and fingerprints. This
+  redaction is intentionally not reversed on downgrade.
 - Fixture remains the default CI and Golden E2E mode. Provider behavior is
   tested against a local fake compatible server; live calls are opt-in.
   Recorded Preview continues to replay persisted fixtures and never invokes
