@@ -1,4 +1,4 @@
-.PHONY: demo down logs contracts check-contracts test test-backend test-frontend test-rust db-backup db-restore-rehearsal
+.PHONY: demo down logs contracts check-contracts test test-backend test-frontend test-rust db-backup db-restore-rehearsal retention-plan retention-execute
 
 COMPOSE := docker compose -f infra/docker/docker-compose.phase1.yml
 
@@ -37,3 +37,17 @@ db-restore-rehearsal:
 	@test -n "$$DATABASE_URL"
 	@test -n "$$RESTORE_DATABASE_NAME"
 	PYTHONPATH=backend uv run --project backend python scripts/backup_restore_e2e.py
+
+RETENTION_LIMIT ?= 100
+
+retention-plan:
+	@test -n "$$DATABASE_URL"
+	@test -n "$$RETENTION_TERMINAL_BEFORE"
+	PYTHONPATH=backend uv run --project backend python -m app.data_retention plan --terminal-before "$$RETENTION_TERMINAL_BEFORE" --limit "$(RETENTION_LIMIT)"
+
+retention-execute:
+	@test -n "$$DATABASE_URL"
+	@test -n "$$RETENTION_TERMINAL_BEFORE"
+	@test -n "$$RETENTION_CONFIRM"
+	@test "$$RETENTION_CONFIRM" = "DELETE_ELIGIBLE_EXPERIMENTS"
+	PYTHONPATH=backend uv run --project backend python -m app.data_retention execute --terminal-before "$$RETENTION_TERMINAL_BEFORE" --limit "$(RETENTION_LIMIT)" --confirm "$$RETENTION_CONFIRM"

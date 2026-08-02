@@ -103,14 +103,14 @@ ADR-0002 已确定采用同一个逻辑 Run 的确定性重启语义。已接受
 
 Phase 1.3 剩余工作：
 
-- 保留执行机制与完整的事件/Provider 元数据脱敏策略尚未实现。
+- 保留执行机制已在本地部分实现，并已记录聚合生命周期契约与运维命令；PostgreSQL 锁定/复核集成、Provider 入库覆盖和审查仍待完成。
 - 全局 Operations 聚合会扫描全部 Run 与 Job；在作为生产规模接口之前，需要先落实保留策略与有界查询。
 
 执行计划：
 
 1. **1.3C — 诊断正确性与安全关联：已完成。** 不可变 Attempt 历史、包含耗尽动作的 Recovery 计数、强类型 Provider Error、Request 指纹、历史数据净化，以及恶意元数据/跨版本重试测试均已实现。
 2. **1.3D — 迁移与数据恢复（P0）：已完成。** Readiness 已对比实时 `alembic_version` 与应用 Head；可执行的 `pg_dump` 备份和临时数据库恢复演练会验证 Schema Revision、public 表行数、已验证外键与恢复后的 Run Trace，并在独立 PostgreSQL 16 CI Job 中运行。
-3. **1.3E — 保留与脱敏（P1）。** 记录覆盖 RunEvent、Provider Telemetry、Analysis 与 Policy 依赖的数据生命周期决策；在入库边界执行 Provider 元数据允许列表；增加 Dry-run 与显式 Execute 的保留命令，并设置终态时间和依赖保护；测试凭证、Endpoint、原始 Header、原始 Provider Content 与隐藏推理无法入库。
+3. **1.3E — 保留与脱敏（P1）：进行中。** 以整个 Experiment 聚合作为原子 Retention Unit；增加由运维者指定 Cutoff 的 Dry-run 与确认门控 Execute 命令，只删除全部 Run 已终态且不存在受保护 Policy 或跨聚合依赖的聚合；停止发出原始 Provider Response Content；验证凭证、Endpoint、Header、原始 Content 与隐藏推理无法入库。本地实现仍为部分完成；PostgreSQL 锁定/复核集成、Provider 入库覆盖和审查仍待完成，并在 ADR-0004 记录 Control Plane 运维边界。
 4. **1.3F — 告警分类与收尾（P1）。** 暴露机器可读状态，区分 API 故障、数据库连接、Schema Drift、Runner 缺失、Lease 过期与 Provider Outage；增加带可重复命令的故障矩阵；限制 Operations 查询；只有实际使用证明 API/Runbook 不足时才增加运维 UI。
 5. **Phase 1.3 收尾。** 运行 Python、TypeScript、Rust、迁移、Compose、Golden、Recovery、备份恢复与脱敏全套检查；同步两份路线图与 `CONTEXT.md`；只有下列每项验收都有证据时才标记 Complete。
 
@@ -125,7 +125,7 @@ Phase 1.3 剩余工作：
 - 失败 Run 关联：**已完成** — 当前与过期 Attempt（包括耗尽动作）均保留 Lease/Runner 身份和安全 Provider 指纹。
 - 故障分类：**部分完成** — 已有 API/数据库/Runner 检查、Schema Drift Readiness 与 Run 诊断；仍缺 Provider Outage 告警分类。
 - 备份与迁移演练：**已完成** — 迁移往返与独立 PostgreSQL 16 备份恢复演练均有可重复的 CI 和本地命令。
-- 保留与脱敏：**部分完成** — Provider 元数据已执行允许列表且历史记录已净化；仍缺完整生命周期策略与保留执行机制。
+- 保留与脱敏：**部分完成** — Provider 元数据已执行允许列表且历史记录已净化；生命周期契约与本地保留命令已存在，但 PostgreSQL 锁定/复核集成、Provider 入库覆盖和审查仍待完成。
 
 目前没有定义 Phase 1.4。Phase 1.3 收尾后，应根据实际运维数据选择下一里程碑；如果开始共享/公网使用、接入不可信 Endpoint/账户或启用有副作用工具，则条件安全门优先。
 

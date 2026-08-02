@@ -35,10 +35,13 @@ the deterministic Golden path.
   request/token counters, and up to 20 SHA-256 request fingerprints. A
   provider request ID is accepted only transiently at the boundary and is
   never stored in raw form.
-- Provider errors may persist only code, message, retryable, bounded
-  attempts, and an optional SHA-256 request fingerprint. Unknown Provider
-  fields and arbitrary completion metrics are discarded before RunEvent or
-  Run metrics persistence.
+- Provider errors may persist only code, a fixed safe message selected from an
+  explicit error-code allowlist (or a fixed generic message for unknown
+  codes), retryable, bounded attempts, and an optional SHA-256 request
+  fingerprint. Unknown Provider fields and arbitrary completion metrics are
+  discarded before RunEvent or Run metrics persistence. For a process_output
+  event with valid Provider metadata, the outer content is replaced by a fixed
+  safe summary; ordinary non-Provider process output remains unchanged.
 - Alembic revision `0006_runner_attempts` rewrites legacy RunEvent and Run
   metrics Provider metadata to the same allowlists and fingerprints. This
   redaction is intentionally not reversed on downgrade.

@@ -13,7 +13,9 @@ This file defines the shared vocabulary and invariants for the implemented Phase
 
 | Term | Definition |
 |---|---|
+| Control Plane | Python-owned API and explicit operator maintenance commands. It is the only boundary allowed to read or mutate PostgreSQL state. |
 | Experiment | Stable container for a task, allowlisted scenario, and selected execution mode. A policy is active only inside its experiment. |
+| Retention Unit | One complete Experiment aggregate, including its Runs, RunEvents, Runner records, analyses, and policies. It is retained or deleted as a whole. |
 | EvaluationSpec | Versioned, immutable execution input: run/experiment IDs, scenario, task, seed, execution mode, limits, and optional policy patch. |
 | ExecutionMode | `fixture` keeps the deterministic Golden path; `provider` delegates reasoning to the Runner-configured OpenAI-compatible boundary while retaining the same allowlisted tools. |
 | Run | One baseline or replay attempt with an explicit lifecycle, score, metrics, and immutable EvaluationSpec. |
@@ -57,7 +59,7 @@ claimed/running/cancelling -- exhausted attempts --> failed or cancelled
 
 ## Core invariants
 
-1. FastAPI is the only database reader and writer.
+1. The Control Plane is the only database reader and writer; explicit operator maintenance commands execute inside that boundary.
 2. A RunEvent is committed before the API notifies SSE subscribers.
 3. Event sequences begin at one, increase contiguously, and are idempotent on retry.
 4. A lease binds one `runner_id`, `lease_id`, and `run_id`; an expired lease cannot mutate a non-terminal run.
@@ -103,7 +105,7 @@ SSE clients reconnect with `after=<lastSequence>`. The API replays later persist
 | Component | Owns | Must not own |
 |---|---|---|
 | React | Workflow UI and client-side presentation state | Scoring, analysis, policy compilation, run state machine |
-| FastAPI | Domain state, persistence, leases, scoring, analysis, policy decisions | Child process supervision |
+| Control Plane | Domain state, persistence, leases, scoring, analysis, policy decisions, and explicit operator maintenance | Child process supervision |
 | Rust Runner | Process group, JSONL transport, heartbeat, retry, cancel, timeout | Database access, scoring, policy logic |
 | Python Agent | Deterministic fixture behavior or narrow provider orchestration for the allowlisted scenario | Run lifecycle, persistence, arbitrary tools, or arbitrary execution |
 | PostgreSQL | Durable system facts | Workflow behavior |
@@ -120,7 +122,7 @@ Kubernetes, Docker socket execution, MCP, vector memory, training export, framew
 
 ## Planned evolution
 
-Runner recovery and the narrow OpenAI-compatible provider boundary are implemented. Observability and operational hardening is in progress: durable diagnostics, migration-aware API/database/Runner health signals, immutable expired-Attempt correlation, safe Provider fingerprints, and executable backup/restore rehearsal are implemented, while retention enforcement and alert classification remain. Recorded Preview remains a testing adapter, not a separate delivery track. Kubernetes, MCP, vector memory, arbitrary execution, multi-tenancy, and automatic policy activation stay deferred until a measured requirement promotes them.
+Runner recovery and the narrow OpenAI-compatible provider boundary are implemented. Observability and operational hardening is in progress: durable diagnostics, migration-aware API/database/Runner health signals, immutable expired-Attempt correlation, safe Provider fingerprints, and executable backup/restore rehearsal are implemented; retention enforcement is partially implemented and alert classification remains. Recorded Preview remains a testing adapter, not a separate delivery track. Kubernetes, MCP, vector memory, arbitrary execution, multi-tenancy, and automatic policy activation stay deferred until a measured requirement promotes them.
 
 Roadmap changes do not alter these domain invariants by themselves. Update this file and add an ADR before a milestone changes state ownership, recovery semantics, trust boundaries, or activation rules. See [ROADMAP.md](ROADMAP.md).
 
@@ -131,3 +133,4 @@ Roadmap changes do not alter these domain invariants by themselves. Update this 
 | [0001](docs/adr/0001-python-control-plane-rust-execution-plane.md) | Python control plane and Rust execution plane | Accepted |
 | [0002](docs/adr/0002-runner-recovery.md) | Deterministic Runner recovery | Accepted |
 | [0003](docs/adr/0003-openai-compatible-provider-boundary.md) | Narrow OpenAI-compatible provider boundary | Accepted |
+| [0004](docs/adr/0004-data-lifecycle-retention.md) | Experiment aggregate retention in the Python Control Plane | Accepted |

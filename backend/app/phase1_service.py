@@ -70,6 +70,20 @@ RECOVERABLE_RUN_STATUSES = {
     RunStatus.CANCELLING.value,
 }
 
+_PROVIDER_ERROR_SAFE_MESSAGES = {
+    "PROVIDER_NOT_CONFIGURED": "Provider execution is not configured on the Runner",
+    "PROVIDER_CONFIGURATION_ERROR": "Provider configuration is invalid",
+    "PROVIDER_TIMEOUT": "Provider request timed out",
+    "PROVIDER_UNAVAILABLE": "Provider request could not be completed",
+    "PROVIDER_RATE_LIMITED": "Provider request was rate limited",
+    "PROVIDER_HTTP_ERROR": "Provider request failed",
+    "PROVIDER_INVALID_RESPONSE": "Provider returned an invalid response",
+    "PROVIDER_STEP_LIMIT": "Provider exhausted the configured step limit",
+    "PROVIDER_UNSUPPORTED_TOOL": "Provider selected an unsupported tool",
+}
+_PROVIDER_ERROR_GENERIC_MESSAGE = "Provider request failed"
+_PROVIDER_EVENT_SAFE_CONTENT = "Provider execution output redacted."
+
 
 class DomainError(Exception):
     def __init__(
@@ -216,7 +230,9 @@ def _sanitize_provider_error(value: object) -> dict[str, object] | None:
         return None
     return ProviderErrorCorrelation(
         code=parsed.code,
-        message=parsed.message,
+        message=_PROVIDER_ERROR_SAFE_MESSAGES.get(
+            parsed.code, _PROVIDER_ERROR_GENERIC_MESSAGE
+        ),
         retryable=parsed.retryable,
         attempts=parsed.attempts,
         request_fingerprint=(
@@ -229,6 +245,9 @@ def _sanitize_provider_error(value: object) -> dict[str, object] | None:
 
 def _sanitize_event_payload(_event_type: str, payload: dict) -> dict:
     sanitized = dict(payload)
+    has_provider_metadata = "provider" in payload or "provider_error" in payload
+    provider: dict[str, object] | None = None
+    provider_error: dict[str, object] | None = None
     if "provider" in payload:
         provider = _sanitize_provider_telemetry(payload.get("provider"))
         if provider is None:
@@ -241,6 +260,16 @@ def _sanitize_event_payload(_event_type: str, payload: dict) -> dict:
             sanitized.pop("provider_error", None)
         else:
             sanitized["provider_error"] = provider_error
+    if _event_type == "process_output" and has_provider_metadata:
+        safe_payload: dict[str, object] = {"content": _PROVIDER_EVENT_SAFE_CONTENT}
+        stream = payload.get("stream")
+        if stream in {"stdout", "stderr"}:
+            safe_payload["stream"] = stream
+        if provider is not None:
+            safe_payload["provider"] = provider
+        if provider_error is not None:
+            safe_payload["provider_error"] = provider_error
+        return safe_payload
     return sanitized
 
 

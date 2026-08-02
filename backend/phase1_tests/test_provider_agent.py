@@ -147,7 +147,7 @@ def completion(
 
 
 @pytest.mark.asyncio
-async def test_provider_agent_uses_local_compatible_server_and_redacts_secrets(
+async def test_provider_agent_uses_local_compatible_server_without_emitting_raw_content(
     monkeypatch: pytest.MonkeyPatch, fake_provider_server
 ) -> None:
     server = fake_provider_server([])
@@ -175,7 +175,11 @@ async def test_provider_agent_uses_local_compatible_server_and_redacts_secrets(
             FakeReply(
                 200,
                 completion(
-                    content=f"The test-provider-secret and {server.base_url} must never persist.",
+                    content=(
+                        "UNIQUE_RAW_PROVIDER_RESPONSE "
+                        f"test-provider-secret {server.base_url} "
+                        "Authorization: Bearer header-like-secret must never persist."
+                    ),
                     prompt_tokens=19,
                     completion_tokens=5,
                     reasoning_content="hidden reasoning must never persist",
@@ -216,10 +220,12 @@ async def test_provider_agent_uses_local_compatible_server_and_redacts_secrets(
     ]
 
     persisted_event_data = json.dumps(events)
+    assert "Provider returned a final response." in persisted_event_data
+    assert "UNIQUE_RAW_PROVIDER_RESPONSE" not in persisted_event_data
     assert "test-provider-secret" not in persisted_event_data
     assert server.base_url not in persisted_event_data
+    assert "Authorization: Bearer header-like-secret" not in persisted_event_data
     assert "hidden reasoning" not in persisted_event_data
-    assert "[redacted]" in persisted_event_data
 
 
 @pytest.mark.asyncio

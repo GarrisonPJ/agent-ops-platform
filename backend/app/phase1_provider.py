@@ -18,7 +18,6 @@ from app.phase1_schemas import EvaluationSpec
 DEFAULT_TIMEOUT_MS = 10_000
 DEFAULT_MAX_RETRIES = 1
 MAX_RETRIES = 3
-MAX_PROVIDER_CONTENT_CHARS = 500
 
 
 @dataclass(frozen=True)
@@ -299,18 +298,13 @@ async def run_provider_agent(
                 },
             )
             if not response.tool_calls:
-                if response.content:
-                    emit(
-                        "process_output",
-                        {
-                            "stream": "stdout",
-                            "content": _redact(
-                                response.content,
-                                settings.api_key,
-                                settings.base_url,
-                            ),
-                        },
-                    )
+                emit(
+                    "process_output",
+                    {
+                        "stream": "stdout",
+                        "content": "Provider returned a final response.",
+                    },
+                )
                 return 0
             if len(response.tool_calls) != 1:
                 _emit_provider_error(
@@ -576,10 +570,3 @@ def _elapsed_ms(started_at: float) -> int:
 
 def _nonnegative_int(value: object) -> int:
     return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else 0
-
-
-def _redact(content: str, *values: str) -> str:
-    for value in values:
-        if value:
-            content = content.replace(value, "[redacted]")
-    return content[:MAX_PROVIDER_CONTENT_CHARS]

@@ -136,6 +136,7 @@ async def test_run_diagnostics_projects_durable_correlation_and_metrics(api) -> 
         }
         assert "unexpected" not in persisted_event[1].payload["provider"]
         assert "request_id" not in str(persisted_event[1].payload)
+        assert persisted_event[1].payload["content"] == "Provider execution output redacted."
         assert persisted.metrics["event_retries"] == 2
         assert "completion-secret" not in str(persisted.metrics)
         assert "completion-provider-secret" not in str(persisted.metrics)
@@ -249,6 +250,162 @@ async def test_retry_of_legacy_provider_event_is_idempotent_and_sanitized(api) -
         }
         assert "request_id" not in str(persisted.payload)
         assert "drop me" not in str(persisted.payload)
+
+
+@pytest.mark.asyncio
+async def test_provider_persistence_uses_fixed_safe_diagnostics(api) -> None:
+    client, factory = api
+    _, run = await create_baseline(client)
+    job = await claim(client)
+    malicious = {
+        "stream": "stderr",
+        "content": (
+            "endpoint=https://provider.invalid/v1/chat/completions "
+            "headers={'Authorization': 'Bearer raw-secret'} "
+            "raw-content=UNIQUE_RAW_PROVIDER_CONTENT "
+            "hidden_reasoning=UNIQUE_HIDDEN_REASONING"
+        ),
+        "endpoint": "https://provider.invalid/v1/chat/completions",
+        "headers": {"Authorization": "Bearer raw-secret"},
+        "hidden_reasoning": "UNIQUE_HIDDEN_REASONING",
+        "provider": {
+            "model": "safe-model",
+            "latency_ms": 11,
+            "request_count": 1,
+            "token_prompt": 4,
+            "token_completion": 5,
+            "request_id": "raw-request-id",
+            "raw_content": "UNIQUE_RAW_PROVIDER_CONTENT",
+        },
+        "provider_error": {
+            "code": "PROVIDER_UNKNOWN",
+            "message": "https://provider.invalid/v1?api_key=raw-secret UNIQUE_ERROR_MESSAGE",
+            "retryable": True,
+            "attempts": 2,
+            "request_id": "raw-error-request-id",
+            "raw_headers": {"Authorization": "Bearer raw-secret"},
+        },
+    }
+    uploaded = await client.post(
+        f"/api/internal/runner/runs/{run['id']}/events",
+        headers=AUTH,
+        json={
+            "runner_id": "runner-observer",
+            "lease_id": job["lease_id"],
+            "events": [event(run["id"], 1, "process_output", malicious)],
+        },
+    )
+    assert uploaded.status_code == 200
+    completed = await client.post(
+        f"/api/internal/runner/jobs/{job['lease_id']}/complete",
+        headers=AUTH,
+        json={
+            "runner_id": "runner-observer",
+            "status": "failed",
+            "error": "agent failed",
+        },
+    )
+    assert completed.status_code == 200
+
+    async with factory() as db:
+        persisted = await db.get(Run, run["id"])
+        assert persisted is not None
+        persisted_event = (
+            await db.execute(select(RunEvent).where(RunEvent.run_id == run["id"]))
+        ).scalar_one()
+        durable = str(persisted_event.payload) + str(persisted.metrics)
+        assert persisted_event.payload == {
+            "stream": "stderr",
+            "content": "Provider execution output redacted.",
+            "provider": {
+                "model": "safe-model",
+                "latency_ms": 11,
+                "request_count": 1,
+                "token_prompt": 4,
+                "token_completion": 5,
+                "request_fingerprint": fingerprint("raw-request-id"),
+            },
+            "provider_error": {
+                "code": "PROVIDER_UNKNOWN",
+                "message": "Provider request failed",
+                "retryable": True,
+                "attempts": 2,
+                "request_fingerprint": fingerprint("raw-error-request-id"),
+            },
+        }
+        assert "provider.invalid" not in durable
+        assert "raw-secret" not in durable
+        assert "UNIQUE_RAW_PROVIDER_CONTENT" not in durable
+        assert "UNIQUE_HIDDEN_REASONING" not in durable
+        assert "UNIQUE_ERROR_MESSAGE" not in durable
+        assert "raw-request-id" not in durable
+        assert "raw-error-request-id" not in durable
+        assert persisted.metrics["provider_error"]["message"] == "Provider request failed"
+
+
+@pytest.mark.asyncio
+async def test_malformed_provider_metadata_cannot_preserve_raw_output(api) -> None:
+    client, factory = api
+    _, run = await create_baseline(client)
+    job = await claim(client)
+    raw_marker = "UNIQUE_MALFORMED_PROVIDER_RAW_OUTPUT"
+    payload = {
+        "stream": "stdout",
+        "content": raw_marker,
+        "endpoint": "https://provider.invalid/v1",
+        "headers": {"Authorization": "Bearer malformed-secret"},
+        "hidden_reasoning": "UNIQUE_MALFORMED_PROVIDER_REASONING",
+        "provider": {},
+        "provider_error": {"code": "PROVIDER_TIMEOUT"},
+    }
+    uploaded = await client.post(
+        f"/api/internal/runner/runs/{run['id']}/events",
+        headers=AUTH,
+        json={
+            "runner_id": "runner-observer",
+            "lease_id": job["lease_id"],
+            "events": [event(run["id"], 1, "process_output", payload)],
+        },
+    )
+    assert uploaded.status_code == 200
+
+    async with factory() as db:
+        persisted = (
+            await db.execute(select(RunEvent).where(RunEvent.run_id == run["id"]))
+        ).scalar_one()
+        assert persisted.payload == {
+            "stream": "stdout",
+            "content": "Provider execution output redacted.",
+        }
+        durable = str(persisted.payload)
+        assert raw_marker not in durable
+        assert "provider.invalid" not in durable
+        assert "malformed-secret" not in durable
+        assert "UNIQUE_MALFORMED_PROVIDER_REASONING" not in durable
+
+
+@pytest.mark.asyncio
+async def test_non_provider_process_output_content_is_preserved(api) -> None:
+    client, factory = api
+    _, run = await create_baseline(client)
+    job = await claim(client)
+    content = "ordinary process output with no Provider metadata"
+    uploaded = await client.post(
+        f"/api/internal/runner/runs/{run['id']}/events",
+        headers=AUTH,
+        json={
+            "runner_id": "runner-observer",
+            "lease_id": job["lease_id"],
+            "events": [event(run["id"], 1, "process_output", {"content": content})],
+        },
+    )
+    assert uploaded.status_code == 200
+
+    async with factory() as db:
+        persisted = (
+            await db.execute(select(RunEvent).where(RunEvent.run_id == run["id"]))
+        ).scalar_one()
+        assert persisted.payload == {"content": content}
 
 
 @pytest.mark.asyncio
