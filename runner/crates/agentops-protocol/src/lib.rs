@@ -250,6 +250,17 @@ pub enum RunnerCommand {
     Cancel,
 }
 
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum TerminalFailureKind {
+    Cancelled,
+    TimedOut,
+    OutputLimitExceeded,
+    AgentExit,
+    ProviderFailure,
+    InternalFailure,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct EventBatchRequest<'a> {
@@ -264,18 +275,20 @@ pub struct EventBatchResponse {
     pub accepted_through: u64,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CompleteRequest<'a> {
     pub runner_id: &'a str,
     pub status: &'a str,
-    pub error: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub failure_kind: Option<TerminalFailureKind>,
     pub metrics: Value,
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     fn spec() -> EvaluationSpec {
         EvaluationSpec {
@@ -351,6 +364,86 @@ mod tests {
         assert_eq!(json["type"], "run_started");
         assert!(json.get("event_type").is_none());
         assert!(event.validate().is_ok());
+    }
+
+    #[test]
+    fn terminal_failure_kind_matches_python_values() {
+        let values = [
+            (TerminalFailureKind::Cancelled, "cancelled"),
+            (TerminalFailureKind::TimedOut, "timed_out"),
+            (
+                TerminalFailureKind::OutputLimitExceeded,
+                "output_limit_exceeded",
+            ),
+            (TerminalFailureKind::AgentExit, "agent_exit"),
+            (TerminalFailureKind::ProviderFailure, "provider_failure"),
+            (TerminalFailureKind::InternalFailure, "internal_failure"),
+        ];
+
+        for (kind, expected) in values {
+            assert_eq!(serde_json::to_value(kind).unwrap(), expected);
+            assert_eq!(
+                serde_json::from_str::<TerminalFailureKind>(&format!("\"{expected}\"")).unwrap(),
+                kind
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_unknown_terminal_failure_kind() {
+        assert!(serde_json::from_str::<TerminalFailureKind>("\"unknown_failure\"").is_err());
+    }
+
+    #[test]
+    fn complete_request_serializes_failure_kind_without_free_text_error() {
+        let request = CompleteRequest {
+            runner_id: "runner-1",
+            status: "failed",
+            failure_kind: Some(TerminalFailureKind::AgentExit),
+            metrics: json_object(),
+        };
+        let json = serde_json::to_value(request).unwrap();
+        assert_eq!(json["failure_kind"], "agent_exit");
+        assert!(json.get("error").is_none());
+    }
+
+    #[test]
+    fn complete_request_deserializes_failure_kind_and_rejects_legacy_error() {
+        let encoded = serde_json::to_string(&json!({
+            "runner_id": "runner-1",
+            "status": "failed",
+            "failure_kind": "internal_failure",
+            "metrics": {},
+        }))
+        .unwrap();
+        let request: CompleteRequest<'_> = serde_json::from_str(&encoded).unwrap();
+        assert_eq!(
+            request.failure_kind,
+            Some(TerminalFailureKind::InternalFailure)
+        );
+
+        let legacy = serde_json::to_string(&json!({
+            "runner_id": "runner-1",
+            "status": "failed",
+            "error": "UNIQUE_LEGACY_ERROR_ATTACK",
+            "metrics": {},
+        }))
+        .unwrap();
+        assert!(serde_json::from_str::<CompleteRequest<'_>>(&legacy).is_err());
+    }
+
+    #[test]
+    fn successful_complete_request_has_no_failure_kind() {
+        let request = CompleteRequest {
+            runner_id: "runner-1",
+            status: "succeeded",
+            failure_kind: None,
+            metrics: json_object(),
+        };
+        let json = serde_json::to_value(request).unwrap();
+        assert_eq!(json["status"], "succeeded");
+        assert!(json.get("failure_kind").is_none());
+        assert!(json.get("error").is_none());
     }
 
     #[test]

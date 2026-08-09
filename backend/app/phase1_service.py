@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -13,6 +12,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.failure_analyzer import analyze_trajectory
+from app.scoring import compute_score
 from app.phase1_models import (
     Experiment,
     Policy,
@@ -41,9 +41,7 @@ from app.phase1_schemas import (
     OperationsOverviewResponse,
     ProviderCorrelation,
     ProviderErrorCorrelation,
-    ProviderErrorInput,
     ProviderTelemetryCorrelation,
-    ProviderTelemetryInput,
     ProviderTelemetryMetrics,
     RunCorrelation,
     RunDiagnosticsResponse,
@@ -58,7 +56,14 @@ from app.phase1_schemas import (
     SCENARIO_ID,
     TERMINAL_RUN_STATUSES,
 )
-from app.scoring import compute_score
+from app.durable_events import (
+    TerminalFailureKind,
+    normalize_event_payload,
+    normalize_terminal_failure_kind,
+    provider_failure_message,
+    request_fingerprint,
+    terminal_failure_message,
+)
 
 
 LEASE_SECONDS = 15
@@ -70,19 +75,6 @@ RECOVERABLE_RUN_STATUSES = {
     RunStatus.CANCELLING.value,
 }
 
-_PROVIDER_ERROR_SAFE_MESSAGES = {
-    "PROVIDER_NOT_CONFIGURED": "Provider execution is not configured on the Runner",
-    "PROVIDER_CONFIGURATION_ERROR": "Provider configuration is invalid",
-    "PROVIDER_TIMEOUT": "Provider request timed out",
-    "PROVIDER_UNAVAILABLE": "Provider request could not be completed",
-    "PROVIDER_RATE_LIMITED": "Provider request was rate limited",
-    "PROVIDER_HTTP_ERROR": "Provider request failed",
-    "PROVIDER_INVALID_RESPONSE": "Provider returned an invalid response",
-    "PROVIDER_STEP_LIMIT": "Provider exhausted the configured step limit",
-    "PROVIDER_UNSUPPORTED_TOOL": "Provider selected an unsupported tool",
-}
-_PROVIDER_ERROR_GENERIC_MESSAGE = "Provider request failed"
-_PROVIDER_EVENT_SAFE_CONTENT = "Provider execution output redacted."
 
 
 class DomainError(Exception):
@@ -146,12 +138,7 @@ def _milliseconds_between(start: datetime | None, end: datetime | None) -> int |
 
 
 def _provider_request_fingerprint(value: object) -> str | None:
-    if not isinstance(value, str):
-        return None
-    normalized = value.strip()
-    if not normalized or len(normalized) > 500:
-        return None
-    return f"sha256:{hashlib.sha256(normalized.encode('utf-8')).hexdigest()}"
+    return request_fingerprint(value)
 
 
 def _provider_telemetry_correlation(value: object) -> ProviderTelemetryCorrelation | None:
@@ -169,108 +156,34 @@ def _provider_telemetry_metrics(value: object) -> ProviderTelemetryMetrics | Non
 
 
 def _provider_error(value: object) -> dict[str, object] | None:
+    normalized = normalize_event_payload(
+        "process_output", {"kind": "provider", "provider_error": value}
+    ).get("provider_error")
+    if normalized is None:
+        return None
     try:
-        parsed = ProviderErrorCorrelation.model_validate(value)
+        parsed = ProviderErrorCorrelation.model_validate(normalized)
     except ValidationError:
         return None
     return parsed.model_dump(mode="json", exclude_none=True)
 
 
 def _sanitize_provider_telemetry(value: object) -> dict[str, object] | None:
-    if not isinstance(value, dict):
-        return None
-    allowed = {
-        "model",
-        "latency_ms",
-        "request_count",
-        "token_prompt",
-        "token_completion",
-        "request_id",
-        "request_fingerprint",
-    }
-    try:
-        parsed = ProviderTelemetryInput.model_validate(
-            {key: value[key] for key in allowed if key in value}
-        )
-    except ValidationError:
-        return None
-    model = parsed.model.strip()
-    if not model:
-        return None
-    return ProviderTelemetryCorrelation(
-        model=model,
-        latency_ms=parsed.latency_ms,
-        request_count=parsed.request_count,
-        token_prompt=parsed.token_prompt,
-        token_completion=parsed.token_completion,
-        request_fingerprint=(
-            _provider_request_fingerprint(parsed.request_id)
-            if parsed.request_id is not None
-            else parsed.request_fingerprint
-        ),
-    ).model_dump(mode="json", exclude_none=True)
+    normalized = normalize_event_payload(
+        "process_output", {"kind": "provider", "provider": value}
+    ).get("provider")
+    return normalized if isinstance(normalized, dict) else None
 
 
 def _sanitize_provider_error(value: object) -> dict[str, object] | None:
-    if not isinstance(value, dict):
-        return None
-    allowed = {
-        "code",
-        "message",
-        "retryable",
-        "attempts",
-        "request_id",
-        "request_fingerprint",
-    }
-    try:
-        parsed = ProviderErrorInput.model_validate(
-            {key: value[key] for key in allowed if key in value}
-        )
-    except ValidationError:
-        return None
-    return ProviderErrorCorrelation(
-        code=parsed.code,
-        message=_PROVIDER_ERROR_SAFE_MESSAGES.get(
-            parsed.code, _PROVIDER_ERROR_GENERIC_MESSAGE
-        ),
-        retryable=parsed.retryable,
-        attempts=parsed.attempts,
-        request_fingerprint=(
-            _provider_request_fingerprint(parsed.request_id)
-            if parsed.request_id is not None
-            else parsed.request_fingerprint
-        ),
-    ).model_dump(mode="json", exclude_none=True)
+    normalized = normalize_event_payload(
+        'process_output', {'kind': 'provider', 'provider_error': value}
+    ).get('provider_error')
+    return normalized if isinstance(normalized, dict) else None
 
 
-def _sanitize_event_payload(_event_type: str, payload: dict) -> dict:
-    sanitized = dict(payload)
-    has_provider_metadata = "provider" in payload or "provider_error" in payload
-    provider: dict[str, object] | None = None
-    provider_error: dict[str, object] | None = None
-    if "provider" in payload:
-        provider = _sanitize_provider_telemetry(payload.get("provider"))
-        if provider is None:
-            sanitized.pop("provider", None)
-        else:
-            sanitized["provider"] = provider
-    if "provider_error" in payload:
-        provider_error = _sanitize_provider_error(payload.get("provider_error"))
-        if provider_error is None:
-            sanitized.pop("provider_error", None)
-        else:
-            sanitized["provider_error"] = provider_error
-    if _event_type == "process_output" and has_provider_metadata:
-        safe_payload: dict[str, object] = {"content": _PROVIDER_EVENT_SAFE_CONTENT}
-        stream = payload.get("stream")
-        if stream in {"stdout", "stderr"}:
-            safe_payload["stream"] = stream
-        if provider is not None:
-            safe_payload["provider"] = provider
-        if provider_error is not None:
-            safe_payload["provider_error"] = provider_error
-        return safe_payload
-    return sanitized
+def _sanitize_event_payload(event_type: str, payload: object) -> dict[str, object]:
+    return normalize_event_payload(event_type, payload)
 
 
 async def get_run_diagnostics(db: AsyncSession, run_id: str) -> RunDiagnosticsResponse:
@@ -927,7 +840,7 @@ def _provider_metrics(events: list[RunEvent]) -> dict[str, object]:
     for event in events:
         if event.event_type != "process_output":
             continue
-        payload = event.payload
+        payload = normalize_event_payload(event.event_type, event.payload)
         parsed_provider = _provider_telemetry_correlation(payload.get("provider"))
         if parsed_provider is not None:
             saw_provider = True
@@ -1101,7 +1014,7 @@ async def complete_job(
     lease_id: str,
     runner_id: str,
     status: str,
-    error: str | None,
+    failure_kind: TerminalFailureKind | str | None,
     metrics: dict | None,
 ) -> RunResponse:
     job, run = await _leased_job(
@@ -1115,16 +1028,21 @@ async def complete_job(
     if run.status == RunStatus.CANCELLING.value or job.cancel_requested_at is not None:
         status = RunStatus.CANCELLED.value
     run.status = status
-    run.error = error
+    failure_kind = normalize_terminal_failure_kind(failure_kind, status=status)
+    run.error = (
+        terminal_failure_message(failure_kind) if failure_kind is not None else None
+    )
     run.completed_at = utcnow()
     if run.started_at is None:
         run.started_at = run.completed_at
 
     await _record_terminal_effects(db, run, status, metrics)
-    if status == RunStatus.FAILED.value and (
-        run.error is None or run.error.startswith("agent exited with")
-    ):
-        run.error = _provider_terminal_error(run.metrics) or run.error
+    if status == RunStatus.FAILED.value:
+        provider_error = _provider_error(run.metrics.get("provider_error"))
+        if provider_error is not None:
+            run.error = _provider_terminal_error(run.metrics) or terminal_failure_message(
+                TerminalFailureKind.PROVIDER_FAILURE
+            )
     await db.commit()
     await db.refresh(run)
     return run_response(run)

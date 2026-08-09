@@ -12,6 +12,11 @@ from urllib.parse import urlparse
 
 import httpx
 
+from app.durable_events import (
+    normalize_event_payload,
+    normalize_provider_failure_kind,
+    provider_failure_message,
+)
 from app.phase1_schemas import EvaluationSpec
 
 
@@ -87,9 +92,9 @@ class ProviderError(Exception):
         latency_ms: int = 0,
         request_id: str | None = None,
     ) -> None:
-        super().__init__(message)
-        self.code = code
-        self.message = message
+        self.code = normalize_provider_failure_kind(code)
+        self.message = provider_failure_message(self.code)
+        super().__init__(self.message)
         self.retryable = retryable
         self.attempts = attempts
         self.latency_ms = latency_ms
@@ -97,7 +102,7 @@ class ProviderError(Exception):
 
     def payload(self) -> dict[str, object]:
         payload: dict[str, object] = {
-            "code": self.code,
+            "code": self.code.value,
             "message": self.message,
             "retryable": self.retryable,
             "attempts": self.attempts,
@@ -289,22 +294,12 @@ async def run_provider_agent(
             }
             if response.request_id is not None:
                 provider_payload["request_id"] = response.request_id
-            emit(
-                "process_output",
-                {
-                    "stream": "stdout",
-                    "content": "Provider request completed.",
-                    "provider": provider_payload,
-                },
+            _emit_provider_output(
+                emit,
+                stream="stdout",
+                provider=provider_payload,
             )
             if not response.tool_calls:
-                emit(
-                    "process_output",
-                    {
-                        "stream": "stdout",
-                        "content": "Provider returned a final response.",
-                    },
-                )
                 return 0
             if len(response.tool_calls) != 1:
                 _emit_provider_error(
@@ -315,6 +310,7 @@ async def run_provider_agent(
                         retryable=False,
                         attempts=response.request_count,
                         latency_ms=response.latency_ms,
+                        request_id=response.request_id,
                     ),
                 )
                 return 1
@@ -323,6 +319,7 @@ async def run_provider_agent(
             try:
                 arguments, observation = _fixture_tool_result(tool_call.name)
             except ProviderError as error:
+                error.request_id = error.request_id or response.request_id
                 _emit_provider_error(emit, error)
                 return 1
             emit(
@@ -397,8 +394,10 @@ def _integer_env(name: str, default: int, *, minimum: int, maximum: int) -> int:
 def _parse_response(
     response: httpx.Response, *, latency_ms: int, request_count: int
 ) -> ProviderResponse:
+    request_id = _provider_request_id(response)
     try:
         data = response.json()
+        request_id = _provider_request_id(response, data)
         choices = data["choices"]
         message = choices[0]["message"]
     except (IndexError, KeyError, TypeError, ValueError) as exc:
@@ -408,6 +407,7 @@ def _parse_response(
             retryable=False,
             attempts=request_count,
             latency_ms=latency_ms,
+            request_id=request_id,
         ) from exc
     if not isinstance(message, dict):
         raise ProviderError(
@@ -416,6 +416,7 @@ def _parse_response(
             retryable=False,
             attempts=request_count,
             latency_ms=latency_ms,
+            request_id=request_id,
         )
 
     raw_tool_calls = message.get("tool_calls") or []
@@ -426,8 +427,15 @@ def _parse_response(
             retryable=False,
             attempts=request_count,
             latency_ms=latency_ms,
+            request_id=request_id,
         )
-    tool_calls = [_parse_tool_call(item, request_count, latency_ms) for item in raw_tool_calls]
+    try:
+        tool_calls = [
+            _parse_tool_call(item, request_count, latency_ms) for item in raw_tool_calls
+        ]
+    except ProviderError as error:
+        error.request_id = error.request_id or request_id
+        raise
     usage = data.get("usage") if isinstance(data, dict) else None
     return ProviderResponse(
         content=message.get("content") if isinstance(message.get("content"), str) else None,
@@ -545,13 +553,9 @@ def _emit_provider_error(
     *,
     model: str | None = None,
 ) -> None:
-    payload: dict[str, object] = {
-        "stream": "stderr",
-        "content": "Provider execution failed.",
-        "provider_error": error.payload(),
-    }
+    provider_payload: dict[str, object] | None = None
     if model is not None:
-        provider_payload: dict[str, object] = {
+        provider_payload = {
             "model": model,
             "latency_ms": error.latency_ms,
             "request_count": error.attempts,
@@ -560,8 +564,30 @@ def _emit_provider_error(
         }
         if error.request_id is not None:
             provider_payload["request_id"] = error.request_id
-        payload["provider"] = provider_payload
-    emit("process_output", payload)
+    _emit_provider_output(
+        emit,
+        stream="stderr",
+        provider=provider_payload,
+        provider_error=error.payload(),
+    )
+
+
+def _emit_provider_output(
+    emit: Callable[[str, dict[str, object]], None],
+    *,
+    stream: str,
+    provider: dict[str, object] | None = None,
+    provider_error: dict[str, object] | None = None,
+) -> None:
+    payload: dict[str, object] = {
+        "kind": "provider",
+        "stream": stream,
+    }
+    if provider is not None:
+        payload["provider"] = provider
+    if provider_error is not None:
+        payload["provider_error"] = provider_error
+    emit("process_output", normalize_event_payload("process_output", payload))
 
 
 def _elapsed_ms(started_at: float) -> int:

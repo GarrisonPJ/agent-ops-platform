@@ -6,14 +6,21 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from app.durable_events import (
+    MAX_PROVIDER_LATENCY_MS,
+    MAX_PROVIDER_REQUEST_COUNT,
+    MAX_PROVIDER_TOKENS,
+    MAX_PROVIDER_TOTAL_TOKENS,
+    ProviderFailureKind,
+    TerminalFailureKind,
+    normalize_event_payload,
+    normalize_terminal_failure_kind,
+)
 
 
 SCENARIO_ID = "checkout-api-latency"
-MAX_PROVIDER_LATENCY_MS = 86_400_000
-MAX_PROVIDER_REQUEST_COUNT = 1_000
-MAX_PROVIDER_TOKENS = 1_000_000_000
-MAX_PROVIDER_TOTAL_TOKENS = 2_000_000_000
 
 
 class StrictModel(BaseModel):
@@ -102,7 +109,12 @@ class EventEnvelope(StrictModel):
         "run_failed",
         "run_cancelled",
     ]
-    payload: dict = Field(default_factory=dict)
+    payload: dict[str, object] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def normalize_payload(self) -> EventEnvelope:
+        self.payload = normalize_event_payload(self.type, self.payload)
+        return self
 
 
 class ExperimentCreate(StrictModel):
@@ -182,8 +194,8 @@ class ProviderTelemetryCorrelation(StrictModel):
 
 
 class ProviderErrorInput(StrictModel):
-    code: str = Field(min_length=1, max_length=100)
-    message: str = Field(min_length=1, max_length=500)
+    code: ProviderFailureKind
+    message: str = Field(min_length=1, max_length=200)
     retryable: bool
     attempts: int = Field(ge=0, le=100)
     request_id: str | None = Field(default=None, min_length=1, max_length=500)
@@ -193,8 +205,8 @@ class ProviderErrorInput(StrictModel):
 
 
 class ProviderErrorCorrelation(StrictModel):
-    code: str = Field(min_length=1, max_length=100)
-    message: str = Field(min_length=1, max_length=500)
+    code: ProviderFailureKind
+    message: str = Field(min_length=1, max_length=200)
     retryable: bool
     attempts: int = Field(ge=0, le=100)
     request_fingerprint: str | None = Field(
@@ -354,8 +366,31 @@ class EventUploadResponse(StrictModel):
 class CompleteRequest(StrictModel):
     runner_id: str = Field(min_length=1, max_length=100)
     status: Literal["succeeded", "failed", "cancelled", "timed_out"]
-    error: str | None = Field(default=None, max_length=4_000)
+    failure_kind: TerminalFailureKind | None = Field(
+        default=None,
+        validation_alias=AliasChoices("failure_kind", "error"),
+    )
     metrics: dict | None = None
+
+    @field_validator("failure_kind", mode="before")
+    @classmethod
+    def normalize_legacy_failure(cls, value: object) -> object:
+        if value is None:
+            return None
+        normalized = normalize_terminal_failure_kind(value)
+        return (
+            normalized.value
+            if normalized is not None
+            else TerminalFailureKind.INTERNAL_FAILURE.value
+        )
+
+    @model_validator(mode="after")
+    def derive_failure_kind(self) -> CompleteRequest:
+        self.failure_kind = normalize_terminal_failure_kind(
+            self.failure_kind,
+            status=self.status,
+        )
+        return self
 
 
 class ApiErrorPayload(BaseModel):

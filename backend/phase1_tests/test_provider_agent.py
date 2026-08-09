@@ -5,12 +5,18 @@ import json
 import threading
 import time
 from dataclasses import dataclass
+from hashlib import sha256
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
 import pytest
 
-from app.phase1_provider import run_provider_agent
+from app.durable_events import MAX_PROVIDER_LATENCY_MS
+from app.phase1_provider import (
+    ProviderError,
+    _emit_provider_error,
+    run_provider_agent,
+)
 from app.phase1_schemas import EvaluationSpec, ExecutionMode
 
 
@@ -104,6 +110,10 @@ def provider_spec() -> EvaluationSpec:
         task="Investigate checkout API latency",
         execution_mode=ExecutionMode.PROVIDER,
     )
+
+
+def fingerprint(value: str) -> str:
+    return f"sha256:{sha256(value.encode('utf-8')).hexdigest()}"
 
 
 def configure_provider(
@@ -206,21 +216,32 @@ async def test_provider_agent_uses_local_compatible_server_without_emitting_raw_
         for message in request["json"]["messages"]
     )
 
+    process_outputs = [
+        payload for kind, payload in events if kind == "process_output"
+    ]
+    assert len(process_outputs) == 2
+    assert all(payload["kind"] == "provider" for payload in process_outputs)
+    assert all(
+        set(payload) <= {"kind", "stream", "provider", "provider_error"}
+        and "content" not in payload
+        for payload in process_outputs
+    )
     provider_events = [payload["provider"] for kind, payload in events if kind == "process_output" and "provider" in payload]
     assert sum(event["request_count"] for event in provider_events) == 2
     assert sum(event["token_prompt"] for event in provider_events) == 30
     assert sum(event["token_completion"] for event in provider_events) == 12
     assert {event["model"] for event in provider_events} == {"fake-checkout-model"}
-    assert [event["request_id"] for event in provider_events] == [
-        "chatcmpl-observe-1",
-        "chatcmpl-observe-2",
+    assert [event["request_fingerprint"] for event in provider_events] == [
+        fingerprint("chatcmpl-observe-1"),
+        fingerprint("chatcmpl-observe-2"),
     ]
     assert [payload["tool_call"]["name"] for kind, payload in events if kind == "step_completed"] == [
         "check_service_health"
     ]
 
     persisted_event_data = json.dumps(events)
-    assert "Provider returned a final response." in persisted_event_data
+    assert "Provider returned a final response." not in persisted_event_data
+    assert "Provider request completed." not in persisted_event_data
     assert "UNIQUE_RAW_PROVIDER_RESPONSE" not in persisted_event_data
     assert "test-provider-secret" not in persisted_event_data
     assert server.base_url not in persisted_event_data
@@ -247,6 +268,11 @@ async def test_provider_agent_retries_a_retryable_response_with_a_bound(
     assert len(server.requests) == 2
     provider_event = next(payload["provider"] for kind, payload in events if kind == "process_output")
     assert provider_event["request_count"] == 2
+    process_output = next(
+        payload for kind, payload in events if kind == "process_output"
+    )
+    assert process_output["kind"] == "provider"
+    assert "content" not in process_output
 
 
 @pytest.mark.asyncio
@@ -269,9 +295,124 @@ async def test_provider_agent_reports_timeout_without_endpoint_or_secret(
         "retryable": True,
         "attempts": 1,
     }
+    process_output = next(
+        payload for kind, payload in events if kind == "process_output"
+    )
+    assert process_output["kind"] == "provider"
+    assert "content" not in process_output
+    assert set(process_output) == {
+        "kind",
+        "stream",
+        "provider",
+        "provider_error",
+    }
     persisted_event_data = json.dumps(events)
     assert server.base_url not in persisted_event_data
     assert "test-provider-secret" not in persisted_event_data
+
+
+@pytest.mark.asyncio
+async def test_provider_agent_reports_invalid_response_without_raw_provider_data(
+    monkeypatch: pytest.MonkeyPatch, fake_provider_server
+) -> None:
+    marker = "UNIQUE_INVALID_RESPONSE_MARKER"
+    server = fake_provider_server(
+        [
+            FakeReply(
+                200,
+                {
+                    "choices": [],
+                    "raw_content": marker,
+                    "endpoint": "https://provider.invalid/v1",
+                    "headers": {"Authorization": "Bearer raw-secret"},
+                    "prompt": "UNIQUE_RAW_PROVIDER_PROMPT",
+                    "stderr": "UNIQUE_RAW_PROVIDER_STDERR",
+                    "secret": "UNIQUE_RAW_PROVIDER_SECRET",
+                },
+                headers={"X-Request-ID": "raw-invalid-request-id"},
+            )
+        ]
+    )
+    configure_provider(monkeypatch, server)
+    events: list[tuple[str, dict[str, object]]] = []
+
+    status = await run_provider_agent(
+        provider_spec(), lambda kind, payload: events.append((kind, payload))
+    )
+
+    assert status == 1
+    assert len(events) == 1
+    kind, payload = events[0]
+    assert kind == "process_output"
+    assert set(payload) == {"kind", "stream", "provider", "provider_error"}
+    assert payload["kind"] == "provider"
+    assert "content" not in payload
+    assert payload["provider_error"] == {
+        "code": "PROVIDER_INVALID_RESPONSE",
+        "message": "Provider returned an invalid response",
+        "retryable": False,
+        "attempts": 1,
+        "request_fingerprint": fingerprint("raw-invalid-request-id"),
+    }
+    assert payload["provider"]["request_count"] == 1
+    assert set(payload["provider"]) == {
+        "model",
+        "latency_ms",
+        "request_count",
+        "token_prompt",
+        "token_completion",
+        "request_fingerprint",
+    }
+    assert payload["provider"]["model"] == "fake-checkout-model"
+    assert payload["provider"]["token_prompt"] == 0
+    assert payload["provider"]["token_completion"] == 0
+    assert 0 <= payload["provider"]["latency_ms"] <= MAX_PROVIDER_LATENCY_MS
+    assert payload["provider"]["request_fingerprint"] == fingerprint(
+        "raw-invalid-request-id"
+    )
+    serialized = json.dumps(events)
+    assert marker not in serialized
+    assert "provider.invalid" not in serialized
+    assert "raw-secret" not in serialized
+    assert "UNIQUE_RAW_PROVIDER_PROMPT" not in serialized
+    assert "UNIQUE_RAW_PROVIDER_STDERR" not in serialized
+    assert "UNIQUE_RAW_PROVIDER_SECRET" not in serialized
+    assert "raw-invalid-request-id" not in serialized
+
+
+def test_provider_error_producer_normalizes_unknown_codes_and_fingerprints_ids() -> None:
+    events: list[tuple[str, dict[str, object]]] = []
+    _emit_provider_error(
+        lambda kind, payload: events.append((kind, payload)),
+        ProviderError(
+            "VENDOR_SECRET_FAILURE",
+            "UNIQUE_DYNAMIC_ERROR_MESSAGE",
+            retryable=False,
+            attempts=2,
+            request_id="raw-unknown-request-id",
+        ),
+    )
+
+    assert events == [
+        (
+            "process_output",
+            {
+                "kind": "provider",
+                "stream": "stderr",
+                "provider_error": {
+                    "code": "PROVIDER_UNKNOWN",
+                    "message": "Provider request failed",
+                    "retryable": False,
+                    "attempts": 2,
+                    "request_fingerprint": fingerprint("raw-unknown-request-id"),
+                },
+            },
+        )
+    ]
+    serialized = json.dumps(events)
+    assert "UNIQUE_DYNAMIC_ERROR_MESSAGE" not in serialized
+    assert "raw-unknown-request-id" not in serialized
+    assert "content" not in serialized
 
 
 @pytest.mark.asyncio
@@ -331,3 +472,8 @@ async def test_provider_agent_rejects_a_tool_outside_the_allowlist_once(
     assert provider_events[0]["request_count"] == 1
     error = next(payload["provider_error"] for kind, payload in events if "provider_error" in payload)
     assert error["code"] == "PROVIDER_UNSUPPORTED_TOOL"
+    process_output = next(
+        payload for kind, payload in events if kind == "process_output"
+    )
+    assert process_output["kind"] == "provider"
+    assert "content" not in process_output

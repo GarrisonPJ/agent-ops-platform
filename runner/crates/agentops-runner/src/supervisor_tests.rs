@@ -13,10 +13,11 @@ use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use tokio::time::sleep;
 
-use super::{RunnerConfig, Worker};
+use super::{RunnerConfig, Worker, MAX_LINE_BYTES};
 
 struct ServerState {
     completed: Mutex<Vec<Value>>,
+    events: Mutex<Vec<Value>>,
     event_attempts: AtomicUsize,
     fail_event_responses: usize,
     heartbeat_command: &'static str,
@@ -34,6 +35,7 @@ impl TestServer {
         let address = listener.local_addr().unwrap();
         let state = Arc::new(ServerState {
             completed: Mutex::new(Vec::new()),
+            events: Mutex::new(Vec::new()),
             event_attempts: AtomicUsize::new(0),
             fail_event_responses,
             heartbeat_command,
@@ -62,6 +64,32 @@ impl TestServer {
             sleep(Duration::from_millis(20)).await;
         }
         panic!("runner never submitted completion");
+    }
+
+    async fn terminal_events(&self) -> Vec<Value> {
+        let requests = self.state.events.lock().await.clone();
+        requests
+            .into_iter()
+            .flat_map(|request| {
+                request
+                    .get("events")
+                    .and_then(Value::as_array)
+                    .cloned()
+                    .unwrap_or_default()
+            })
+            .filter(|event| {
+                matches!(
+                    event.get("type").and_then(Value::as_str),
+                    Some("run_completed" | "run_failed" | "run_cancelled")
+                )
+            })
+            .collect()
+    }
+
+    async fn terminal_event(&self) -> Value {
+        let events = self.terminal_events().await;
+        assert_eq!(events.len(), 1);
+        events.into_iter().next().unwrap()
     }
 }
 
@@ -107,10 +135,12 @@ async fn handle_request(mut stream: TcpStream, state: Arc<ServerState>) -> std::
     let body = &request[header_end..request.len().min(header_end + content_length)];
 
     let (status, response) = if path.ends_with("/events") {
+        let parsed = serde_json::from_slice(body).unwrap_or(Value::Null);
         let attempt = state.event_attempts.fetch_add(1, Ordering::SeqCst);
         if attempt < state.fail_event_responses {
             ("503 Service Unavailable", "{}".to_string())
         } else {
+            state.events.lock().await.push(parsed);
             ("200 OK", r#"{"accepted_through":1000}"#.to_string())
         }
     } else if path.ends_with("/heartbeat") {
@@ -216,7 +246,7 @@ async fn invalid_jsonl_fails_run_and_terminates_process_group() {
     let server = TestServer::start("continue", 0).await;
     let path = pid_file("invalid-json");
     let _ = std::fs::remove_file(&path);
-    let code = process_tree_agent(&path, "print('not-json', flush=True)");
+    let code = process_tree_agent(&path, "print('UNIQUE_INVALID_JSON_ATTACK', flush=True)");
     let runner = worker(&server, code);
 
     runner.execute_claim(claim(10_000)).await.unwrap();
@@ -225,11 +255,80 @@ async fn invalid_jsonl_fails_run_and_terminates_process_group() {
     assert_process_gone(pid).await;
     let completion = server.completion().await;
     assert_eq!(completion["status"], "failed");
-    assert!(completion["error"]
-        .as_str()
-        .unwrap()
-        .contains("invalid JSONL"));
+    assert_eq!(completion["failure_kind"], "internal_failure");
+    assert!(completion.get("error").is_none());
+    let terminal = server.terminal_event().await;
+    assert_eq!(terminal["payload"]["failure_kind"], "internal_failure");
+    assert!(terminal["payload"].get("error").is_none());
+    let terminal_json = serde_json::to_string(&server.terminal_events().await).unwrap();
+    assert!(!terminal_json.contains("UNIQUE_INVALID_JSON_ATTACK"));
     let _ = std::fs::remove_file(path);
+}
+
+#[tokio::test]
+async fn nonzero_exit_maps_to_agent_exit_without_free_text() {
+    let server = TestServer::start("continue", 0).await;
+    let runner = worker(&server, "import sys; sys.exit(7)".to_string());
+
+    runner.execute_claim(claim(10_000)).await.unwrap();
+
+    let completion = server.completion().await;
+    assert_eq!(completion["status"], "failed");
+    assert_eq!(completion["failure_kind"], "agent_exit");
+    assert!(completion.get("error").is_none());
+    let terminal = server.terminal_event().await;
+    assert_eq!(terminal["payload"]["failure_kind"], "agent_exit");
+    assert!(terminal["payload"].get("error").is_none());
+}
+
+#[tokio::test]
+async fn output_limit_maps_to_structured_failure() {
+    let server = TestServer::start("continue", 0).await;
+    let code = format!("print('x' * {}, flush=True)", MAX_LINE_BYTES + 1);
+    let runner = worker(&server, code);
+
+    runner.execute_claim(claim(10_000)).await.unwrap();
+
+    let completion = server.completion().await;
+    assert_eq!(completion["status"], "failed");
+    assert_eq!(completion["failure_kind"], "output_limit_exceeded");
+    assert!(completion.get("error").is_none());
+    let terminal = server.terminal_event().await;
+    assert_eq!(terminal["payload"]["failure_kind"], "output_limit_exceeded");
+    assert!(terminal["payload"].get("error").is_none());
+}
+
+#[tokio::test]
+async fn provider_event_maps_to_provider_failure_without_raw_provider_text() {
+    let server = TestServer::start("continue", 0).await;
+    let code = r#"
+import json, sys
+print(json.dumps({"type": "process_output", "payload": {
+    "kind": "provider",
+    "stream": "stderr",
+    "provider_error": {
+        "code": "PROVIDER_UNKNOWN",
+        "message": "UNIQUE_RAW_PROVIDER_TEXT",
+        "retryable": False,
+        "attempts": 1
+    }
+}}), flush=True)
+sys.exit(1)
+"#
+    .to_string();
+    let runner = worker(&server, code);
+
+    runner.execute_claim(claim(10_000)).await.unwrap();
+
+    let completion = server.completion().await;
+    assert_eq!(completion["status"], "failed");
+    assert_eq!(completion["failure_kind"], "provider_failure");
+    assert!(completion.get("error").is_none());
+    let terminal = server.terminal_event().await;
+    assert_eq!(terminal["payload"]["failure_kind"], "provider_failure");
+    assert!(terminal["payload"].get("error").is_none());
+    let terminal_json = serde_json::to_string(&terminal).unwrap();
+    assert!(!terminal_json.contains("UNIQUE_RAW_PROVIDER_TEXT"));
 }
 
 #[tokio::test]
@@ -246,6 +345,11 @@ async fn timeout_terminates_process_group() {
     assert_process_gone(pid).await;
     let completion = server.completion().await;
     assert_eq!(completion["status"], "timed_out");
+    assert_eq!(completion["failure_kind"], "timed_out");
+    assert!(completion.get("error").is_none());
+    let terminal = server.terminal_event().await;
+    assert_eq!(terminal["payload"]["failure_kind"], "timed_out");
+    assert!(terminal["payload"].get("error").is_none());
     let _ = std::fs::remove_file(path);
 }
 
@@ -263,6 +367,12 @@ async fn heartbeat_cancel_terminates_process_group() {
     assert_process_gone(pid).await;
     let completion = server.completion().await;
     assert_eq!(completion["status"], "cancelled");
+    assert_eq!(completion["failure_kind"], "cancelled");
+    assert!(completion.get("error").is_none());
+    let terminal = server.terminal_event().await;
+    assert_eq!(terminal["payload"]["failure_kind"], "cancelled");
+    assert!(terminal["payload"].get("error").is_none());
+    assert_eq!(server.state.completed.lock().await.len(), 1);
     let _ = std::fs::remove_file(path);
 }
 
@@ -271,7 +381,7 @@ async fn stderr_is_drained_and_transient_event_failure_is_retried() {
     let server = TestServer::start("continue", 2).await;
     let code = r#"
 import json, sys
-sys.stderr.write("x" * 200000)
+sys.stderr.write("UNIQUE_RAW_STDERR_ATTACK" + "x" * 200000)
 sys.stderr.flush()
 print(json.dumps({"type": "process_output", "payload": {"stream": "stdout", "content": "ready"}}), flush=True)
 "#
@@ -282,7 +392,15 @@ print(json.dumps({"type": "process_output", "payload": {"stream": "stdout", "con
 
     let completion = server.completion().await;
     assert_eq!(completion["status"], "succeeded");
+    assert!(completion.get("failure_kind").is_none());
+    assert!(completion.get("error").is_none());
     assert!(completion["metrics"]["stderr_bytes"].as_u64().unwrap() >= 200_000);
     assert!(server.state.event_attempts.load(Ordering::SeqCst) >= 4);
     assert_eq!(completion["metrics"]["event_retries"], 2);
+    let terminal = server.terminal_event().await;
+    assert!(terminal["payload"].get("failure_kind").is_none());
+    assert!(terminal["payload"].get("error").is_none());
+    let terminal_json = serde_json::to_string(&terminal).unwrap();
+    assert!(!terminal_json.contains("UNIQUE_RAW_STDERR_ATTACK"));
+    assert_eq!(server.state.completed.lock().await.len(), 1);
 }

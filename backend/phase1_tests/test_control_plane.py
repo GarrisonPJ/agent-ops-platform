@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select
+
+from app.phase1_models import RunEvent
 
 
 AUTH = {"Authorization": "Bearer test-runner-token"}
@@ -356,5 +360,65 @@ async def test_provider_mode_persists_safe_metadata_and_respects_cancellation(ap
     )
     assert cancelled.status_code == 200
     assert cancelled.json()["status"] == "cancelled"
-    assert cancelled.json()["error"] == "agent exited with exit status: 1"
+    assert cancelled.json()["error"] == "Run cancelled"
     assert cancelled.json()["metrics"]["provider_error"] == provider_error
+
+
+@pytest.mark.asyncio
+async def test_legacy_completion_error_cannot_reach_run_or_durable_events(api) -> None:
+    client, factory = api
+    _, run = await create_baseline(client)
+    job = await claim(client)
+    completion_marker = "UNIQUE_LEGACY_COMPLETION_ERROR_ATTACK"
+    event_marker = "UNIQUE_LEGACY_EVENT_ERROR_ATTACK"
+
+    uploaded = await client.post(
+        f"/api/internal/runner/runs/{run['id']}/events",
+        headers=AUTH,
+        json={
+            "runner_id": "runner-1",
+            "lease_id": job["lease_id"],
+            "events": [
+                envelope(
+                    run["id"],
+                    1,
+                    "run_failed",
+                    {"status": "failed", "error": event_marker},
+                )
+            ],
+        },
+    )
+    assert uploaded.status_code == 200
+
+    completed = await client.post(
+        f"/api/internal/runner/jobs/{job['lease_id']}/complete",
+        headers=AUTH,
+        json={
+            "runner_id": "runner-1",
+            "status": "failed",
+            "error": completion_marker,
+            "metrics": {"raw_error": completion_marker},
+        },
+    )
+    assert completed.status_code == 200
+    completed_run = completed.json()
+    assert completed_run["error"] == "Agent execution failed"
+    response_json = json.dumps(completed_run)
+    assert completion_marker not in response_json
+    assert event_marker not in response_json
+
+    async with factory() as db:
+        persisted_events = (
+            await db.execute(
+                select(RunEvent)
+                .where(RunEvent.run_id == run["id"])
+                .order_by(RunEvent.sequence.asc())
+            )
+        ).scalars().all()
+
+    assert [event.payload for event in persisted_events] == [
+        {"status": "failed", "failure_kind": "internal_failure"}
+    ]
+    durable_json = json.dumps([event.payload for event in persisted_events])
+    assert completion_marker not in durable_json
+    assert event_marker not in durable_json

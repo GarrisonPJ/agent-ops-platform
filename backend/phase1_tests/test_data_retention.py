@@ -6,12 +6,26 @@ from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import func, select
+from sqlalchemy.exc import OperationalError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.data_retention import (
     EXECUTE_CONFIRMATION,
+    RETENTION_LOCK_CONFLICT,
+    RETENTION_LOCK_TIMEOUT,
+    RETENTION_PLAN_INVALID,
+    RETENTION_STATEMENT_TIMEOUT,
     POSTGRES_RETENTION_LOCK,
+    POSTGRES_RETENTION_LOCK_TIMEOUT_STATEMENT,
+    POSTGRES_RETENTION_STATEMENT_TIMEOUT_STATEMENT,
     RetentionError,
+    RetentionPlan,
+    RetentionPlanStaleError,
+    RetentionUnit,
     _acquire_retention_maintenance_lock,
+    _load_plan_file,
+    _parser,
+    _retention_database_error,
     execute_retention,
     plan_retention,
     validate_limit,
@@ -141,7 +155,7 @@ class RecordingSession:
     def get_bind(self) -> SimpleNamespace:
         return self._bind
 
-    async def execute(self, statement) -> None:
+    async def execute(self, statement, parameters=None) -> None:
         self.statements.append(str(statement))
 
 
@@ -153,7 +167,11 @@ async def test_maintenance_lock_is_postgres_only_and_table_scoped() -> None:
 
     postgres = RecordingSession("postgresql")
     await _acquire_retention_maintenance_lock(postgres)  # type: ignore[arg-type]
-    assert postgres.statements == [POSTGRES_RETENTION_LOCK]
+    assert postgres.statements == [
+        POSTGRES_RETENTION_LOCK_TIMEOUT_STATEMENT,
+        POSTGRES_RETENTION_STATEMENT_TIMEOUT_STATEMENT,
+        POSTGRES_RETENTION_LOCK,
+    ]
 
 
 @pytest.mark.asyncio
@@ -176,9 +194,10 @@ async def test_execute_rechecks_candidates_after_maintenance_lock(
     monkeypatch.setattr(
         "app.data_retention._eligible_experiments", record_candidates
     )
+    reviewed_plan = RetentionPlan.from_units(CUTOFF, 1, ())
     async with factory() as db:
         await execute_retention(
-            db, CUTOFF, confirmation=EXECUTE_CONFIRMATION, limit=1
+            db, reviewed_plan, confirmation=EXECUTE_CONFIRMATION
         )
     assert order == ["lock", ("candidates", True)]
 
@@ -215,13 +234,90 @@ async def test_plan_is_bounded_content_free_and_has_no_side_effect(api) -> None:
         assert await db.get(Experiment, experiment_id) is not None
 
 
+def test_retention_plan_digest_is_canonical_and_tamper_evident() -> None:
+    units = (
+        RetentionUnit("experiment-z", 1, 2, 1, 0, 0, 0),
+        RetentionUnit("experiment-a", 1, 0, 1, 0, 0, 0),
+    )
+    plan = RetentionPlan.from_units(
+        CUTOFF,
+        2,
+        units,
+        {"protected_policy": 3},
+    )
+    reversed_plan = RetentionPlan.from_units(
+        CUTOFF,
+        2,
+        tuple(reversed(units)),
+        {"protected_policy": 3},
+    )
+    assert plan.experiment_ids == ("experiment-a", "experiment-z")
+    assert plan.units == tuple(sorted(units, key=lambda unit: unit.experiment_id))
+    assert plan.digest == reversed_plan.digest
+    assert plan.digest.startswith("sha256:")
+    assert RetentionPlan.from_dict(json.loads(json.dumps(plan.as_dict()))) == plan
+
+    tampered = json.loads(json.dumps(plan.as_dict()))
+    tampered["units"][0]["row_counts"]["runs"] += 1
+    with pytest.raises(RetentionError, match=RETENTION_PLAN_INVALID):
+        RetentionPlan.from_dict(tampered)
+
+
+def test_retention_plan_file_and_cli_serialization(tmp_path) -> None:
+    plan = RetentionPlan.from_units(CUTOFF, 1, ())
+    path = tmp_path / "retention-plan.json"
+    path.write_text(json.dumps(plan.as_dict()), encoding="utf-8")
+
+    assert _load_plan_file(path) == plan
+    execute_args = _parser().parse_args(
+        [
+            "execute",
+            "--plan-file",
+            str(path),
+            "--confirm",
+            EXECUTE_CONFIRMATION,
+        ]
+    )
+    assert execute_args.plan_file == path
+    assert execute_args.confirm == EXECUTE_CONFIRMATION
+    plan_args = _parser().parse_args(
+        [
+            "plan",
+            "--terminal-before",
+            "2025-06-01T00:00:00Z",
+            "--limit",
+            "2",
+        ]
+    )
+    assert plan_args.limit == 2
+    assert plan_args.terminal_before == CUTOFF
+
+
+def test_retention_database_timeout_mapping() -> None:
+    class PostgresError:
+        def __init__(self, sqlstate: str) -> None:
+            self.sqlstate = sqlstate
+
+    for sqlstate, code in (
+        ("55P03", RETENTION_LOCK_TIMEOUT),
+        ("57014", RETENTION_STATEMENT_TIMEOUT),
+        ("40P01", RETENTION_LOCK_CONFLICT),
+    ):
+        mapped = _retention_database_error(
+            OperationalError("retention", {}, PostgresError(sqlstate))
+        )
+        assert mapped is not None
+        assert str(mapped).startswith(code)
+
+
 @pytest.mark.asyncio
 async def test_execute_requires_exact_confirmation(api) -> None:
     _, factory = api
     experiment_id, _, _ = await add_experiment(factory, label="confirm")
     async with factory() as db:
+        plan = await plan_retention(db, CUTOFF, limit=1)
         with pytest.raises(RetentionError, match="confirmation token"):
-            await execute_retention(db, CUTOFF, confirmation="delete", limit=1)
+            await execute_retention(db, plan, confirmation="delete")
     async with factory() as db:
         assert await db.get(Experiment, experiment_id) is not None
 
@@ -333,12 +429,135 @@ async def test_execute_revalidates_a_stale_plan(api) -> None:
         )
         await db.commit()
     async with factory() as db:
-        executed = await execute_retention(
-            db, CUTOFF, confirmation=EXECUTE_CONFIRMATION
-        )
-    assert experiment_id not in {unit.experiment_id for unit in executed.units}
+        with pytest.raises(
+            RetentionPlanStaleError, match="RETENTION_PLAN_STALE"
+        ):
+            await execute_retention(
+                db, plan, confirmation=EXECUTE_CONFIRMATION
+            )
     async with factory() as db:
         assert await db.get(Experiment, experiment_id) is not None
+
+
+@pytest.mark.asyncio
+async def test_stale_plan_aborts_atomically_when_new_candidate_appears(api) -> None:
+    _, factory = api
+    first_experiment, _, _ = await add_experiment(factory, label="planned")
+    async with factory() as db:
+        plan = await plan_retention(db, CUTOFF, limit=2)
+    second_experiment, _, _ = await add_experiment(factory, label="unplanned")
+
+    async with factory() as db:
+        with pytest.raises(
+            RetentionPlanStaleError, match="RETENTION_PLAN_STALE"
+        ):
+            await execute_retention(
+                db, plan, confirmation=EXECUTE_CONFIRMATION
+            )
+    async with factory() as db:
+        assert await db.get(Experiment, first_experiment) is not None
+        assert await db.get(Experiment, second_experiment) is not None
+
+
+@pytest.mark.asyncio
+async def test_stale_plan_aborts_when_aggregate_row_counts_change(api) -> None:
+    _, factory = api
+    experiment_id, run_id, _ = await add_experiment(factory, label="count-stale")
+    async with factory() as db:
+        plan = await plan_retention(db, CUTOFF)
+    async with factory() as db:
+        db.add(
+            RunEvent(
+                run_id=run_id,
+                sequence=1,
+                event_type="run_failed",
+                payload={"content": "count-change"},
+                occurred_at=OLD,
+            )
+        )
+        await db.commit()
+
+    async with factory() as db:
+        with pytest.raises(
+            RetentionPlanStaleError, match="RETENTION_PLAN_STALE"
+        ):
+            await execute_retention(
+                db, plan, confirmation=EXECUTE_CONFIRMATION
+            )
+    async with factory() as db:
+        assert await db.get(Experiment, experiment_id) is not None
+        assert (
+            int(
+                (
+                    await db.execute(
+                        select(func.count())
+                        .select_from(RunEvent)
+                        .where(RunEvent.run_id == run_id)
+                    )
+                ).scalar_one()
+            )
+            == 1
+        )
+
+
+@pytest.mark.asyncio
+async def test_execute_rolls_back_after_delete_failure(api, monkeypatch) -> None:
+    _, factory = api
+    first_experiment, first_run, first_policy = await add_experiment(
+        factory,
+        label='rollback-a',
+        policy_status='superseded',
+        with_evidence=True,
+    )
+    second_experiment, second_run, second_policy = await add_experiment(
+        factory,
+        label='rollback-b',
+        policy_status='superseded',
+        with_evidence=True,
+    )
+    assert first_policy is not None
+    assert second_policy is not None
+
+    async with factory() as db:
+        plan = await plan_retention(db, CUTOFF, limit=2)
+    assert set(plan.experiment_ids) == {first_experiment, second_experiment}
+
+    original_delete = AsyncSession.delete
+
+    async def delete_then_fail(session, instance) -> None:
+        await original_delete(session, instance)
+        await session.flush()
+        raise RuntimeError('forced retention delete failure')
+
+    monkeypatch.setattr(AsyncSession, 'delete', delete_then_fail)
+    async with factory() as db:
+        with pytest.raises(
+            RuntimeError, match='forced retention delete failure'
+        ):
+            await execute_retention(
+                db,
+                plan,
+                confirmation=EXECUTE_CONFIRMATION,
+            )
+
+    async with factory() as db:
+        for experiment_id in (first_experiment, second_experiment):
+            assert await db.get(Experiment, experiment_id) is not None
+        for run_id in (first_run, second_run):
+            assert await db.get(Run, run_id) is not None
+            for model in (RunEvent, RunnerJob, RunnerAttempt, RunAnalysis):
+                count = int(
+                    (
+                        await db.execute(
+                            select(func.count())
+                            .select_from(model)
+                            .where(model.run_id == run_id)
+                        )
+                    ).scalar_one()
+                )
+                assert count == 1
+        assert await db.get(Policy, first_policy) is not None
+        assert await db.get(Policy, second_policy) is not None
 
 
 @pytest.mark.asyncio
@@ -354,11 +573,11 @@ async def test_execute_deletes_only_the_complete_eligible_aggregate(api) -> None
         factory, label="retain", run_status="queued", completed_at=None
     )
     async with factory() as db:
+        plan = await plan_retention(db, CUTOFF, limit=1)
         report = await execute_retention(
             db,
-            CUTOFF,
+            plan,
             confirmation=EXECUTE_CONFIRMATION,
-            limit=1,
         )
     assert [unit.experiment_id for unit in report.units] == [target_experiment]
     async with factory() as db:

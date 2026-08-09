@@ -175,7 +175,7 @@ async def test_run_diagnostics_projects_durable_correlation_and_metrics(api) -> 
         "provider_latency_ms": 125,
         "provider_tokens": 43,
     }
-    assert diagnostic["terminal"] == {"status": "failed", "error": "provider failed"}
+    assert diagnostic["terminal"] == {"status": "failed", "error": "Provider request failed"}
 
 
 @pytest.mark.asyncio

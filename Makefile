@@ -39,15 +39,17 @@ db-restore-rehearsal:
 	PYTHONPATH=backend uv run --project backend python scripts/backup_restore_e2e.py
 
 RETENTION_LIMIT ?= 100
+RETENTION_PLAN_FILE ?= retention-plan.json
 
 retention-plan:
 	@test -n "$$DATABASE_URL"
 	@test -n "$$RETENTION_TERMINAL_BEFORE"
-	PYTHONPATH=backend uv run --project backend python -m app.data_retention plan --terminal-before "$$RETENTION_TERMINAL_BEFORE" --limit "$(RETENTION_LIMIT)"
+	PYTHONPATH=backend uv run --project backend python -m app.data_retention plan --terminal-before "$$RETENTION_TERMINAL_BEFORE" --limit "$(RETENTION_LIMIT)" > "$(RETENTION_PLAN_FILE)"
 
 retention-execute:
 	@test -n "$$DATABASE_URL"
-	@test -n "$$RETENTION_TERMINAL_BEFORE"
+	@test -n "$(RETENTION_PLAN_FILE)"
+	@test -f "$(RETENTION_PLAN_FILE)"
 	@test -n "$$RETENTION_CONFIRM"
 	@test "$$RETENTION_CONFIRM" = "DELETE_ELIGIBLE_EXPERIMENTS"
-	PYTHONPATH=backend uv run --project backend python -m app.data_retention execute --terminal-before "$$RETENTION_TERMINAL_BEFORE" --limit "$(RETENTION_LIMIT)" --confirm "$$RETENTION_CONFIRM"
+	PYTHONPATH=backend uv run --project backend python -m app.data_retention execute --plan-file "$(RETENTION_PLAN_FILE)" --confirm "$$RETENTION_CONFIRM"

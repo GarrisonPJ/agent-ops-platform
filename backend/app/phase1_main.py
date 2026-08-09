@@ -429,7 +429,7 @@ def create_app(
             lease_id=lease_id,
             runner_id=body.runner_id,
             status=body.status,
-            error=body.error,
+            failure_kind=body.failure_kind,
             metrics=body.metrics,
         )
 

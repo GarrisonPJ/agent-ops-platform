@@ -5,9 +5,9 @@ use std::time::Duration;
 use agentops_protocol::{
     ChildEvent, ClaimRequest, ClaimResponse, CompleteRequest, EvaluationSpec, EventBatchRequest,
     EventBatchResponse, EventEnvelope, HeartbeatRequest, HeartbeatResponse, RunnerCommand,
-    SCHEMA_VERSION,
+    TerminalFailureKind, SCHEMA_VERSION,
 };
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{bail, Context, Result};
 use chrono::Utc;
 use nix::sys::signal::{killpg, Signal};
 use nix::unistd::Pid;
@@ -18,7 +18,6 @@ use tokio::process::{Child, Command};
 use tokio::time::{interval, sleep, timeout, Instant, Interval};
 
 pub const MAX_LINE_BYTES: usize = 65_536;
-const MAX_STDERR_CAPTURE_BYTES: usize = 65_536;
 const NETWORK_RETRY_WINDOW: Duration = Duration::from_secs(10);
 
 #[derive(Debug, Clone)]
@@ -110,27 +109,47 @@ impl Worker {
     }
 
     async fn execute_claim(&self, claim: ClaimResponse) -> Result<()> {
-        claim
-            .run
-            .evaluation_spec
-            .validate()
-            .map_err(|error| anyhow!(error))?;
-        if claim.run.run_id != claim.run.evaluation_spec.run_id {
-            bail!("claim run_id does not match EvaluationSpec");
-        }
         if claim.attempt == 0 || claim.next_sequence == 0 {
             bail!("claim recovery metadata must contain positive attempt and sequence");
         }
+        if claim.run.evaluation_spec.validate().is_err() {
+            let outcome = TerminalOutcome::internal_failure(claim.next_sequence, 0);
+            return self.finalize_terminal(&claim, outcome, 0, 0).await;
+        }
+        if claim.run.run_id != claim.run.evaluation_spec.run_id {
+            let outcome = TerminalOutcome::internal_failure(claim.next_sequence, 0);
+            return self.finalize_terminal(&claim, outcome, 0, 0).await;
+        }
 
-        let mut child = self.spawn_agent(&claim.run.evaluation_spec).await?;
-        let stdout = child.stdout.take().context("agent stdout is unavailable")?;
-        let stderr = child.stderr.take().context("agent stderr is unavailable")?;
+        let mut child = match self.spawn_agent(&claim.run.evaluation_spec).await {
+            Ok(child) => child,
+            Err(_) => {
+                let outcome = TerminalOutcome::internal_failure(claim.next_sequence, 0);
+                return self.finalize_terminal(&claim, outcome, 0, 0).await;
+            }
+        };
+        let stdout = match child.stdout.take() {
+            Some(stdout) => stdout,
+            None => {
+                terminate_child(&mut child).await;
+                let outcome = TerminalOutcome::internal_failure(claim.next_sequence, 0);
+                return self.finalize_terminal(&claim, outcome, 0, 0).await;
+            }
+        };
+        let stderr = match child.stderr.take() {
+            Some(stderr) => stderr,
+            None => {
+                terminate_child(&mut child).await;
+                let outcome = TerminalOutcome::internal_failure(claim.next_sequence, 0);
+                return self.finalize_terminal(&claim, outcome, 0, 0).await;
+            }
+        };
         let stderr_task = tokio::spawn(drain_stderr(stderr));
 
         let mut event_retries = 0_u32;
-        let execution = async {
+        let mut outcome = {
             let mut next_sequence = claim.next_sequence;
-            event_retries += self
+            match self
                 .upload_event(
                     &claim,
                     envelope(
@@ -140,68 +159,87 @@ impl Worker {
                         json!({"attempt": claim.attempt}),
                     ),
                 )
-                .await?;
-            next_sequence += 1;
-            self.supervise(
-                &claim,
-                &mut child,
-                stdout,
-                next_sequence,
-                &mut event_retries,
-            )
-            .await
-        }
-        .await;
-
-        let mut outcome = match execution {
-            Ok(outcome) => outcome,
-            Err(error) => {
-                terminate_child(&mut child).await;
-                let _ = stderr_task.await;
-                return Err(error);
+                .await
+            {
+                Ok(start_retries) => {
+                    event_retries += start_retries;
+                    next_sequence += 1;
+                    self.supervise(
+                        &claim,
+                        &mut child,
+                        stdout,
+                        next_sequence,
+                        &mut event_retries,
+                    )
+                    .await
+                }
+                Err(_) => {
+                    terminate_child(&mut child).await;
+                    TerminalOutcome::internal_failure(next_sequence, 0)
+                }
             }
         };
 
-        let stderr_capture = stderr_task.await.unwrap_or_default();
-        let total_output_bytes = outcome
-            .stdout_bytes
-            .saturating_add(stderr_capture.total_bytes);
+        let stderr_capture = match stderr_task.await {
+            Ok(capture) => capture,
+            Err(_) => {
+                outcome =
+                    TerminalOutcome::internal_failure(outcome.next_sequence, outcome.stdout_bytes);
+                StderrCapture::default()
+            }
+        };
+        self.finalize_terminal(&claim, outcome, stderr_capture.total_bytes, event_retries)
+            .await
+    }
+
+    async fn finalize_terminal(
+        &self,
+        claim: &ClaimResponse,
+        mut outcome: TerminalOutcome,
+        stderr_bytes: usize,
+        mut event_retries: u32,
+    ) -> Result<()> {
+        let total_output_bytes = outcome.stdout_bytes.saturating_add(stderr_bytes);
         if total_output_bytes > claim.run.evaluation_spec.limits.max_output_bytes
-            && !matches!(outcome.status, "cancelled" | "timed_out")
+            && !matches!(
+                outcome.status,
+                TerminalStatus::Cancelled | TerminalStatus::TimedOut
+            )
         {
-            outcome.status = "failed";
-            outcome.error = Some("agent output exceeded the configured limit".into());
-        } else if outcome.error.is_none() && !stderr_capture.text.trim().is_empty() {
-            outcome.error = Some(stderr_capture.text.trim().chars().take(500).collect());
+            outcome = TerminalOutcome::failed(
+                TerminalFailureKind::OutputLimitExceeded,
+                outcome.next_sequence,
+                outcome.stdout_bytes,
+            );
         }
 
-        let event_type = match outcome.status {
-            "succeeded" => "run_completed",
-            "cancelled" => "run_cancelled",
-            _ => "run_failed",
-        };
-        event_retries += self
-            .upload_event(
-                &claim,
+        let mut payload = json!({
+            "attempt": claim.attempt,
+            "status": outcome.status(),
+        });
+        if let Some(failure_kind) = outcome.failure_kind() {
+            payload["failure_kind"] = json!(failure_kind);
+        }
+        event_retries = event_retries.saturating_add(
+            self.upload_event(
+                claim,
                 envelope(
                     &claim.run.run_id,
                     outcome.next_sequence,
-                    event_type,
-                    json!({
-                        "attempt": claim.attempt,
-                        "status": outcome.status,
-                        "error": outcome.error.as_deref(),
-                    }),
+                    outcome.event_type(),
+                    payload,
                 ),
             )
-            .await?;
+            .await?,
+        );
+
         self.complete(
-            &claim,
-            outcome.status,
-            outcome.error.as_deref(),
+            claim,
+            outcome.status(),
+            outcome.failure_kind(),
             json!({
                 "stdout_bytes": outcome.stdout_bytes,
-                "stderr_bytes": stderr_capture.total_bytes,
+                "stderr_bytes": stderr_bytes,
                 "total_output_bytes": total_output_bytes,
                 "event_retries": event_retries,
             }),
@@ -216,7 +254,7 @@ impl Worker {
         stdout: R,
         mut next_sequence: u64,
         event_retries: &mut u32,
-    ) -> Result<TerminalOutcome> {
+    ) -> TerminalOutcome {
         let mut reader = BufReader::new(stdout);
         let mut heartbeat_tick = interval(Duration::from_secs(2));
         heartbeat_tick.tick().await;
@@ -224,98 +262,116 @@ impl Worker {
             Instant::now() + Duration::from_millis(claim.run.evaluation_spec.limits.timeout_ms);
         let mut stdout_bytes = 0_usize;
         let mut buffer = Vec::with_capacity(8 * 1024);
+        let mut provider_failure_seen = false;
 
         loop {
             buffer.clear();
             tokio::select! {
                 read = read_bounded_line(&mut reader, &mut buffer) => {
-                    match read? {
+                    let read = match read {
+                        Ok(read) => read,
+                        Err(_) => {
+                            terminate_child(child).await;
+                            return TerminalOutcome::internal_failure(next_sequence, stdout_bytes);
+                        }
+                    };
+                    match read {
                         LineRead::Eof => {
+                            let context = ExitContext {
+                                deadline,
+                                next_sequence,
+                                stdout_bytes,
+                                provider_failure_seen,
+                            };
                             return self
                                 .wait_for_exit(
                                     claim,
                                     child,
                                     &mut heartbeat_tick,
-                                    deadline,
-                                    next_sequence,
-                                    stdout_bytes,
+                                    context,
                                 )
                                 .await;
                         }
                         LineRead::TooLong(bytes) => {
                             stdout_bytes = stdout_bytes.saturating_add(bytes);
                             terminate_child(child).await;
-                            return Ok(TerminalOutcome::failed(
-                                "agent emitted a JSONL line larger than 64 KiB",
+                            return TerminalOutcome::output_limit(
                                 next_sequence,
                                 stdout_bytes,
-                            ));
+                            );
                         }
                         LineRead::Line(bytes) => {
                             stdout_bytes = stdout_bytes.saturating_add(bytes);
                             if stdout_bytes > claim.run.evaluation_spec.limits.max_output_bytes {
                                 terminate_child(child).await;
-                                return Ok(TerminalOutcome::failed(
-                                    "agent output exceeded the configured limit",
+                                return TerminalOutcome::output_limit(
                                     next_sequence,
                                     stdout_bytes,
-                                ));
+                                );
                             }
                             if buffer.iter().all(|byte| byte.is_ascii_whitespace()) {
                                 continue;
                             }
                             let child_event: ChildEvent = match serde_json::from_slice(&buffer) {
                                 Ok(event) => event,
-                                Err(error) => {
+                                Err(_) => {
                                     terminate_child(child).await;
-                                    return Ok(TerminalOutcome::failed(
-                                        format!("agent emitted invalid JSONL: {error}"),
+                                    return TerminalOutcome::internal_failure(
                                         next_sequence,
                                         stdout_bytes,
-                                    ));
+                                    );
                                 }
                             };
-                            if let Err(error) = child_event.validate() {
+                            if child_event.validate().is_err() {
                                 terminate_child(child).await;
-                                return Ok(TerminalOutcome::failed(
-                                    error,
+                                return TerminalOutcome::internal_failure(
                                     next_sequence,
                                     stdout_bytes,
-                                ));
+                                );
                             }
-                            *event_retries = event_retries.saturating_add(self.upload_event(
-                                claim,
-                                envelope(
-                                    &claim.run.run_id,
-                                    next_sequence,
-                                    &child_event.event_type,
-                                    payload_with_attempt(child_event.payload, claim.attempt),
-                                ),
-                            )
-                            .await?);
+                            provider_failure_seen |= is_provider_failure_signal(&child_event);
+                            let retries = match self
+                                .upload_event(
+                                    claim,
+                                    envelope(
+                                        &claim.run.run_id,
+                                        next_sequence,
+                                        &child_event.event_type,
+                                        payload_with_attempt(child_event.payload, claim.attempt),
+                                    ),
+                                )
+                                .await
+                            {
+                                Ok(retries) => retries,
+                                Err(_) => {
+                                    terminate_child(child).await;
+                                    return TerminalOutcome::internal_failure(
+                                        next_sequence,
+                                        stdout_bytes,
+                                    );
+                                }
+                            };
+                            *event_retries = event_retries.saturating_add(retries);
                             next_sequence += 1;
                         }
                     }
                 }
                 _ = heartbeat_tick.tick() => {
-                    if self.heartbeat(claim).await? == RunnerCommand::Cancel {
-                        terminate_child(child).await;
-                        return Ok(TerminalOutcome {
-                            status: "cancelled",
-                            error: Some("cancelled by user".into()),
-                            next_sequence,
-                            stdout_bytes,
-                        });
+                    match self.heartbeat(claim).await {
+                        Ok(RunnerCommand::Continue) => {}
+                        Ok(RunnerCommand::Cancel) => {
+                            terminate_child(child).await;
+                            return TerminalOutcome::cancelled(next_sequence, stdout_bytes);
+                        }
+                        Err(_) => {
+                            terminate_child(child).await;
+                            return TerminalOutcome::internal_failure(next_sequence, stdout_bytes);
+                        }
                     }
                 }
                 _ = tokio::time::sleep_until(deadline) => {
                     terminate_child(child).await;
-                    return Ok(TerminalOutcome {
-                        status: "timed_out",
-                        error: Some("execution timed out".into()),
-                        next_sequence,
-                        stdout_bytes,
-                    });
+                    return TerminalOutcome::timed_out(next_sequence, stdout_bytes);
                 }
             }
         }
@@ -326,40 +382,51 @@ impl Worker {
         claim: &ClaimResponse,
         child: &mut Child,
         heartbeat_tick: &mut Interval,
-        deadline: Instant,
-        next_sequence: u64,
-        stdout_bytes: usize,
-    ) -> Result<TerminalOutcome> {
+        context: ExitContext,
+    ) -> TerminalOutcome {
         loop {
             let signal = tokio::select! {
                 status = child.wait() => ExitSignal::Exited(status),
                 _ = heartbeat_tick.tick() => ExitSignal::Heartbeat,
-                _ = tokio::time::sleep_until(deadline) => ExitSignal::Deadline,
+                _ = tokio::time::sleep_until(context.deadline) => ExitSignal::Deadline,
             };
             match signal {
-                ExitSignal::Exited(status) => {
-                    let status = status?;
-                    return Ok(outcome_from_exit(status, next_sequence, stdout_bytes));
-                }
-                ExitSignal::Heartbeat => {
-                    if self.heartbeat(claim).await? == RunnerCommand::Cancel {
-                        terminate_child(child).await;
-                        return Ok(TerminalOutcome {
-                            status: "cancelled",
-                            error: Some("cancelled by user".into()),
-                            next_sequence,
-                            stdout_bytes,
-                        });
+                ExitSignal::Exited(status) => match status {
+                    Ok(status) => {
+                        return outcome_from_exit(
+                            status,
+                            context.next_sequence,
+                            context.stdout_bytes,
+                            context.provider_failure_seen,
+                        );
                     }
-                }
+                    Err(_) => {
+                        return TerminalOutcome::internal_failure(
+                            context.next_sequence,
+                            context.stdout_bytes,
+                        );
+                    }
+                },
+                ExitSignal::Heartbeat => match self.heartbeat(claim).await {
+                    Ok(RunnerCommand::Continue) => {}
+                    Ok(RunnerCommand::Cancel) => {
+                        terminate_child(child).await;
+                        return TerminalOutcome::cancelled(
+                            context.next_sequence,
+                            context.stdout_bytes,
+                        );
+                    }
+                    Err(_) => {
+                        terminate_child(child).await;
+                        return TerminalOutcome::internal_failure(
+                            context.next_sequence,
+                            context.stdout_bytes,
+                        );
+                    }
+                },
                 ExitSignal::Deadline => {
                     terminate_child(child).await;
-                    return Ok(TerminalOutcome {
-                        status: "timed_out",
-                        error: Some("execution timed out".into()),
-                        next_sequence,
-                        stdout_bytes,
-                    });
+                    return TerminalOutcome::timed_out(context.next_sequence, context.stdout_bytes);
                 }
             }
         }
@@ -477,7 +544,7 @@ impl Worker {
         &self,
         claim: &ClaimResponse,
         status: &str,
-        error: Option<&str>,
+        failure_kind: Option<TerminalFailureKind>,
         metrics: Value,
     ) -> Result<()> {
         let deadline = Instant::now() + NETWORK_RETRY_WINDOW;
@@ -492,7 +559,7 @@ impl Worker {
                 .json(&CompleteRequest {
                     runner_id: &self.config.runner_id,
                     status,
-                    error,
+                    failure_kind,
                     metrics: metrics.clone(),
                 })
                 .send()
@@ -514,21 +581,105 @@ impl Worker {
 
 #[derive(Debug)]
 struct TerminalOutcome {
-    status: &'static str,
-    error: Option<String>,
+    status: TerminalStatus,
     next_sequence: u64,
     stdout_bytes: usize,
 }
 
 impl TerminalOutcome {
-    fn failed(error: impl Into<String>, next_sequence: u64, stdout_bytes: usize) -> Self {
+    fn success(next_sequence: u64, stdout_bytes: usize) -> Self {
         Self {
-            status: "failed",
-            error: Some(error.into()),
+            status: TerminalStatus::Succeeded,
             next_sequence,
             stdout_bytes,
         }
     }
+
+    fn failed(failure_kind: TerminalFailureKind, next_sequence: u64, stdout_bytes: usize) -> Self {
+        Self {
+            status: TerminalStatus::Failed(failure_kind),
+            next_sequence,
+            stdout_bytes,
+        }
+    }
+
+    fn cancelled(next_sequence: u64, stdout_bytes: usize) -> Self {
+        Self {
+            status: TerminalStatus::Cancelled,
+            next_sequence,
+            stdout_bytes,
+        }
+    }
+
+    fn timed_out(next_sequence: u64, stdout_bytes: usize) -> Self {
+        Self {
+            status: TerminalStatus::TimedOut,
+            next_sequence,
+            stdout_bytes,
+        }
+    }
+
+    fn output_limit(next_sequence: u64, stdout_bytes: usize) -> Self {
+        Self::failed(
+            TerminalFailureKind::OutputLimitExceeded,
+            next_sequence,
+            stdout_bytes,
+        )
+    }
+
+    fn provider_failure(next_sequence: u64, stdout_bytes: usize) -> Self {
+        Self::failed(
+            TerminalFailureKind::ProviderFailure,
+            next_sequence,
+            stdout_bytes,
+        )
+    }
+
+    fn process_exit(next_sequence: u64, stdout_bytes: usize) -> Self {
+        Self::failed(TerminalFailureKind::AgentExit, next_sequence, stdout_bytes)
+    }
+
+    fn internal_failure(next_sequence: u64, stdout_bytes: usize) -> Self {
+        Self::failed(
+            TerminalFailureKind::InternalFailure,
+            next_sequence,
+            stdout_bytes,
+        )
+    }
+
+    fn status(&self) -> &'static str {
+        match self.status {
+            TerminalStatus::Succeeded => "succeeded",
+            TerminalStatus::Failed(_) => "failed",
+            TerminalStatus::Cancelled => "cancelled",
+            TerminalStatus::TimedOut => "timed_out",
+        }
+    }
+
+    fn failure_kind(&self) -> Option<TerminalFailureKind> {
+        match self.status {
+            TerminalStatus::Succeeded => None,
+            TerminalStatus::Failed(kind) => Some(kind),
+            TerminalStatus::Cancelled => Some(TerminalFailureKind::Cancelled),
+            TerminalStatus::TimedOut => Some(TerminalFailureKind::TimedOut),
+        }
+    }
+
+    fn event_type(&self) -> &'static str {
+        match self.status {
+            TerminalStatus::Succeeded => "run_completed",
+            TerminalStatus::Cancelled => "run_cancelled",
+            TerminalStatus::Failed(_) | TerminalStatus::TimedOut => "run_failed",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TerminalStatus {
+    Succeeded,
+    Failed(TerminalFailureKind),
+    Cancelled,
+    TimedOut,
 }
 
 enum ExitSignal {
@@ -537,25 +688,34 @@ enum ExitSignal {
     Deadline,
 }
 
+struct ExitContext {
+    deadline: Instant,
+    next_sequence: u64,
+    stdout_bytes: usize,
+    provider_failure_seen: bool,
+}
+
 fn outcome_from_exit(
     status: ExitStatus,
     next_sequence: u64,
     stdout_bytes: usize,
+    provider_failure_seen: bool,
 ) -> TerminalOutcome {
-    if status.success() {
-        TerminalOutcome {
-            status: "succeeded",
-            error: None,
-            next_sequence,
-            stdout_bytes,
-        }
+    if provider_failure_seen {
+        TerminalOutcome::provider_failure(next_sequence, stdout_bytes)
+    } else if status.success() {
+        TerminalOutcome::success(next_sequence, stdout_bytes)
     } else {
-        TerminalOutcome::failed(
-            format!("agent exited with {status}"),
-            next_sequence,
-            stdout_bytes,
-        )
+        TerminalOutcome::process_exit(next_sequence, stdout_bytes)
     }
+}
+
+fn is_provider_failure_signal(event: &ChildEvent) -> bool {
+    event.event_type == "process_output"
+        && event
+            .payload
+            .get("provider_error")
+            .is_some_and(|value| value.is_object())
 }
 
 fn envelope(run_id: &str, sequence: u64, event_type: &str, payload: Value) -> EventEnvelope {
@@ -600,12 +760,10 @@ async fn read_bounded_line<R: AsyncRead + Unpin>(
 
 #[derive(Default)]
 struct StderrCapture {
-    text: String,
     total_bytes: usize,
 }
 
 async fn drain_stderr<R: AsyncRead + Unpin>(mut stderr: R) -> StderrCapture {
-    let mut captured = Vec::with_capacity(8 * 1024);
     let mut total_bytes = 0_usize;
     let mut chunk = [0_u8; 8 * 1024];
     loop {
@@ -614,13 +772,8 @@ async fn drain_stderr<R: AsyncRead + Unpin>(mut stderr: R) -> StderrCapture {
             Ok(bytes) => bytes,
         };
         total_bytes = total_bytes.saturating_add(bytes);
-        let remaining = MAX_STDERR_CAPTURE_BYTES.saturating_sub(captured.len());
-        captured.extend_from_slice(&chunk[..bytes.min(remaining)]);
     }
-    StderrCapture {
-        text: String::from_utf8_lossy(&captured).into_owned(),
-        total_bytes,
-    }
+    StderrCapture { total_bytes }
 }
 
 async fn terminate_child(child: &mut Child) {
@@ -650,11 +803,97 @@ mod tests {
         assert_eq!(config.agent_args, ["-m", "app.demo_agent"]);
     }
 
+    #[test]
+    fn terminal_outcomes_have_deterministic_wire_mapping() {
+        let cases = [
+            (
+                TerminalOutcome::success(1, 0),
+                "succeeded",
+                None,
+                "run_completed",
+            ),
+            (
+                TerminalOutcome::cancelled(1, 0),
+                "cancelled",
+                Some(TerminalFailureKind::Cancelled),
+                "run_cancelled",
+            ),
+            (
+                TerminalOutcome::timed_out(1, 0),
+                "timed_out",
+                Some(TerminalFailureKind::TimedOut),
+                "run_failed",
+            ),
+            (
+                TerminalOutcome::output_limit(1, 0),
+                "failed",
+                Some(TerminalFailureKind::OutputLimitExceeded),
+                "run_failed",
+            ),
+            (
+                TerminalOutcome::process_exit(1, 0),
+                "failed",
+                Some(TerminalFailureKind::AgentExit),
+                "run_failed",
+            ),
+            (
+                TerminalOutcome::provider_failure(1, 0),
+                "failed",
+                Some(TerminalFailureKind::ProviderFailure),
+                "run_failed",
+            ),
+            (
+                TerminalOutcome::internal_failure(1, 0),
+                "failed",
+                Some(TerminalFailureKind::InternalFailure),
+                "run_failed",
+            ),
+        ];
+
+        for (outcome, status, failure_kind, event_type) in cases {
+            assert_eq!(outcome.status(), status);
+            assert_eq!(outcome.failure_kind(), failure_kind);
+            assert_eq!(outcome.event_type(), event_type);
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn exit_status_mapping_prioritizes_provider_failure_and_handles_nonzero_exit() {
+        use std::os::unix::process::ExitStatusExt;
+
+        assert_eq!(
+            outcome_from_exit(ExitStatus::from_raw(0), 1, 0, false).failure_kind(),
+            None
+        );
+        assert_eq!(
+            outcome_from_exit(ExitStatus::from_raw(7), 1, 0, false).failure_kind(),
+            Some(TerminalFailureKind::AgentExit)
+        );
+        assert_eq!(
+            outcome_from_exit(ExitStatus::from_raw(7), 1, 0, true).failure_kind(),
+            Some(TerminalFailureKind::ProviderFailure)
+        );
+    }
+
+    #[test]
+    fn provider_failure_signal_requires_structured_provider_error() {
+        let structured = ChildEvent {
+            event_type: "process_output".into(),
+            payload: json!({"provider_error": {"message": "UNIQUE_RAW_PROVIDER_TEXT"}}),
+        };
+        let raw = ChildEvent {
+            event_type: "process_output".into(),
+            payload: json!({"provider_error": "UNIQUE_RAW_PROVIDER_TEXT"}),
+        };
+        assert!(is_provider_failure_signal(&structured));
+        assert!(!is_provider_failure_signal(&raw));
+    }
+
     #[tokio::test]
-    async fn stderr_is_drained_and_capture_is_bounded() {
+    async fn stderr_is_drained_without_capture() {
         let data = vec![b'x'; 100_000];
         let output = drain_stderr(&data[..]).await;
-        assert_eq!(output.text.len(), MAX_STDERR_CAPTURE_BYTES);
         assert_eq!(output.total_bytes, data.len());
     }
 
