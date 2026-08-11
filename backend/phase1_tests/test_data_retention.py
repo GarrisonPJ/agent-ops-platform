@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
@@ -11,6 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.data_retention import (
     EXECUTE_CONFIRMATION,
+    RETENTION_CONFIRMATION_INVALID,
+    RETENTION_DATABASE_ERROR,
     RETENTION_LOCK_CONFLICT,
     RETENTION_LOCK_TIMEOUT,
     RETENTION_PLAN_INVALID,
@@ -27,6 +30,7 @@ from app.data_retention import (
     _parser,
     _retention_database_error,
     execute_retention,
+    main,
     plan_retention,
     validate_limit,
     validate_terminal_before,
@@ -293,6 +297,145 @@ def test_retention_plan_file_and_cli_serialization(tmp_path) -> None:
     assert plan_args.terminal_before == CUTOFF
 
 
+def assert_cli_failure(capsys, expected_message: str, *forbidden: str) -> None:
+    captured = capsys.readouterr()
+    assert captured.out == ''
+    assert captured.err == f'data retention failed: {expected_message}\n'
+    for value in (*forbidden, 'Traceback'):
+        assert value not in captured.err
+
+
+def test_cli_plan_database_failure_hides_database_details(
+    monkeypatch, capsys
+) -> None:
+    marker = 'PLAN_DATABASE_MALICIOUS_MARKER'
+    raw_sql = f'SELECT {marker} FROM retention_secrets WHERE token = :token'
+    credentials = 'postgresql+asyncpg://attacker:secret@database/retention'
+    raw_params = {'token': credentials}
+
+    class InjectedDatabaseFailure(Exception):
+        sqlstate = 'P0001'
+
+    async def fail_plan_query(*_args, **_kwargs) -> None:
+        raise OperationalError(
+            raw_sql,
+            raw_params,
+            InjectedDatabaseFailure(marker),
+        )
+
+    monkeypatch.setenv('RETENTION_TEST_DATABASE_URL', 'sqlite+aiosqlite://')
+    monkeypatch.setattr(
+        'app.data_retention._eligible_experiments', fail_plan_query
+    )
+    monkeypatch.setattr(
+        sys,
+        'argv',
+        [
+            'data-retention',
+            '--database-url-env',
+            'RETENTION_TEST_DATABASE_URL',
+            'plan',
+            '--terminal-before',
+            '2025-06-01T00:00:00Z',
+        ],
+    )
+
+    with pytest.raises(SystemExit) as raised:
+        main()
+
+    assert raised.value.code == 1
+    assert_cli_failure(
+        capsys,
+        f'{RETENTION_DATABASE_ERROR}: retention database operation failed',
+        marker,
+        raw_sql,
+        str(raw_params),
+        credentials,
+        'InjectedDatabaseFailure',
+        'OperationalError',
+    )
+
+
+@pytest.mark.parametrize(
+    'failure_kind',
+    ('missing', 'invalid_utf8', 'invalid_json'),
+)
+def test_cli_plan_file_failures_hide_input_details(
+    tmp_path, monkeypatch, capsys, failure_kind: str
+) -> None:
+    marker = f'PLAN_FILE_{failure_kind.upper()}_MALICIOUS_MARKER'
+    plan_path = tmp_path / f'{marker}.json'
+    forbidden = [marker, str(plan_path)]
+    if failure_kind == 'invalid_utf8':
+        raw_bytes = b'\xff' + marker.encode('ascii')
+        plan_path.write_bytes(raw_bytes)
+        forbidden.extend((repr(raw_bytes), '0xff', 'invalid start byte'))
+    elif failure_kind == 'invalid_json':
+        raw_json = f'[{marker}'
+        plan_path.write_text(raw_json, encoding='utf-8')
+        forbidden.append(raw_json)
+    else:
+        forbidden.append('No such file')
+
+    monkeypatch.setattr(
+        sys,
+        'argv',
+        [
+            'data-retention',
+            'execute',
+            '--plan-file',
+            str(plan_path),
+            '--confirm',
+            EXECUTE_CONFIRMATION,
+        ],
+    )
+
+    with pytest.raises(SystemExit) as raised:
+        main()
+
+    assert raised.value.code == 1
+    assert_cli_failure(
+        capsys,
+        f'{RETENTION_PLAN_INVALID}: unable to load plan file',
+        *forbidden,
+    )
+
+
+def test_cli_invalid_confirmation_hides_both_tokens(
+    tmp_path, monkeypatch, capsys
+) -> None:
+    plan = RetentionPlan.from_units(CUTOFF, 1, ())
+    plan_path = tmp_path / 'confirmation-plan.json'
+    plan_path.write_text(json.dumps(plan.as_dict()), encoding='utf-8')
+    marker = 'INVALID_CONFIRMATION_MALICIOUS_MARKER'
+    monkeypatch.setenv('RETENTION_TEST_DATABASE_URL', 'sqlite+aiosqlite://')
+    monkeypatch.setattr(
+        sys,
+        'argv',
+        [
+            'data-retention',
+            '--database-url-env',
+            'RETENTION_TEST_DATABASE_URL',
+            'execute',
+            '--plan-file',
+            str(plan_path),
+            '--confirm',
+            marker,
+        ],
+    )
+
+    with pytest.raises(SystemExit) as raised:
+        main()
+
+    assert raised.value.code == 1
+    assert_cli_failure(
+        capsys,
+        f'{RETENTION_CONFIRMATION_INVALID}: confirmation token is invalid',
+        marker,
+        EXECUTE_CONFIRMATION,
+    )
+
+
 def test_retention_database_timeout_mapping() -> None:
     class PostgresError:
         def __init__(self, sqlstate: str) -> None:
@@ -308,6 +451,27 @@ def test_retention_database_timeout_mapping() -> None:
         )
         assert mapped is not None
         assert str(mapped).startswith(code)
+
+
+def test_retention_database_error_mapping_hides_database_details() -> None:
+    class PostgresError:
+        sqlstate = 'P0001'
+
+    raw_sql = 'DELETE FROM run_events WHERE payload = RETENTION_TEST_MARKER'
+    mapped = _retention_database_error(
+        OperationalError(
+            raw_sql,
+            {'marker': 'RETENTION_TEST_MARKER'},
+            PostgresError(),
+        )
+    )
+
+    assert mapped is not None
+    assert str(mapped) == (
+        f'{RETENTION_DATABASE_ERROR}: retention database operation failed'
+    )
+    assert raw_sql not in str(mapped)
+    assert 'RETENTION_TEST_MARKER' not in str(mapped)
 
 
 @pytest.mark.asyncio

@@ -40,6 +40,8 @@ RETENTION_PLAN_INVALID = 'RETENTION_PLAN_INVALID'
 RETENTION_LOCK_TIMEOUT = 'RETENTION_LOCK_TIMEOUT'
 RETENTION_STATEMENT_TIMEOUT = 'RETENTION_STATEMENT_TIMEOUT'
 RETENTION_LOCK_CONFLICT = 'RETENTION_LOCK_CONFLICT'
+RETENTION_DATABASE_ERROR = 'RETENTION_DATABASE_ERROR'
+RETENTION_CONFIRMATION_INVALID = 'RETENTION_CONFIRMATION_INVALID'
 POSTGRES_RETENTION_LOCK_TIMEOUT = '2s'
 POSTGRES_RETENTION_STATEMENT_TIMEOUT = '30s'
 POSTGRES_RETENTION_LOCK_TIMEOUT_STATEMENT = (
@@ -448,7 +450,7 @@ def _retention_sqlstate(error: SQLAlchemyError) -> str | None:
     return None
 
 
-def _retention_database_error(error: SQLAlchemyError) -> RetentionError | None:
+def _retention_database_error(error: SQLAlchemyError) -> RetentionError:
     sqlstate = _retention_sqlstate(error)
     if sqlstate == '55P03':
         return RetentionError(
@@ -462,7 +464,9 @@ def _retention_database_error(error: SQLAlchemyError) -> RetentionError | None:
         return RetentionError(
             f'{RETENTION_LOCK_CONFLICT}: maintenance lock deadlock'
         )
-    return None
+    return RetentionError(
+        f'{RETENTION_DATABASE_ERROR}: retention database operation failed'
+    )
 
 
 async def _acquire_retention_maintenance_lock(db: AsyncSession) -> None:
@@ -480,10 +484,7 @@ async def _acquire_retention_maintenance_lock(db: AsyncSession) -> None:
         await db.execute(text(POSTGRES_RETENTION_STATEMENT_TIMEOUT_STATEMENT))
         await db.execute(text(POSTGRES_RETENTION_LOCK))
     except SQLAlchemyError as exc:
-        mapped = _retention_database_error(exc)
-        if mapped is not None:
-            raise mapped from exc
-        raise
+        raise _retention_database_error(exc) from exc
 
 
 def _retention_predicates(terminal_before: datetime) -> _RetentionPredicates:
@@ -660,13 +661,16 @@ async def plan_retention(
 ) -> RetentionPlan:
     cutoff = validate_terminal_before(terminal_before)
     bounded_limit = validate_limit(limit)
-    async with db.begin():
-        experiments = await _eligible_experiments(
-            db, cutoff, bounded_limit, lock=False
-        )
-        experiment_ids = sorted(item.id for item in experiments)
-        units = await _grouped_counts(db, experiment_ids)
-        blocked = await _blocked_reason_counts(db, cutoff)
+    try:
+        async with db.begin():
+            experiments = await _eligible_experiments(
+                db, cutoff, bounded_limit, lock=False
+            )
+            experiment_ids = sorted(item.id for item in experiments)
+            units = await _grouped_counts(db, experiment_ids)
+            blocked = await _blocked_reason_counts(db, cutoff)
+    except SQLAlchemyError as exc:
+        raise _retention_database_error(exc) from exc
     return RetentionPlan.from_units(cutoff, bounded_limit, units, blocked)
 
 
@@ -688,7 +692,7 @@ async def execute_retention(
 ) -> RetentionReport:
     if confirmation != EXECUTE_CONFIRMATION:
         raise RetentionError(
-            f'execute requires confirmation token {EXECUTE_CONFIRMATION}'
+            f'{RETENTION_CONFIRMATION_INVALID}: confirmation token is invalid'
         )
     reviewed_plan = _coerce_retention_plan(plan)
     try:
@@ -718,10 +722,7 @@ async def execute_retention(
             for experiment_id in reviewed_plan.experiment_ids:
                 await db.delete(experiments_by_id[experiment_id])
     except SQLAlchemyError as exc:
-        mapped = _retention_database_error(exc)
-        if mapped is not None:
-            raise mapped from exc
-        raise
+        raise _retention_database_error(exc) from exc
     return RetentionReport(
         'execute',
         reviewed_plan.terminal_before,
@@ -768,9 +769,9 @@ def _database_url(variable: str) -> str:
 def _load_plan_file(path: Path) -> RetentionPlan:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError) as exc:
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise RetentionError(
-            f"failed to read retention plan file {path}: {exc}"
+            f'{RETENTION_PLAN_INVALID}: unable to load plan file'
         ) from exc
     if not isinstance(payload, Mapping):
         raise RetentionError(
@@ -810,8 +811,11 @@ def main() -> None:
     args = parser.parse_args()
     try:
         report = asyncio.run(_run(args))
-    except (RetentionError, SQLAlchemyError, OSError) as exc:
+    except RetentionError as exc:
         parser.exit(1, f"data retention failed: {exc}\n")
+    except SQLAlchemyError as exc:
+        mapped = _retention_database_error(exc)
+        parser.exit(1, f"data retention failed: {mapped}\n")
     print(json.dumps(report.as_dict(), indent=2, sort_keys=True))
 
 

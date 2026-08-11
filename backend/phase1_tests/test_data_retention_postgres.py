@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+import json
 import os
 import subprocess
 import sys
@@ -7,7 +9,6 @@ import time
 from collections.abc import AsyncIterator
 from datetime import datetime, timezone
 from pathlib import Path
-from uuid import uuid4
 
 import pytest
 import pytest_asyncio
@@ -22,7 +23,9 @@ from sqlalchemy.pool import NullPool
 
 from app.data_retention import (
     EXECUTE_CONFIRMATION,
+    POSTGRES_RETENTION_LOCK,
     POSTGRES_RETENTION_LOCK_TIMEOUT,
+    RETENTION_DATABASE_ERROR,
     RETENTION_LOCK_TIMEOUT,
     RETENTION_PLAN_STALE,
     RetentionError,
@@ -64,15 +67,27 @@ RETENTION_TABLES = (
     'experiments, runs, policies, runner_jobs, runner_attempts, '
     'run_events, run_analyses, runner_presence'
 )
+DELETE_AUDIT_SEQUENCE = 'retention_test_delete_audit_sequence'
+DELETE_AUDIT_EARLY_FUNCTION = 'retention_test_audit_run_event_delete'
+DELETE_AUDIT_LATE_FUNCTION = 'retention_test_fail_experiment_delete'
+DELETE_AUDIT_EARLY_TRIGGER = 'zz_retention_test_audit_run_event_delete'
+DELETE_AUDIT_LATE_TRIGGER = 'zz_retention_test_fail_experiment_delete'
+DELETE_AUDIT_ORDER_MARKER = 'RETENTION_TEST_DELETE_AUDIT_ORDER_INVALID'
+DELETE_AUDIT_FAILURE_MARKER = 'RETENTION_TEST_LATE_DELETE_FAILURE'
 
 
-def _upgrade_to_head() -> None:
+def subprocess_environment() -> dict[str, str]:
     environment = os.environ.copy()
-    environment['DATABASE_URL'] = RETENTION_POSTGRES_URL
     existing_pythonpath = environment.get('PYTHONPATH')
     environment['PYTHONPATH'] = str(BACKEND_DIR)
     if existing_pythonpath:
         environment['PYTHONPATH'] += os.pathsep + existing_pythonpath
+    return environment
+
+
+def _upgrade_to_head() -> None:
+    environment = subprocess_environment()
+    environment['DATABASE_URL'] = RETENTION_POSTGRES_URL
     subprocess.run(
         [sys.executable, '-m', 'alembic', 'upgrade', 'head'],
         cwd=BACKEND_DIR,
@@ -247,6 +262,206 @@ async def aggregate_counts(
     }
 
 
+async def execute_plan_file(plan_path: Path) -> tuple[int, str, str]:
+    environment = subprocess_environment()
+    environment['RETENTION_POSTGRES_URL'] = RETENTION_POSTGRES_URL
+    process = await asyncio.create_subprocess_exec(
+        sys.executable,
+        '-m',
+        'app.data_retention',
+        '--database-url-env',
+        'RETENTION_POSTGRES_URL',
+        'execute',
+        '--plan-file',
+        str(plan_path),
+        '--confirm',
+        EXECUTE_CONFIRMATION,
+        cwd=BACKEND_DIR,
+        env=environment,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    try:
+        stdout, stderr = await asyncio.wait_for(
+            process.communicate(), timeout=15
+        )
+    except asyncio.TimeoutError:
+        process.kill()
+        await process.communicate()
+        raise
+    return process.returncode, stdout.decode(), stderr.decode()
+
+
+def assert_sanitized_operator_failure(
+    result: tuple[int, str, str], expected_message: str, *markers: str
+) -> None:
+    returncode, stdout, stderr = result
+    surfaced = stdout + stderr
+    assert returncode == 1
+    assert stdout == ''
+    assert stderr == f'data retention failed: {expected_message}\n'
+    for forbidden in (
+        'asyncpg',
+        'postgresql',
+        'lock table',
+        POSTGRES_RETENTION_LOCK,
+        *RETENTION_TABLES.replace(',', '').split(),
+        *markers,
+    ):
+        assert forbidden.lower() not in surfaced.lower()
+
+
+async def install_failure_audit(
+    factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with factory.begin() as db:
+        await db.execute(
+            text(
+                f'''CREATE SEQUENCE {DELETE_AUDIT_SEQUENCE}
+START WITH 1 INCREMENT BY 1 NO CYCLE'''
+            )
+        )
+        await db.execute(
+            text(
+                f'''CREATE FUNCTION {DELETE_AUDIT_EARLY_FUNCTION}()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    PERFORM nextval('{DELETE_AUDIT_SEQUENCE}');
+    RETURN OLD;
+END;
+$$'''
+            )
+        )
+        await db.execute(
+            text(
+                f'''CREATE TRIGGER {DELETE_AUDIT_EARLY_TRIGGER}
+AFTER DELETE ON run_events
+FOR EACH ROW EXECUTE FUNCTION {DELETE_AUDIT_EARLY_FUNCTION}()'''
+            )
+        )
+        await db.execute(
+            text(
+                f'''CREATE FUNCTION {DELETE_AUDIT_LATE_FUNCTION}()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    audit_step bigint;
+BEGIN
+    audit_step := nextval('{DELETE_AUDIT_SEQUENCE}');
+    IF audit_step <> 3 THEN
+        RAISE EXCEPTION '{DELETE_AUDIT_ORDER_MARKER}';
+    END IF;
+    RAISE EXCEPTION '{DELETE_AUDIT_FAILURE_MARKER}';
+    RETURN OLD;
+END;
+$$'''
+            )
+        )
+        await db.execute(
+            text(
+                f'''CREATE CONSTRAINT TRIGGER {DELETE_AUDIT_LATE_TRIGGER}
+AFTER DELETE ON experiments
+DEFERRABLE INITIALLY DEFERRED
+FOR EACH ROW EXECUTE FUNCTION {DELETE_AUDIT_LATE_FUNCTION}()'''
+            )
+        )
+
+
+async def drop_failure_audit(
+    factory: async_sessionmaker[AsyncSession],
+) -> None:
+    async with factory.begin() as db:
+        await db.execute(
+            text(
+                f'''DROP TRIGGER IF EXISTS {DELETE_AUDIT_LATE_TRIGGER}
+ON experiments'''
+            )
+        )
+        await db.execute(
+            text(
+                f'''DROP TRIGGER IF EXISTS {DELETE_AUDIT_EARLY_TRIGGER}
+ON run_events'''
+            )
+        )
+        await db.execute(
+            text(f'DROP FUNCTION IF EXISTS {DELETE_AUDIT_LATE_FUNCTION}()')
+        )
+        await db.execute(
+            text(f'DROP FUNCTION IF EXISTS {DELETE_AUDIT_EARLY_FUNCTION}()')
+        )
+        await db.execute(
+            text(f'DROP SEQUENCE IF EXISTS {DELETE_AUDIT_SEQUENCE}')
+        )
+
+
+async def delete_audit_state(
+    factory: async_sessionmaker[AsyncSession],
+) -> tuple[int, bool]:
+    async with factory() as db:
+        last_value, is_called = (
+            await db.execute(
+                text(
+                    f'''SELECT last_value, is_called
+FROM {DELETE_AUDIT_SEQUENCE}'''
+                )
+            )
+        ).one()
+    return int(last_value), bool(is_called)
+
+
+async def delete_audit_object_counts(
+    factory: async_sessionmaker[AsyncSession],
+) -> dict[str, int]:
+    async with factory() as db:
+        sequence_count = int(
+            (
+                await db.execute(
+                    text(
+                        '''SELECT count(*) FROM pg_class
+WHERE relkind = 'S' AND relname = :sequence'''
+                    ),
+                    {'sequence': DELETE_AUDIT_SEQUENCE},
+                )
+            ).scalar_one()
+        )
+        function_count = int(
+            (
+                await db.execute(
+                    text(
+                        '''SELECT count(*) FROM pg_proc
+WHERE proname IN (:early_function, :late_function)'''
+                    ),
+                    {
+                        'early_function': DELETE_AUDIT_EARLY_FUNCTION,
+                        'late_function': DELETE_AUDIT_LATE_FUNCTION,
+                    },
+                )
+            ).scalar_one()
+        )
+        trigger_count = int(
+            (
+                await db.execute(
+                    text(
+                        '''SELECT count(*) FROM pg_trigger
+WHERE tgname IN (:early_trigger, :late_trigger)'''
+                    ),
+                    {
+                        'early_trigger': DELETE_AUDIT_EARLY_TRIGGER,
+                        'late_trigger': DELETE_AUDIT_LATE_TRIGGER,
+                    },
+                )
+            ).scalar_one()
+        )
+    return {
+        'sequences': sequence_count,
+        'functions': function_count,
+        'triggers': trigger_count,
+    }
+
+
 @pytest.mark.asyncio
 async def test_postgres_execute_deletes_the_complete_aggregate(
     session_factory: async_sessionmaker[AsyncSession],
@@ -390,3 +605,114 @@ async def test_postgres_stale_plan_after_committed_protected_policy(
     async with session_factory() as db:
         counts = await aggregate_counts(db, target_experiment, (target_run,))
         assert counts == {**COMPLETE_COUNTS, 'policies': 2}
+
+
+@pytest.mark.asyncio
+async def test_postgres_lock_timeout_is_sanitized_and_atomic(
+    session_factory: async_sessionmaker[AsyncSession], tmp_path: Path
+) -> None:
+    target_experiment = 'lock-target'
+    target_run = 'lock-target-run'
+    protected_experiment = 'lock-protected'
+    protected_run = 'lock-protected-run'
+    await add_experiment(
+        session_factory,
+        experiment_id=target_experiment,
+        run_id=target_run,
+        policy_status='superseded',
+        policy_id='lock-target-policy',
+    )
+    await add_experiment(
+        session_factory,
+        experiment_id=protected_experiment,
+        run_id=protected_run,
+        run_status='running',
+        completed_at=None,
+        policy_status='active',
+        policy_id='lock-protected-policy',
+    )
+
+    async with session_factory() as planner:
+        plan = await plan_retention(planner, CUTOFF, limit=1)
+    assert plan.experiment_ids == (target_experiment,)
+    plan_path = tmp_path / 'lock-timeout-plan.json'
+    plan_path.write_text(json.dumps(plan.as_dict()), encoding='utf-8')
+
+    async with session_factory() as blocker:
+        await blocker.begin()
+        try:
+            await blocker.execute(
+                text('LOCK TABLE experiments IN ROW EXCLUSIVE MODE')
+            )
+            result = await execute_plan_file(plan_path)
+        finally:
+            await blocker.rollback()
+
+    assert_sanitized_operator_failure(
+        result,
+        f'{RETENTION_LOCK_TIMEOUT}: maintenance lock was not available',
+    )
+    async with session_factory() as db:
+        assert await aggregate_counts(
+            db, target_experiment, (target_run,)
+        ) == COMPLETE_COUNTS
+        assert await aggregate_counts(
+            db, protected_experiment, (protected_run,)
+        ) == COMPLETE_COUNTS
+        assert await db.get(Policy, 'lock-protected-policy') is not None
+
+
+@pytest.mark.asyncio
+async def test_postgres_late_trigger_failure_rolls_back_the_entire_plan_and_is_sanitized(
+    session_factory: async_sessionmaker[AsyncSession], tmp_path: Path
+) -> None:
+    target_experiments = ('rollback-target-a', 'rollback-target-b')
+    target_runs = ('rollback-target-a-run', 'rollback-target-b-run')
+    for experiment_id, run_id in zip(target_experiments, target_runs):
+        await add_experiment(
+            session_factory,
+            experiment_id=experiment_id,
+            run_id=run_id,
+            policy_status='superseded',
+            policy_id=f'{experiment_id}-policy',
+        )
+
+    try:
+        await install_failure_audit(session_factory)
+        async with session_factory() as planner:
+            plan = await plan_retention(planner, CUTOFF, limit=2)
+        assert plan.experiment_ids == target_experiments
+        plan_path = tmp_path / 'trigger-failure-plan.json'
+        plan_path.write_text(json.dumps(plan.as_dict()), encoding='utf-8')
+        result = await execute_plan_file(plan_path)
+        assert_sanitized_operator_failure(
+            result,
+            f'{RETENTION_DATABASE_ERROR}: retention database operation failed',
+            DELETE_AUDIT_FAILURE_MARKER,
+            DELETE_AUDIT_ORDER_MARKER,
+            DELETE_AUDIT_SEQUENCE,
+            DELETE_AUDIT_EARLY_FUNCTION,
+            DELETE_AUDIT_LATE_FUNCTION,
+            DELETE_AUDIT_EARLY_TRIGGER,
+            DELETE_AUDIT_LATE_TRIGGER,
+            'CREATE TRIGGER',
+            'CREATE CONSTRAINT TRIGGER',
+            'CREATE FUNCTION',
+            'nextval',
+        )
+        # Two child aggregate hooks are steps 1-2; deferred Experiment failure is 3.
+        assert await delete_audit_state(session_factory) == (3, True)
+        async with session_factory() as db:
+            for experiment_id, run_id in zip(target_experiments, target_runs):
+                assert (
+                    await aggregate_counts(db, experiment_id, (run_id,))
+                    == COMPLETE_COUNTS
+                )
+    finally:
+        await drop_failure_audit(session_factory)
+
+    assert await delete_audit_object_counts(session_factory) == {
+        'sequences': 0,
+        'functions': 0,
+        'triggers': 0,
+    }
