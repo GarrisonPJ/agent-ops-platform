@@ -56,33 +56,48 @@ async def complete_failed(
     event_retries: int | None = None,
 ) -> dict:
     run_id = job["run"]["run_id"]
+    sequence = job["next_sequence"]
+    events: list[dict[str, object]] = [
+        {
+            "schema_version": 1,
+            "run_id": run_id,
+            "sequence": sequence,
+            "type": "run_started",
+            "occurred_at": utcnow().isoformat(),
+            "payload": {"attempt": job["attempt"]},
+        }
+    ]
+    if provider_error_code is not None:
+        events.append(
+            {
+                "schema_version": 1,
+                "run_id": run_id,
+                "sequence": sequence + 1,
+                "type": "process_output",
+                "occurred_at": utcnow().isoformat(),
+                "payload": {
+                    "stream": "stderr",
+                    "content": "Provider execution failed.",
+                    "provider_error": {
+                        "code": provider_error_code,
+                        "message": f"Provider fault {provider_error_code}",
+                        "retryable": True,
+                        "attempts": 1,
+                    },
+                },
+            }
+        )
     uploaded = await client.post(
         f"/api/internal/runner/runs/{run_id}/events",
         headers=AUTH,
         json={
             "runner_id": runner_id,
             "lease_id": job["lease_id"],
-            "events": [
-                {
-                    "schema_version": 1,
-                    "run_id": run_id,
-                    "sequence": job["next_sequence"],
-                    "type": "run_started",
-                    "occurred_at": utcnow().isoformat(),
-                    "payload": {"attempt": job["attempt"]},
-                }
-            ],
+            "events": events,
         },
     )
     assert uploaded.status_code == 200
     metrics: dict[str, object] = {}
-    if provider_error_code is not None:
-        metrics["provider_error"] = {
-            "code": provider_error_code,
-            "message": f"Provider fault {provider_error_code}",
-            "retryable": True,
-            "attempts": 1,
-        }
     if event_retries is not None:
         metrics["event_retries"] = event_retries
     completed = await client.post(
