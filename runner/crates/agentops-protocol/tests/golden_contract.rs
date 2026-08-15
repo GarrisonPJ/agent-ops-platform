@@ -6,9 +6,8 @@ fn python_golden_evaluation_spec_matches_rust_contract() {
     let spec: EvaluationSpec = serde_json::from_str(fixture).unwrap();
     spec.validate().unwrap();
 
-    let multi_step = include_str!(
-        "../../../../contracts/v1/fixtures/evaluation-spec.multi-step-research.json"
-    );
+    let multi_step =
+        include_str!("../../../../contracts/v1/fixtures/evaluation-spec.multi-step-research.json");
     let spec: EvaluationSpec = serde_json::from_str(multi_step).unwrap();
     spec.validate().unwrap();
 }
