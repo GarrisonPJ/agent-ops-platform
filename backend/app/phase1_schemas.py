@@ -270,6 +270,53 @@ class OperationsOverviewResponse(StrictModel):
     event_retries: int = Field(ge=0)
 
 
+class OperationalWindow(StrictModel):
+    window_from: datetime = Field(alias="from")
+    window_to: datetime = Field(alias="to")
+
+
+class OperationalStateEntry(StrictModel):
+    code: Literal[
+        "database_unavailable",
+        "schema_drift",
+        "runner_unavailable",
+        "lease_expired",
+        "provider_rate_limited",
+        "provider_unavailable",
+    ]
+    status: Literal["active", "clear", "unknown"]
+    count: int | None = None
+    details: dict[str, object] = Field(default_factory=dict)
+
+
+class OperationalIncident(StrictModel):
+    kind: Literal["expired_lease", "provider_fault"]
+    run_id: str
+    observed_at: datetime
+    fault_code: str | None = None
+    details: dict[str, object] = Field(default_factory=dict)
+
+
+class OperationalStateSnapshot(StrictModel):
+    schema_version: Literal[1] = 1
+    observed_at: datetime
+    window: OperationalWindow
+    status: Literal["ok", "degraded"]
+    primary_state: Literal[
+        "ok",
+        "database_unavailable",
+        "schema_drift",
+        "runner_unavailable",
+        "lease_expired",
+        "provider_rate_limited",
+        "provider_unavailable",
+    ]
+    states: list[OperationalStateEntry]
+    incidents: list[OperationalIncident]
+    next_cursor: str | None = None
+    summary: OperationsOverviewResponse
+
+
 class ReadinessResponse(StrictModel):
     status: Literal["ok", "unavailable"]
     database: Literal["ok", "unavailable"]

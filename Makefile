@@ -1,4 +1,4 @@
-.PHONY: demo down logs contracts check-contracts test test-backend test-frontend test-rust db-backup db-restore-rehearsal retention-plan retention-execute
+.PHONY: demo down logs contracts check-contracts test test-backend test-frontend test-rust db-backup db-restore-rehearsal retention-plan retention-execute health-probe
 
 COMPOSE := docker compose -f infra/docker/docker-compose.phase1.yml
 
@@ -53,3 +53,8 @@ retention-execute:
 	@test -n "$$RETENTION_CONFIRM"
 	@test "$$RETENTION_CONFIRM" = "DELETE_ELIGIBLE_EXPERIMENTS"
 	PYTHONPATH=backend uv run --project backend python -m app.data_retention execute --plan-file "$(RETENTION_PLAN_FILE)" --confirm "$$RETENTION_CONFIRM"
+
+API_URL ?= http://127.0.0.1:8000
+
+health-probe:
+	python scripts/health_probe.py --api-url "$(API_URL)" --include-state

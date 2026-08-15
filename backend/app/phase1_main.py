@@ -19,9 +19,10 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.migrations import application_alembic_head
+from app.operational_state import OperationalStateQuery, evaluate_operational_state
 from app.phase1_database import async_session, engine, get_db, init_db
 from app.phase1_events import event_notifier
-from app.phase1_models import Run, RunEvent
+from app.phase1_models import Run, RunEvent, utcnow
 from app.phase1_schemas import (
     ApiErrorPayload,
     AnalysisResponse,
@@ -37,6 +38,7 @@ from app.phase1_schemas import (
     HeartbeatRequest,
     HeartbeatResponse,
     OperationsOverviewResponse,
+    OperationalStateSnapshot,
     ReadinessResponse,
     RunnerAvailabilityResponse,
     PolicyResponse,
@@ -226,6 +228,24 @@ def create_app(
         db: AsyncSession = Depends(get_db),
     ) -> OperationsOverviewResponse:
         return await get_operations_overview(db)
+
+    @router.get("/operations/state", response_model=OperationalStateSnapshot)
+    async def operations_state(
+        db: AsyncSession = Depends(get_db),
+        window_seconds: int = Query(default=900, ge=60, le=86_400),
+        limit: int = Query(default=50, ge=1, le=100),
+        cursor: str | None = Query(default=None),
+    ) -> OperationalStateSnapshot:
+        return await evaluate_operational_state(
+            db,
+            OperationalStateQuery(
+                observed_at=utcnow(),
+                window_seconds=window_seconds,
+                limit=limit,
+                cursor=cursor,
+            ),
+            expected_schema_revision=application_alembic_head(),
+        )
 
     @router.get("/operations/runs/{run_id}", response_model=RunDiagnosticsResponse)
     async def operations_run_diagnostics(

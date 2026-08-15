@@ -99,19 +99,19 @@ ADR-0002 已确定采用同一个逻辑 Run 的确定性重启语义。已接受
 - **1.3C — 诊断正确性与安全关联：已实现。** 不可变的过期 Attempt 历史会保留最终 Lease/Runner 关联，Recovery 总数包含耗尽动作。Provider Telemetry 与 Error 在入库时执行允许列表，Request ID 转为 SHA-256 指纹，`0006` 迁移会净化历史记录。
 - **1.3D — 迁移与数据恢复：已实现。** Readiness 会对比实时 `alembic_version` 与应用 Head。仅从环境读取凭据的备份及临时库恢复命令使用导出快照，并验证 Revision、所有 public 表行数、已验证外键与有序 Run Trace；独立 PostgreSQL 16 CI Job 会执行带种子的恢复演练。
 - **1.3E — 保留与脱敏：已实现。** 以 Experiment 聚合为原子 Retention Unit；Plan 生成 SHA-256 digest，Execute 绑定 Plan 文件并在 PostgreSQL 锁后复核；`durable_events.py` 统一 Provider/Completion 入库边界，`TerminalFailureKind` 取代自由文本 error；`database-recovery` CI Job 覆盖真实 PostgreSQL 16 保留锁、stale-plan、回滚与备份恢复演练。提交 `80e03e0` 已 fast-forward 到 `main`。
+- **1.3F — 告警分类与收尾：已实现。** `GET /api/operations/state` 暴露带优先级的机器可读运维状态（数据库、Schema、Runner、Lease、Provider 故障）；Provider Outage 与 Rate Limit 为独立状态；Operations Overview 与 State 评估使用有界 SQL 聚合；`scripts/health_probe.py` 与 `docs/operations/fault-matrix.md` 提供可重复的进程外探测。
 
 Phase 1.3 剩余工作：
 
-- **1.3F — 告警分类与收尾**：暴露机器可读运维状态，区分 Provider Outage 与 Rate Limit；限制 Operations 查询；增加故障矩阵与进程外 API probe。
-- 全局 Operations 聚合仍会把全部 Run 与 Job 加载到内存；1.3F 需改为数据库侧有界聚合后再作为生产规模接口。
+- **Phase 1.3 收尾验证。** 运行 Python、TypeScript、Rust、迁移、Compose、Golden、Recovery、备份恢复与脱敏全套检查；只有下列每项验收都有 CI 或本地演练证据时才标记 Complete。
 
 执行计划：
 
 1. **1.3C — 诊断正确性与安全关联：已完成。** 不可变 Attempt 历史、包含耗尽动作的 Recovery 计数、强类型 Provider Error、Request 指纹、历史数据净化，以及恶意元数据/跨版本重试测试均已实现。
 2. **1.3D — 迁移与数据恢复（P0）：已完成。** Readiness 已对比实时 `alembic_version` 与应用 Head；可执行的 `pg_dump` 备份和临时数据库恢复演练会验证 Schema Revision、public 表行数、已验证外键与恢复后的 Run Trace，并在独立 PostgreSQL 16 CI Job 中运行。
 3. **1.3E — 保留与脱敏（P1）：已完成。** Experiment 聚合 Retention、Plan-file Execute、PostgreSQL 锁后复核、Provider/Completion 脱敏与真实 PostgreSQL 16 集成测试均已实现；Control Plane 运维边界记录在 ADR-0004。
-4. **1.3F — 告警分类与收尾（P1）：进行中。** 暴露机器可读状态，区分 API 故障、数据库连接、Schema Drift、Runner 缺失、Lease 过期与 Provider Outage；增加带可重复命令的故障矩阵；限制 Operations 查询；只有实际使用证明 API/Runbook 不足时才增加运维 UI。
-5. **Phase 1.3 收尾。** 在 1.3F 完成后运行 Python、TypeScript、Rust、迁移、Compose、Golden、Recovery、备份恢复与脱敏全套检查；同步两份路线图与 `CONTEXT.md`；只有下列每项验收都有证据时才标记 Complete。
+4. **1.3F — 告警分类与收尾（P1）：已完成。** 机器可读运维状态、有界 Operations 查询、Provider Outage 与 Rate Limit 分类、故障矩阵与进程外 API probe 均已实现。
+5. **Phase 1.3 收尾。** 运行 Python、TypeScript、Rust、迁移、Compose、Golden、Recovery、备份恢复与脱敏全套检查；同步两份路线图与 `CONTEXT.md`；只有下列每项验收都有证据时才标记 Complete。
 
 验收：
 
@@ -122,7 +122,7 @@ Phase 1.3 剩余工作：
 验收状态：
 
 - 失败 Run 关联：**已完成** — 当前与过期 Attempt（包括耗尽动作）均保留 Lease/Runner 身份和安全 Provider 指纹。
-- 故障分类：**部分完成** — 已有 API/数据库/Runner 检查、Schema Drift Readiness 与 Run 诊断；仍缺 Provider Outage 告警分类。
+- 故障分类：**已完成** — `/api/operations/state`、健康探测、Schema Drift Readiness、Runner 可用性、Lease 过期，以及独立的 Provider Outage 与 Rate Limit 状态均已实现，并配有可重复故障矩阵。
 - 备份与迁移演练：**已完成** — 迁移往返与独立 PostgreSQL 16 备份恢复演练均有可重复的 CI 和本地命令。
 - 保留与脱敏：**已完成** — Experiment 聚合 Retention、Plan-file Execute、PostgreSQL 锁后复核、Provider/Completion 脱敏与真实 PostgreSQL 16 集成测试均已实现。
 

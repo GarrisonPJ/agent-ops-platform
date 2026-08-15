@@ -99,19 +99,19 @@ Implementation progress as of 2026-07-31:
 - **1.3C — Diagnostic correctness and safe correlation: implemented.** Immutable expired-Attempt history preserves final Lease/Runner correlation, and recovery totals include exhaustion. Provider telemetry and errors are allowlisted at ingestion, Request IDs become SHA-256 fingerprints, and revision `0006` sanitizes legacy records.
 - **1.3D — Migration and data recovery: implemented.** Readiness compares the live `alembic_version` with the application Head. Environment-only backup and disposable restore commands use an exported snapshot and verify revision, every public-table row count, validated foreign keys, and an ordered Run trace. An isolated PostgreSQL 16 CI job runs the seeded rehearsal.
 - **1.3E — Retention and redaction: implemented.** Experiment aggregates are the atomic retention unit; Plan emits a SHA-256 digest and Execute binds a reviewed plan file with PostgreSQL post-lock revalidation; `durable_events.py` owns Provider/Completion ingestion boundaries and `TerminalFailureKind` replaces free-text completion errors; the `database-recovery` CI job covers real PostgreSQL 16 retention locking, stale-plan, rollback, and backup/restore rehearsal. Commit `80e03e0` is on `main`.
+- **1.3F — Alert classification and closeout: implemented.** `GET /api/operations/state` exposes machine-readable operator states with precedence across database, schema, Runner, lease, and provider faults; provider outage and rate limiting are separate states; operations overview and state evaluation use bounded SQL aggregates; `scripts/health_probe.py` and `docs/operations/fault-matrix.md` provide repeatable out-of-process probes.
 
 Remaining Phase 1.3 work:
 
-- **1.3F — Alert classification and closeout:** expose machine-readable operator states that distinguish provider outage from rate limiting; bound operations queries; add a fault matrix and out-of-process API probe.
-- Global operations aggregation still loads every Run and Job into memory; 1.3F must move to bounded database-side aggregates before this becomes a production-scale endpoint.
+- **Phase 1.3 closeout verification.** Run the full Python, TypeScript, Rust, migration, Compose, Golden, recovery, backup/restore, and redaction checks; mark Phase 1.3 Complete only when every acceptance item below is evidenced in CI or local rehearsal.
 
 Execution plan:
 
 1. **1.3C — Diagnostic correctness and safe correlation: Complete.** Immutable Attempt history, exhaustion-aware recovery counts, typed Provider errors, Request fingerprints, legacy-data sanitization, and malicious-metadata/cross-version retry tests are implemented.
 2. **1.3D — Migration and data recovery (P0): Complete.** Readiness now compares the live `alembic_version` with the application Head. Executable `pg_dump` backup and disposable restore rehearsal commands verify schema revision, public-table row counts, validated foreign keys, and a restored Run trace in an isolated PostgreSQL 16 CI job.
 3. **1.3E — Retention and redaction (P1): Complete.** Experiment-aggregate retention, plan-file execute, PostgreSQL post-lock revalidation, Provider/Completion redaction, and real PostgreSQL 16 integration tests are implemented; the control-plane maintenance boundary is recorded in ADR-0004.
-4. **1.3F — Alert classification and closeout (P1): In progress.** Expose machine-readable states that distinguish API failure, database connectivity, schema drift, missing Runner, expired Lease, and provider outage; add a fault matrix with repeatable commands; bound operations queries; add operator UI only if real usage shows the API/runbook is insufficient.
-5. **Phase 1.3 closeout.** After 1.3F, run all Python, TypeScript, Rust, migration, Compose, Golden, recovery, backup/restore, and redaction checks; update both roadmaps and `CONTEXT.md`; mark the milestone Complete only when every acceptance item below is evidenced.
+4. **1.3F — Alert classification and closeout (P1): Complete.** Machine-readable operational states, bounded operations queries, provider outage vs rate-limit classification, fault matrix, and out-of-process API probe are implemented.
+5. **Phase 1.3 closeout.** Run all Python, TypeScript, Rust, migration, Compose, Golden, recovery, backup/restore, and redaction checks; update both roadmaps and `CONTEXT.md`; mark the milestone Complete only when every acceptance item below is evidenced.
 
 Acceptance:
 
@@ -122,7 +122,7 @@ Acceptance:
 Acceptance status:
 
 - Failed-Run correlation: **Complete** — current and expired Attempts, including exhaustion, retain Lease/Runner identity and safe Provider fingerprints.
-- Failure classification: **Partial** — API/database/Runner checks, schema-drift readiness, and Run diagnostics exist; provider-outage alert classification remains.
+- Failure classification: **Complete** — `/api/operations/state`, health probes, schema-drift readiness, Runner availability, lease expiry, and separate provider outage vs rate-limit states are implemented with a repeatable fault matrix.
 - Backup and migration rehearsal: **Complete** — migration round-trip and an isolated PostgreSQL 16 backup restoration rehearsal have repeatable CI and local commands.
 - Retention and redaction: **Complete** — Experiment-aggregate retention, plan-file execute, PostgreSQL post-lock revalidation, Provider/Completion redaction, and real PostgreSQL 16 integration tests are implemented.
 

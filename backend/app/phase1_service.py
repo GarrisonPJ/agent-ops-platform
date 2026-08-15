@@ -293,45 +293,9 @@ async def get_run_diagnostics(db: AsyncSession, run_id: str) -> RunDiagnosticsRe
 
 
 async def get_operations_overview(db: AsyncSession) -> OperationsOverviewResponse:
-    runs = list((await db.execute(select(Run))).scalars().all())
-    jobs = {
-        item.run_id: item
-        for item in (await db.execute(select(RunnerJob))).scalars().all()
-    }
-    now = utcnow()
-    runs_by_status: dict[str, int] = {}
-    terminal_outcomes: dict[str, int] = {}
-    expired_lease_count = 0
-    lease_recoveries = int(
-        (await db.execute(select(func.count()).select_from(RunnerAttempt))).scalar_one()
-    )
-    event_retries = 0
-    for run in runs:
-        runs_by_status[run.status] = runs_by_status.get(run.status, 0) + 1
-        if run.status in TERMINAL_RUN_STATUSES:
-            terminal_outcomes[run.status] = terminal_outcomes.get(run.status, 0) + 1
-        metrics = run.metrics if isinstance(run.metrics, dict) else {}
-        event_retries += _nonnegative_metric(metrics.get("event_retries"))
-        job = jobs.get(run.id)
-        if job is None:
-            continue
-        expires_at = _aware(job.lease_expires_at)
-        if (
-            run.status in RECOVERABLE_RUN_STATUSES
-            and job.lease_id is not None
-            and expires_at is not None
-            and expires_at <= now
-        ):
-            expired_lease_count += 1
-    return OperationsOverviewResponse(
-        generated_at=now,
-        queue_depth=runs_by_status.get(RunStatus.QUEUED.value, 0),
-        runs_by_status=dict(sorted(runs_by_status.items())),
-        terminal_outcomes=dict(sorted(terminal_outcomes.items())),
-        expired_lease_count=expired_lease_count,
-        lease_recoveries=lease_recoveries,
-        event_retries=event_retries,
-    )
+    from app.operational_state import collect_operations_overview
+
+    return await collect_operations_overview(db)
 
 
 async def experiment_response(db: AsyncSession, experiment: Experiment) -> ExperimentResponse:
