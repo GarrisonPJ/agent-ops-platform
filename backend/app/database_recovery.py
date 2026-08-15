@@ -21,7 +21,7 @@ from app.migrations import application_alembic_head
 
 
 DISPOSABLE_DATABASE_PATTERN = re.compile(
-    r"^agentops_restore_[a-z0-9][a-z0-9_]{2,44}$"
+    r"^agentops_restore_[a-z0-9][a-z0-9_]{1,44}$"
 )
 IDENTIFIER_PATTERN = re.compile(r"^[a-z_][a-z0-9_]*$")
 LIBPQ_QUERY_ENV = {

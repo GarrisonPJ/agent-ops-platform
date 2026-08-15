@@ -57,6 +57,7 @@ def test_restore_target_must_be_distinct_and_disposable(target: str) -> None:
 
 
 def test_restore_target_accepts_scoped_name() -> None:
+    validate_disposable_database_name("agentops_restore_ci", "agentops")
     validate_disposable_database_name("agentops_restore_ci_01", "agentops")
 
 

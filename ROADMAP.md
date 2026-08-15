@@ -98,21 +98,20 @@ Implementation progress as of 2026-07-31:
 - **1.3B — Health and availability: implemented.** Separate API liveness, database readiness, and durable Runner availability endpoints are backed by authenticated Runner presence. Alembic revisions `0004` and `0005` and the Compose readiness probe are covered by CI and real-stack verification.
 - **1.3C — Diagnostic correctness and safe correlation: implemented.** Immutable expired-Attempt history preserves final Lease/Runner correlation, and recovery totals include exhaustion. Provider telemetry and errors are allowlisted at ingestion, Request IDs become SHA-256 fingerprints, and revision `0006` sanitizes legacy records.
 - **1.3D — Migration and data recovery: implemented.** Readiness compares the live `alembic_version` with the application Head. Environment-only backup and disposable restore commands use an exported snapshot and verify revision, every public-table row count, validated foreign keys, and an ordered Run trace. An isolated PostgreSQL 16 CI job runs the seeded rehearsal.
-- CI run `30549228509` passed backend, migration round-trip, frontend, Rust formatting/lint/tests, Compose validation, Golden E2E, and Runner recovery for commit `f7e4156`.
-- Local Phase 1.3D validation on PostgreSQL 16.14 passed 46 backend tests, 17 Rust tests plus formatting/lint, contract and Compose checks, an Alembic Head/base/Head round trip, and two restore rehearsals that verified nine public tables, ten validated foreign keys, and a two-event Run trace. The new remote recovery job remains pending until this change is committed and pushed.
+- **1.3E — Retention and redaction: implemented.** Experiment aggregates are the atomic retention unit; Plan emits a SHA-256 digest and Execute binds a reviewed plan file with PostgreSQL post-lock revalidation; `durable_events.py` owns Provider/Completion ingestion boundaries and `TerminalFailureKind` replaces free-text completion errors; an isolated `retention-postgres` CI job covers real PostgreSQL 16 locking, stale-plan, and rollback behavior. Commit `80e03e0` is on `main`.
 
 Remaining Phase 1.3 work:
 
-- Retention enforcement is partially implemented locally, with the aggregate lifecycle contract and operator commands documented; PostgreSQL lock/revalidation integration, provider-ingestion coverage, and review remain.
-- Global operations aggregation currently scans all Runs and Jobs; retention and bounded queries must land before this becomes a production-scale endpoint.
+- **1.3F — Alert classification and closeout:** expose machine-readable operator states that distinguish provider outage from rate limiting; bound operations queries; add a fault matrix and out-of-process API probe.
+- Global operations aggregation still loads every Run and Job into memory; 1.3F must move to bounded database-side aggregates before this becomes a production-scale endpoint.
 
 Execution plan:
 
 1. **1.3C — Diagnostic correctness and safe correlation: Complete.** Immutable Attempt history, exhaustion-aware recovery counts, typed Provider errors, Request fingerprints, legacy-data sanitization, and malicious-metadata/cross-version retry tests are implemented.
 2. **1.3D — Migration and data recovery (P0): Complete.** Readiness now compares the live `alembic_version` with the application Head. Executable `pg_dump` backup and disposable restore rehearsal commands verify schema revision, public-table row counts, validated foreign keys, and a restored Run trace in an isolated PostgreSQL 16 CI job.
-3. **1.3E — Retention and redaction (P1): In progress.** Treat an Experiment as the atomic retention unit; add operator-supplied-cutoff dry-run and confirmation-gated execute commands that delete only all-terminal aggregates with no protected policy or cross-aggregate dependencies; stop emitting raw Provider response content; verify credentials, endpoints, headers, raw content, and hidden reasoning cannot persist. The local implementation is partial; PostgreSQL lock/revalidation integration, provider-ingestion coverage, and review remain. Record the control-plane maintenance boundary in ADR-0004.
-4. **1.3F — Alert classification and closeout (P1).** Expose machine-readable states that distinguish API failure, database connectivity, schema drift, missing Runner, expired Lease, and provider outage; add a fault matrix with repeatable commands; bound operations queries; add operator UI only if real usage shows the API/runbook is insufficient.
-5. **Phase 1.3 closeout.** Run all Python, TypeScript, Rust, migration, Compose, Golden, recovery, backup/restore, and redaction checks; update both roadmaps and `CONTEXT.md`; mark the milestone Complete only when every acceptance item below is evidenced.
+3. **1.3E — Retention and redaction (P1): Complete.** Experiment-aggregate retention, plan-file execute, PostgreSQL post-lock revalidation, Provider/Completion redaction, and real PostgreSQL 16 integration tests are implemented; the control-plane maintenance boundary is recorded in ADR-0004.
+4. **1.3F — Alert classification and closeout (P1): In progress.** Expose machine-readable states that distinguish API failure, database connectivity, schema drift, missing Runner, expired Lease, and provider outage; add a fault matrix with repeatable commands; bound operations queries; add operator UI only if real usage shows the API/runbook is insufficient.
+5. **Phase 1.3 closeout.** After 1.3F, run all Python, TypeScript, Rust, migration, Compose, Golden, recovery, backup/restore, and redaction checks; update both roadmaps and `CONTEXT.md`; mark the milestone Complete only when every acceptance item below is evidenced.
 
 Acceptance:
 
@@ -125,7 +124,7 @@ Acceptance status:
 - Failed-Run correlation: **Complete** — current and expired Attempts, including exhaustion, retain Lease/Runner identity and safe Provider fingerprints.
 - Failure classification: **Partial** — API/database/Runner checks, schema-drift readiness, and Run diagnostics exist; provider-outage alert classification remains.
 - Backup and migration rehearsal: **Complete** — migration round-trip and an isolated PostgreSQL 16 backup restoration rehearsal have repeatable CI and local commands.
-- Retention and redaction: **Partial** — Provider metadata is allowlisted and legacy records are sanitized; the lifecycle contract and local retention commands exist, while PostgreSQL lock/revalidation integration, provider-ingestion coverage, and review remain.
+- Retention and redaction: **Complete** — Experiment-aggregate retention, plan-file execute, PostgreSQL post-lock revalidation, Provider/Completion redaction, and real PostgreSQL 16 integration tests are implemented.
 
 No Phase 1.4 milestone is defined yet. After Phase 1.3 closes, the next milestone must be chosen from measured operational needs; the conditional safety gate takes priority if shared/public use, untrusted endpoints, untrusted accounts, or side-effecting tools enter scope.
 
