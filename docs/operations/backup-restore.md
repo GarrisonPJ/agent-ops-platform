@@ -128,5 +128,6 @@ escalate repeated failures to the database owner with the PostgreSQL server
 logs and the sanitized command status.
 
 The isolated CI job is the repeatable baseline: it starts PostgreSQL 16,
-migrates agentops_recovery_source to Head, runs the seeded rehearsal, and
-expects the disposable target agentops_restore_ci to be removed on completion.
+migrates agentops_recovery_source to Head, runs the seeded backup/restore
+rehearsal, then runs PostgreSQL retention integration tests, and expects the
+disposable target agentops_restore_ci to be removed on completion.

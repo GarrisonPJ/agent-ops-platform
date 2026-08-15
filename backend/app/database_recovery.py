@@ -74,7 +74,8 @@ def validate_disposable_database_name(name: str, source_name: str) -> None:
         raise RecoveryError("restore target must differ from the source database")
     if not DISPOSABLE_DATABASE_PATTERN.fullmatch(name):
         raise RecoveryError(
-            "restore target must match agentops_restore_[a-z0-9_]+ and be at most 63 characters"
+            "restore target must match agentops_restore_[a-z0-9][a-z0-9_]{1,44} "
+            "and be at most 63 characters"
         )
 
 

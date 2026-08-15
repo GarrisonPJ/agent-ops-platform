@@ -54,85 +54,9 @@ jobs:
           uv run alembic downgrade base
           uv run alembic upgrade head
 
-  retention-postgres:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    defaults:
-      run:
-        working-directory: backend
-    services:
-      retention-postgres:
-        image: postgres:16-alpine
-        env:
-          POSTGRES_USER: retention_ci
-          POSTGRES_PASSWORD: retention_ci_password
-          POSTGRES_DB: retention_ci
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd 'pg_isready -U retention_ci -d retention_ci'
-          --health-interval 2s
-          --health-timeout 3s
-          --health-retries 15
-    env:
-      DATABASE_URL: postgresql+asyncpg://retention_ci:retention_ci_password@localhost:5432/retention_ci
-      RETENTION_POSTGRES_URL: postgresql+asyncpg://retention_ci:retention_ci_password@localhost:5432/retention_ci
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
-        with:
-          version: '0.11.14'
-          python-version: '3.12'
-          enable-cache: true
-          cache-dependency-glob: backend/uv.lock
-      - name: Install locked dependencies
-        run: uv sync --frozen
-      - name: Migrate retention database to Alembic Head
-        run: uv run alembic upgrade head
-      - name: Verify live Alembic Head
-        run: |
-          uv run python - <<'PY'
-          import asyncio
-          import os
-          import re
-
-          from app.migrations import application_alembic_head
-          from sqlalchemy import text
-          from sqlalchemy.ext.asyncio import create_async_engine
-
-          revision_pattern = re.compile(r'[A-Za-z0-9][A-Za-z0-9_-]{0,63}')
-
-          async def verify_head() -> None:
-              engine = create_async_engine(os.environ['DATABASE_URL'])
-              try:
-                  async with engine.connect() as connection:
-                      live = (
-                          await connection.execute(
-                              text('SELECT version_num FROM alembic_version')
-                          )
-                      ).scalar_one()
-                  expected = application_alembic_head()
-                  if (
-                      not isinstance(expected, str)
-                      or revision_pattern.fullmatch(expected) is None
-                      or not isinstance(live, str)
-                      or revision_pattern.fullmatch(live) is None
-                  ):
-                      raise SystemExit('Invalid Alembic revision')
-                  if live != expected:
-                      raise SystemExit('Alembic revision mismatch')
-                  print('Alembic revision verified')
-              finally:
-                  await engine.dispose()
-
-          asyncio.run(verify_head())
-          PY
-      - name: Test PostgreSQL retention
-        run: uv run pytest phase1_tests/test_data_retention_postgres.py -q --tb=short
-
   database-recovery:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
     services:
       recovery-postgres:
         image: postgres:16-alpine
@@ -150,6 +74,7 @@ jobs:
     env:
       DATABASE_URL: postgresql+asyncpg://agentops:agentops@localhost:5432/agentops_recovery_source
       RESTORE_DATABASE_NAME: agentops_restore_ci
+      RETENTION_POSTGRES_URL: postgresql+asyncpg://agentops:agentops@localhost:5432/agentops_recovery_source
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
@@ -171,7 +96,14 @@ jobs:
         working-directory: backend
         run: uv run alembic upgrade head
       - name: Run backup and restore rehearsal
-        run: PYTHONPATH=backend uv run --project backend python scripts/backup_restore_e2e.py
+        working-directory: backend
+        env:
+          VIRTUAL_ENV:
+          PYTHONPATH: .
+        run: uv run python ../scripts/backup_restore_e2e.py
+      - name: Test PostgreSQL retention
+        working-directory: backend
+        run: uv run pytest phase1_tests/test_data_retention_postgres.py -q --tb=short
 
   frontend:
     runs-on: ubuntu-latest
@@ -207,7 +139,7 @@ jobs:
         working-directory: runner
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.96.0
           components: rustfmt, clippy
