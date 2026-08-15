@@ -16,6 +16,16 @@ def test_golden_runner_fixtures_match_python_contract() -> None:
             encoding="utf-8"
         )
     )
+    EvaluationSpec.model_validate_json(
+        (
+            CONTRACT_DIRECTORY / "fixtures" / "evaluation-spec.multi-step-research.json"
+        ).read_text(encoding="utf-8")
+    )
+    EvaluationSpec.model_validate_json(
+        (
+            CONTRACT_DIRECTORY / "fixtures" / "evaluation-spec.api-fault-orchestration.json"
+        ).read_text(encoding="utf-8")
+    )
     EventEnvelope.model_validate_json(
         (
             CONTRACT_DIRECTORY / "fixtures" / "event-envelope.step-completed.json"

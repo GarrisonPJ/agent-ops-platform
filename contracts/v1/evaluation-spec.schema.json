@@ -94,10 +94,18 @@
       "type": "string"
     },
     "scenario_id": {
-      "const": "checkout-api-latency",
       "default": "checkout-api-latency",
+      "maxLength": 64,
+      "minLength": 2,
       "title": "Scenario Id",
       "type": "string"
+    },
+    "scenario_params": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Scenario Params",
+      "type": "object"
     },
     "schema_version": {
       "const": 1,

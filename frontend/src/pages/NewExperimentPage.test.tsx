@@ -7,9 +7,29 @@ import NewExperimentPage from "./NewExperimentPage";
 const mocks = vi.hoisted(() => ({
   createExperiment: vi.fn(),
   navigate: vi.fn(),
+  scenarios: [
+    {
+      id: "checkout-api-latency",
+      name: "Checkout API Latency",
+      description: "Investigate elevated checkout latency.",
+      default_task:
+        "Investigate why the checkout API latency increased after the latest deployment.",
+      allowed_tools: [
+        "check_service_health",
+        "query_service_metrics",
+        "fetch_service_logs",
+      ],
+      params: [],
+    },
+  ],
 }));
 
 vi.mock("../services/experimentsApi", () => ({
+  useGetScenariosQuery: () => ({
+    data: mocks.scenarios,
+    isLoading: false,
+    error: undefined,
+  }),
   useCreateExperimentMutation: () => [mocks.createExperiment, { isLoading: false }],
 }));
 
@@ -59,5 +79,16 @@ describe("NewExperimentPage", () => {
       }),
     );
     expect(mocks.navigate).toHaveBeenCalledWith("/experiments/provider-experiment");
+  });
+
+  it("lists registered scenarios from the API", () => {
+    render(
+      <MemoryRouter>
+        <NewExperimentPage />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole("radio", { name: /Checkout API Latency/ })).toBeTruthy();
+    expect(screen.getByText(/check_service_health/)).toBeTruthy();
   });
 });

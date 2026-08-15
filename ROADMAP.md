@@ -32,6 +32,7 @@ Phase 1 is complete and verified:
 | P0 | Phase 1.1 — Runner recovery | Complete | A crashed or disconnected Runner cannot strand a Run indefinitely. |
 | P1 | Phase 1.2 — OpenAI-compatible provider | Complete | Real model execution uses the same supervised, typed, persisted workflow without making CI depend on an external API. |
 | P2 | Phase 1.3 — Observability and operational hardening | Complete | Operators can diagnose queue, lease, Runner, provider, and migration failures from durable signals. |
+| P1 | Phase 1.4 — Scenario onboarding | Planned | Operators choose from registered built-in Scenarios; the platform is no longer limited to one hard-coded demo. |
 | Gate | Safety and access control | Trigger-based | Required before side-effecting tools, untrusted users, or shared/public operation enter scope. |
 
 ## Phase 1.1 — Runner recovery
@@ -128,7 +129,27 @@ Acceptance status:
 - Backup and migration rehearsal: **Complete** — migration round-trip and an isolated PostgreSQL 16 backup restoration rehearsal have repeatable CI and local commands.
 - Retention and redaction: **Complete** — Experiment-aggregate retention, plan-file execute, PostgreSQL post-lock revalidation, Provider/Completion redaction, and real PostgreSQL 16 integration tests are implemented.
 
-No Phase 1.4 milestone is defined yet. After Phase 1.3, the next milestone must be chosen from measured operational needs rather than speculative features. Promote work from **Deferred until justified** only when a concrete requirement appears. The conditional safety gate takes priority if shared/public use, untrusted endpoints, untrusted accounts, or side-effecting tools enter scope.
+No Phase 1.5 milestone is defined yet. After Phase 1.4, the next milestone must be chosen from measured operational needs rather than speculative features. Promote work from **Deferred until justified** only when a concrete requirement appears. The conditional safety gate takes priority if shared/public use, untrusted endpoints, untrusted accounts, or side-effecting tools enter scope.
+
+## Phase 1.4 — Scenario onboarding
+
+PRD: `.scratch/phase1.4-scenario-onboarding/PRD.md` (local tracker). Architecture boundary: [ADR-0006](docs/adr/0006-scenario-registry-boundary.md).
+
+Scope:
+
+- Relax `scenario_id` in protocol v1 while keeping `schema_version` at 1 and preserving backward-compatible defaults.
+- Introduce optional bounded `scenario_params` on EvaluationSpec.
+- Add a Scenario registry and protocol; refactor `checkout-api-latency` as the first registered Scenario.
+- Validate Scenario selection at Run creation; reject unregistered ids with structured errors.
+- Expose `GET /api/scenarios` and a workbench Scenario picker on New Experiment.
+- Ship two additional built-in Scenarios with fixture (CI) and provider (opt-in) paths.
+- Document Scenario vocabulary and a contributor guide for adding a Scenario.
+
+Acceptance:
+
+- Golden checkout loop still passes after registry refactor.
+- At least one additional Scenario completes the full closed loop in CI without external APIs.
+- README and CONTEXT describe registry semantics; ROADMAP marks this milestone Complete only when acceptance is evidenced in CI.
 
 ## Conditional safety gate
 

@@ -28,6 +28,7 @@ class Experiment(Base):
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     task: Mapped[str] = mapped_column(Text, nullable=False)
     scenario_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    scenario_params: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     execution_mode: Mapped[str] = mapped_column(String(20), nullable=False, default="fixture")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
 

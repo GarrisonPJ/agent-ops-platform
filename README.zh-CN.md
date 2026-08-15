@@ -5,16 +5,33 @@
 
 # AgentOps
 
-**一个用于运行、诊断、改进和验证工具型 AI Agent 的全栈评测工作台。**
-
-AgentOps 把一次失败执行变成可审查的改进闭环：
+**面向工具型 Agent 的作品集级闭环评估工作台** — 创建 Experiment、审查持久化 Trace、诊断失败、回放候选 Policy，并决定是否激活。
 
 ```text
 Experiment → Baseline → Trace → Failure Analysis → Candidate Policy
            → Replay → Before / After → 人工 Activate 或 Reject
 ```
 
-这个仓库刻意保持聚焦。Phase 1 的目标是证明一条完整、确定、可复现的闭环，而不是堆叠彼此无关的基础设施能力。
+```mermaid
+flowchart LR
+    UI["React 工作台"] -->|"类型化 HTTP + SSE"| API["FastAPI 控制面"]
+    API -->|"单一写入者"| DB[("PostgreSQL")]
+    Runner["Rust Runner"] -->|"租约 + 有序事件"| API
+    Runner -->|"EvaluationSpec JSON"| Agent["白名单 Python 场景"]
+```
+
+**本仓库的两个差异点：** (1) **带 Attempt 隔离的租约恢复** — Runner 崩溃不会让 Run 永久卡住；替换 Runner 以新 Attempt 领取并从下一事件序列继续。(2) **跨语言 contract v1** — Python Pydantic、TypeScript Zod 与 Rust Serde 在 CI 中校验同一套 golden fixtures。
+
+**30 秒上手：**
+
+```bash
+cp .env.example .env
+make demo
+```
+
+打开 [http://localhost:5173](http://localhost:5173)，走完 Golden 闭环：创建 Experiment、观察 baseline 失败、查看 Analysis、回放候选 Policy，然后 Activate 或 Reject。
+
+Phase 1 已完成（恢复、Provider 边界、可观测性）。**Phase 1.4 — 场景接入** 进行中：从单一硬编码 Demo 升级为多个注册内置场景。详见 [ROADMAP.md](ROADMAP.md)。
 
 ## 确定性 Golden 流程
 

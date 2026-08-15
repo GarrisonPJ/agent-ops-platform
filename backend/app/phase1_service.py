@@ -13,6 +13,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.failure_analyzer import analyze_trajectory
 from app.scoring import compute_score
+import app.scenarios  # noqa: F401 — register built-in Scenarios
+from app.scenario_registry import (
+    ScenarioParamError,
+    UnknownScenarioError,
+    candidate_policy_for_scenario,
+    list_scenarios,
+    validate_registered_scenario_params,
+)
 from app.phase1_models import (
     Experiment,
     Policy,
@@ -53,7 +61,8 @@ from app.phase1_schemas import (
     PolicyStatus,
     RunResponse,
     RunStatus,
-    SCENARIO_ID,
+    ScenarioParamSummary,
+    ScenarioSummary,
     TERMINAL_RUN_STATUSES,
 )
 from app.durable_events import (
@@ -340,6 +349,7 @@ async def experiment_response(db: AsyncSession, experiment: Experiment) -> Exper
         name=experiment.name,
         task=experiment.task,
         scenario_id=experiment.scenario_id,
+        scenario_params=dict(experiment.scenario_params or {}),
         execution_mode=ExecutionMode(experiment.execution_mode),
         created_at=experiment.created_at,
         runs=[run_response(item) for item in runs],
@@ -349,11 +359,28 @@ async def experiment_response(db: AsyncSession, experiment: Experiment) -> Exper
 
 
 async def create_experiment(db: AsyncSession, data: ExperimentCreate) -> ExperimentResponse:
+    try:
+        validate_registered_scenario_params(data.scenario_id, data.scenario_params)
+    except UnknownScenarioError as exc:
+        raise DomainError(
+            400,
+            "SCENARIO_NOT_REGISTERED",
+            str(exc),
+            {"scenario_id": exc.scenario_id},
+        ) from exc
+    except ScenarioParamError as exc:
+        raise DomainError(
+            400,
+            "INVALID_SCENARIO_PARAMS",
+            str(exc),
+        ) from exc
+
     experiment = Experiment(
         id=new_id(),
         name=data.name.strip(),
         task=data.task.strip(),
         scenario_id=data.scenario_id,
+        scenario_params=dict(data.scenario_params),
         execution_mode=data.execution_mode.value,
     )
     db.add(experiment)
@@ -378,6 +405,27 @@ async def list_experiments(db: AsyncSession, limit: int, offset: int) -> list[Ex
     return [await experiment_response(db, item) for item in experiments]
 
 
+def list_registered_scenarios() -> list[ScenarioSummary]:
+    return [
+        ScenarioSummary(
+            id=item.id,
+            name=item.name,
+            description=item.description,
+            default_task=item.default_task,
+            allowed_tools=list(item.allowed_tools),
+            params=[
+                ScenarioParamSummary(
+                    name=param.name,
+                    description=param.description,
+                    required=param.required,
+                )
+                for param in item.params
+            ],
+        )
+        for item in list_scenarios()
+    ]
+
+
 def _evaluation_spec(
     *,
     run_id: str,
@@ -389,12 +437,13 @@ def _evaluation_spec(
     return EvaluationSpec(
         run_id=run_id,
         experiment_id=experiment.id,
-        scenario_id=SCENARIO_ID,
+        scenario_id=experiment.scenario_id,
         task=experiment.task,
         seed=seed,
         execution_mode=execution_mode or ExecutionMode(experiment.execution_mode),
         policy=policy,
         limits=EvaluationLimits(),
+        scenario_params=dict(experiment.scenario_params or {}),
     )
 
 
@@ -921,17 +970,8 @@ async def _create_candidate(db: AsyncSession, run: Run) -> None:
             )
         )
     ).scalar_one_or_none()
-    patch = PolicyPatch(
-        instruction_patch=[
-            "Do not repeat a tool call with identical arguments.",
-            "Check service health, then metrics, then fetch logs supported by evidence.",
-        ],
-        tool_priority={
-            "check_service_health": 1.0,
-            "query_service_metrics": 0.9,
-            "fetch_service_logs": 0.3,
-        },
-        max_steps=6,
+    patch = candidate_policy_for_scenario(
+        (await require_experiment(db, run.experiment_id)).scenario_id
     )
     db.add(
         Policy(

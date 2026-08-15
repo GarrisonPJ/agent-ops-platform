@@ -27,6 +27,8 @@ This file defines the shared vocabulary and invariants for the implemented Phase
 | RunAnalysis | Deterministic failure dimensions, evidence, dominant type, and failure rate for one run. |
 | Policy | Experiment-scoped candidate patch derived from one failed baseline and optionally validated by one replay. |
 | PolicyPatch | Phase 1 patch with only `instruction_patch`, `tool_priority`, and `max_steps`. |
+| Scenario | A built-in, allowlisted evaluation world with stable metadata, tool surface, fixture semantics, and optional bounded `scenario_params`. |
+| Scenario Registry | Control-plane allowlist of Scenarios exposed through `GET /api/scenarios`. Only registered Scenarios may appear on Experiments or Runs. |
 | Recorded Preview | Offline-development and regression adapter that replays Golden E2E fixtures and never implements backend business rules. |
 | OperationalState | Machine-readable rollup from `GET /api/operations/state` classifying database, schema, Runner, lease, and provider faults with fixed precedence. |
 
@@ -70,11 +72,23 @@ claimed/running/cancelling -- exhausted attempts --> failed or cancelled
 8. An experiment has at most one active policy; activating a new one atomically supersedes the previous one.
 9. Activation is always a human action. Analysis and compilation are deterministic in Phase 1.
 10. API clients select an allowlisted `scenario_id` and `execution_mode`; they never provide an executable, command, provider URL, model, credential, or arbitrary code.
-11. Product events expose a concise `decision_summary`, not hidden chain-of-thought.
+11. A Scenario must be registered before it can execute. Unregistered ids are rejected with a structured error.
+12. `scenario_params` is optional, size-bounded, and validated against the Scenario metadata at Experiment creation.
+13. Product events expose a concise `decision_summary`, not hidden chain-of-thought.
 
-## Golden scenario
+## Built-in scenarios
 
-Scenario ID: `checkout-api-latency`
+The Scenario registry currently ships three built-in Scenarios. Checkout remains the Golden reference path; the others extend the same closed loop without changing Control Plane / Runner separation.
+
+| Scenario ID | Purpose |
+|---|---|
+| `checkout-api-latency` | Golden checkout latency investigation (health → metrics → logs). |
+| `multi-step-research` | Search, fetch, and answer loop with deliberate baseline repetition. |
+| `api-fault-orchestration` | Retry and degrade around injected upstream 503 faults. |
+
+Scenario metadata, tool allowlists, and contributor steps live in [docs/agents/scenario-development.md](docs/agents/scenario-development.md).
+
+### Golden scenario (`checkout-api-latency`)
 
 Available tools:
 
@@ -136,3 +150,4 @@ Roadmap changes do not alter these domain invariants by themselves. Update this 
 | [0003](docs/adr/0003-openai-compatible-provider-boundary.md) | Narrow OpenAI-compatible provider boundary | Accepted |
 | [0004](docs/adr/0004-data-lifecycle-retention.md) | Experiment aggregate retention in the Python Control Plane | Accepted |
 | [0005](docs/adr/0005-operational-alert-classification.md) | Machine-readable operational alert classification | Accepted |
+| [0006](docs/adr/0006-scenario-registry-boundary.md) | Scenario registry boundary | Accepted |

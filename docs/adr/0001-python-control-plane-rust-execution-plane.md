@@ -21,10 +21,11 @@ runner is the execution plane. It claims allowlisted evaluation jobs through
 an authenticated HTTP protocol, supervises a Python agent subprocess, and
 uploads versioned, sequenced events. Events are persisted before SSE delivery.
 
-Phase 1 supports only the deterministic `checkout-api-latency` scenario. It
-does not accept an arbitrary executable, connect to PostgreSQL, or connect to
-the Docker daemon. Kubernetes and Docker execution backends are outside the
-main product until a real requirement justifies them.
+Phase 1 ships built-in Scenarios through an explicit registry allowlist; see
+[ADR-0006](0006-scenario-registry-boundary.md). It does not accept an arbitrary
+executable, connect to PostgreSQL from the Runner, or connect to the Docker
+daemon. Kubernetes and Docker execution backends remain outside the main
+product until a real requirement justifies them.
 
 ## Consequences
 

@@ -5,16 +5,33 @@
 
 # AgentOps
 
-**A full-stack evaluation workbench for running, diagnosing, improving, and validating tool-using AI agents.**
-
-AgentOps turns one failed run into a reviewable improvement loop:
+**A portfolio-grade closed-loop evaluation workbench for tool-using agents** — run an Experiment, inspect the durable Trace, diagnose failure, replay a candidate Policy, and decide whether to activate it.
 
 ```text
 Experiment → Baseline → Trace → Failure Analysis → Candidate Policy
            → Replay → Before / After → Human Activate or Reject
 ```
 
-This repository is intentionally focused. Phase 1 proves one complete, deterministic loop instead of presenting unrelated infrastructure features.
+```mermaid
+flowchart LR
+    UI["React workbench"] -->|"typed HTTP + SSE"| API["FastAPI control plane"]
+    API -->|"single writer"| DB[("PostgreSQL")]
+    Runner["Rust Runner"] -->|"lease + sequenced events"| API
+    Runner -->|"EvaluationSpec JSON"| Agent["Allowlisted Python scenario"]
+```
+
+**Why this repo is different:** (1) **Lease recovery with attempt fencing** — a crashed Runner cannot strand a Run; a replacement claims with a new Attempt and resumes from the next event sequence. (2) **Cross-language contract v1** — Python Pydantic, TypeScript Zod, and Rust Serde validate the same golden fixtures in CI.
+
+**Try it in 30 seconds:**
+
+```bash
+cp .env.example .env
+make demo
+```
+
+Open [http://localhost:5173](http://localhost:5173) and walk the Golden loop: create an Experiment, watch the baseline fail, review Analysis, replay the candidate Policy, then Activate or Reject.
+
+Phase 1 is complete (recovery, provider boundary, observability). **Phase 1.4 — Scenario onboarding** is in progress: multiple registered built-in Scenarios instead of one hard-coded demo. See [ROADMAP.md](ROADMAP.md).
 
 ## Deterministic Golden workflow
 
@@ -160,7 +177,7 @@ CI covers Python, migrations, TypeScript, recorded-preview contracts, Rust proto
 
 Phase 1 has no Kubernetes executor, Docker socket, MCP server, vector memory, training export, framework adapters, user-supplied provider endpoints or credentials, arbitrary code execution, accounts, multi-tenancy, billing, or automatic policy activation.
 
-Those capabilities remain deferred until a measured requirement promotes them. The current priority is observability and operational hardening; see [ROADMAP.md](ROADMAP.md).
+Those capabilities remain deferred until a measured requirement promotes them. Phase 1.4 adds registered built-in Scenarios; see [ROADMAP.md](ROADMAP.md).
 
 ## Project direction
 

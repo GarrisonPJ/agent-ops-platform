@@ -11,6 +11,7 @@ import type {
   RunAnalysis,
   RunMetrics,
   RunStatus,
+  Scenario,
 } from "../schemas/phase1";
 
 
@@ -27,6 +28,7 @@ export type {
   RunAnalysis,
   RunMetrics,
   RunStatus,
+  Scenario,
 };
 
 export type RunKind = Run["kind"];
@@ -57,6 +59,7 @@ export interface ApiErrorBody {
 export interface CreateExperimentRequest {
   name: string;
   task: string;
-  scenario_id: "checkout-api-latency";
+  scenario_id: string;
   execution_mode: ExecutionMode;
+  scenario_params?: Record<string, string>;
 }

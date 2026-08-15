@@ -12,7 +12,7 @@ Experiment → Baseline → Persisted Trace → Failure Analysis
            → Candidate Policy → Replay → Comparison → Human Activate or Reject
 ```
 
-The current system is a focused evaluation control plane, not a generic orchestration platform. `backend/app/main.py` exports the Phase 1 application from `phase1_main.py`; `legacy_main.py` and the older executor, auto-replay, MCP, memory, and export modules are not part of the active Phase 1 runtime. Future work is tracked in [ROADMAP.md](../ROADMAP.md).
+The current system is a focused evaluation control plane, not a generic orchestration platform. `backend/app/main.py` exports the Phase 1 application from `phase1_main.py`. Pre-Phase 1 executor, auto-replay, MCP, memory, and export modules have been removed from the tree. Future work is tracked in [ROADMAP.md](../ROADMAP.md).
 
 ## Implemented Phase 1
 

@@ -32,6 +32,7 @@ Phase 1 已完成并通过验收：
 | P0 | Phase 1.1 — Runner Recovery | 已完成 | Runner 崩溃或失联后，Run 不会永久卡住。 |
 | P1 | Phase 1.2 — OpenAI-compatible Provider | 已完成 | 真实模型复用同一套受监督、有类型、可持久化的流程，同时 CI 不依赖外部 API。 |
 | P2 | Phase 1.3 — 可观测性与运维加固 | 已完成 | 可以依据持久信号诊断队列、Lease、Runner、Provider 与迁移故障。 |
+| P1 | Phase 1.4 — 场景接入 | 计划中 | 操作者从注册内置场景中选择；平台不再局限于一个硬编码 Demo。 |
 | Gate | 安全与访问控制 | 条件触发 | 在引入有副作用工具、不可信用户或共享/公网运行前必须完成。 |
 
 ## Phase 1.1 — Runner Recovery
@@ -128,7 +129,27 @@ Phase 1.3 收尾（2026-08-15）：
 - 备份与迁移演练：**已完成** — 迁移往返与独立 PostgreSQL 16 备份恢复演练均有可重复的 CI 和本地命令。
 - 保留与脱敏：**已完成** — Experiment 聚合 Retention、Plan-file Execute、PostgreSQL 锁后复核、Provider/Completion 脱敏与真实 PostgreSQL 16 集成测试均已实现。
 
-目前没有定义 Phase 1.4。Phase 1.3 完成后，下一里程碑应依据实际运维数据选择，而非推测性功能。**Deferred until justified** 中的项只有在出现具体需求时才提升优先级。如果开始共享/公网使用、接入不可信 Endpoint/账户或启用有副作用工具，则条件安全门优先。
+目前没有定义 Phase 1.5。Phase 1.4 完成后，下一里程碑应依据实际运维数据选择，而非推测性功能。**Deferred until justified** 中的项只有在出现具体需求时才提升优先级。如果开始共享/公网使用、接入不可信 Endpoint/账户或启用有副作用工具，则条件安全门优先。
+
+## Phase 1.4 — 场景接入
+
+PRD：`.scratch/phase1.4-scenario-onboarding/PRD.md`（本地跟踪器）。架构边界：[ADR-0006](docs/adr/0006-scenario-registry-boundary.md)。
+
+范围：
+
+- 在保持 `schema_version` 为 1 且向后兼容默认值的前提下，放宽协议 v1 中的 `scenario_id`。
+- 在 EvaluationSpec 上新增可选、有界 `scenario_params`。
+- 引入场景注册表与协议；将 `checkout-api-latency` 重构为首个注册场景。
+- 在创建 Run 时校验场景选择；未注册 ID 返回结构化错误。
+- 暴露 `GET /api/scenarios`，并在新建 Experiment 页面提供场景选择器。
+- 交付两个额外内置场景，分别支持 fixture（CI）与 provider（opt-in）路径。
+- 记录场景术语与贡献者指南。
+
+验收：
+
+- 注册表重构后 Golden checkout 闭环仍可通过。
+- 至少一个额外场景在 CI 中无需外部 API 即可完成完整闭环。
+- README 与 CONTEXT 描述注册表语义；仅当 CI 有证据时 ROADMAP 才将本里程碑标为完成。
 
 ## 条件安全门
 

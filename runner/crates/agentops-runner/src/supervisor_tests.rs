@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -193,6 +194,7 @@ fn claim(timeout_ms: u64) -> ClaimResponse {
             timeout_ms,
             max_output_bytes: 1_048_576,
         },
+        scenario_params: HashMap::new(),
     };
     ClaimResponse {
         lease_id: "lease-1".into(),

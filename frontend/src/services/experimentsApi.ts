@@ -5,6 +5,7 @@ import {
   policySchema,
   runAnalysisSchema,
   runSchema,
+  scenarioSummarySchema,
 } from "../schemas/phase1";
 import type {
   CreateExperimentRequest,
@@ -12,20 +13,27 @@ import type {
   Policy,
   Run,
   RunAnalysis,
+  Scenario,
 } from "../types/phase1";
 import { recordedBaseQuery } from "./recorded/handlers";
 
 
 const IS_RECORDED_DEMO = import.meta.env.VITE_MOCK_API === "true";
 const experimentListSchema = z.array(experimentSchema);
+const scenarioListSchema = z.array(scenarioSummarySchema);
 
 export const experimentsApi = createApi({
   reducerPath: "experimentsApi",
   baseQuery: IS_RECORDED_DEMO
     ? recordedBaseQuery
     : fetchBaseQuery({ baseUrl: "/api" }),
-  tagTypes: ["Experiments", "Experiment", "Run", "Analysis"],
+  tagTypes: ["Experiments", "Experiment", "Run", "Analysis", "Scenarios"],
   endpoints: (builder) => ({
+    getScenarios: builder.query<Scenario[], void>({
+      query: () => "/scenarios",
+      transformResponse: (response) => scenarioListSchema.parse(response),
+      providesTags: [{ type: "Scenarios", id: "LIST" }],
+    }),
     getExperiments: builder.query<Experiment[], void>({
       query: () => "/experiments",
       transformResponse: (response) => experimentListSchema.parse(response),
@@ -99,6 +107,7 @@ export const experimentsApi = createApi({
 });
 
 export const {
+  useGetScenariosQuery,
   useGetExperimentsQuery,
   useCreateExperimentMutation,
   useGetExperimentQuery,

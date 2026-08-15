@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from enum import StrEnum
 from typing import Annotated, Literal
@@ -21,6 +22,46 @@ from app.durable_events import (
 
 
 SCENARIO_ID = "checkout-api-latency"
+SCENARIO_ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]{1,62}$")
+ALLOWED_POLICY_TOOLS = frozenset(
+    {
+        "check_service_health",
+        "query_service_metrics",
+        "fetch_service_logs",
+        "search_documents",
+        "fetch_document",
+        "submit_answer",
+        "invoke_service",
+        "retry_call",
+        "degrade_route",
+    }
+)
+MAX_SCENARIO_PARAM_KEYS = 20
+MAX_SCENARIO_PARAM_VALUE_LENGTH = 200
+
+
+def validate_scenario_id(value: str) -> str:
+    normalized = value.strip()
+    if not SCENARIO_ID_PATTERN.fullmatch(normalized):
+        raise ValueError("scenario_id must match ^[a-z0-9][a-z0-9-]{1,62}$")
+    return normalized
+
+
+def validate_scenario_params(value: dict[str, object]) -> dict[str, str]:
+    if len(value) > MAX_SCENARIO_PARAM_KEYS:
+        raise ValueError(f"scenario_params may contain at most {MAX_SCENARIO_PARAM_KEYS} keys")
+    normalized: dict[str, str] = {}
+    for key, raw in value.items():
+        if not isinstance(key, str) or not SCENARIO_ID_PATTERN.fullmatch(key):
+            raise ValueError("scenario_params keys must match the scenario_id pattern")
+        if not isinstance(raw, str):
+            raise ValueError("scenario_params values must be strings")
+        if not raw or len(raw) > MAX_SCENARIO_PARAM_VALUE_LENGTH:
+            raise ValueError(
+                f"scenario_params values must be 1 to {MAX_SCENARIO_PARAM_VALUE_LENGTH} characters"
+            )
+        normalized[key] = raw
+    return normalized
 
 
 class StrictModel(BaseModel):
@@ -72,8 +113,7 @@ class PolicyPatch(StrictModel):
     @field_validator("tool_priority")
     @classmethod
     def validate_tool_names(cls, value: dict[str, float]) -> dict[str, float]:
-        allowed = {"check_service_health", "query_service_metrics", "fetch_service_logs"}
-        unknown = set(value) - allowed
+        unknown = set(value) - ALLOWED_POLICY_TOOLS
         if unknown:
             raise ValueError(f"unknown tools: {', '.join(sorted(unknown))}")
         return value
@@ -88,12 +128,23 @@ class EvaluationSpec(StrictModel):
     schema_version: Literal[1] = 1
     run_id: str
     experiment_id: str
-    scenario_id: Literal["checkout-api-latency"] = SCENARIO_ID
+    scenario_id: str = Field(default=SCENARIO_ID, min_length=2, max_length=64)
     task: str = Field(min_length=1, max_length=4_000)
     seed: int = Field(default=42, ge=0, le=2_147_483_647)
     execution_mode: ExecutionMode = ExecutionMode.FIXTURE
     policy: PolicyPatch | None = None
     limits: EvaluationLimits = Field(default_factory=EvaluationLimits)
+    scenario_params: dict[str, str] = Field(default_factory=dict)
+
+    @field_validator("scenario_id")
+    @classmethod
+    def normalize_scenario_id(cls, value: str) -> str:
+        return validate_scenario_id(value)
+
+    @field_validator("scenario_params")
+    @classmethod
+    def normalize_scenario_params(cls, value: dict[str, object]) -> dict[str, str]:
+        return validate_scenario_params(value)
 
 
 class EventEnvelope(StrictModel):
@@ -120,8 +171,34 @@ class EventEnvelope(StrictModel):
 class ExperimentCreate(StrictModel):
     name: str = Field(min_length=1, max_length=200)
     task: str = Field(min_length=1, max_length=4_000)
-    scenario_id: Literal["checkout-api-latency"] = SCENARIO_ID
+    scenario_id: str = Field(default=SCENARIO_ID, min_length=2, max_length=64)
     execution_mode: ExecutionMode = ExecutionMode.FIXTURE
+    scenario_params: dict[str, str] = Field(default_factory=dict)
+
+    @field_validator("scenario_id")
+    @classmethod
+    def normalize_scenario_id(cls, value: str) -> str:
+        return validate_scenario_id(value)
+
+    @field_validator("scenario_params")
+    @classmethod
+    def normalize_scenario_params(cls, value: dict[str, object]) -> dict[str, str]:
+        return validate_scenario_params(value)
+
+
+class ScenarioParamSummary(StrictModel):
+    name: str
+    description: str
+    required: bool = False
+
+
+class ScenarioSummary(StrictModel):
+    id: str
+    name: str
+    description: str
+    default_task: str
+    allowed_tools: list[str]
+    params: list[ScenarioParamSummary] = Field(default_factory=list)
 
 
 class RunCreate(StrictModel):
@@ -352,6 +429,7 @@ class ExperimentResponse(BaseModel):
     name: str
     task: str
     scenario_id: str
+    scenario_params: dict[str, str] = Field(default_factory=dict)
     execution_mode: ExecutionMode = ExecutionMode.FIXTURE
     created_at: datetime
     runs: list[RunResponse] = Field(default_factory=list)

@@ -57,6 +57,57 @@ export async function recordedHandler(
   await delay();
   const path = normalizedPath(url);
 
+  if (method === "GET" && path === "/scenarios") {
+    return ok(
+      cloneFixture([
+        {
+          id: "checkout-api-latency",
+          name: "Checkout API Latency",
+          description:
+            "Investigate elevated checkout latency using health checks, dependency metrics, and evidence-backed logs.",
+          default_task: goldenExperiment.task,
+          allowed_tools: [
+            "check_service_health",
+            "query_service_metrics",
+            "fetch_service_logs",
+          ],
+          params: [],
+        },
+        {
+          id: "multi-step-research",
+          name: "Multi-step Research",
+          description:
+            "Answer a research question by searching documents, fetching evidence, and submitting a final answer.",
+          default_task: "Answer a research question using search and fetch tools",
+          allowed_tools: ["search_documents", "fetch_document", "submit_answer"],
+          params: [
+            {
+              name: "topic",
+              description: "Research topic used by search tools.",
+              required: true,
+            },
+          ],
+        },
+        {
+          id: "api-fault-orchestration",
+          name: "API Fault Orchestration",
+          description:
+            "Recover from injected upstream failures using bounded retries and a degraded fallback route.",
+          default_task:
+            "Stabilize a failing API dependency without exhausting the step budget",
+          allowed_tools: ["invoke_service", "retry_call", "degrade_route"],
+          params: [
+            {
+              name: "service",
+              description: "Service name that receives deterministic fault injection.",
+              required: false,
+            },
+          ],
+        },
+      ]),
+    );
+  }
+
   if (method === "GET" && path === "/experiments") {
     return ok(cloneFixture(experiments));
   }
@@ -65,6 +116,7 @@ export async function recordedHandler(
     const request = body as {
       name?: string;
       task?: string;
+      scenario_id?: string;
       execution_mode?: ExecutionMode;
     };
     const executionMode = request.execution_mode ?? "fixture";
@@ -72,7 +124,7 @@ export async function recordedHandler(
       id: `exp-recorded-${experiments.length + 1}`,
       name: request.name?.trim() || "Recorded experiment",
       task: request.task?.trim() || goldenExperiment.task,
-      scenario_id: "checkout-api-latency",
+      scenario_id: request.scenario_id ?? "checkout-api-latency",
       execution_mode: executionMode,
       created_at: "2026-07-16T09:00:00Z",
       runs: [],

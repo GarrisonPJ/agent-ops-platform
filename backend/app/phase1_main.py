@@ -10,6 +10,7 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from fastapi import APIRouter, Depends, FastAPI, Header, Query, Request, Response
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -46,6 +47,7 @@ from app.phase1_schemas import (
     RunDiagnosticsResponse,
     RunCreate,
     RunResponse,
+    ScenarioSummary,
     TERMINAL_RUN_STATUSES,
 )
 from app.phase1_service import (
@@ -62,6 +64,7 @@ from app.phase1_service import (
     get_run_diagnostics,
     heartbeat,
     list_experiments,
+    list_registered_scenarios,
     next_event_sequence,
     persist_events,
     reject_policy,
@@ -136,7 +139,11 @@ def create_app(
     ) -> JSONResponse:
         return JSONResponse(
             status_code=422,
-            content=_error_payload("VALIDATION_ERROR", "Request validation failed", exc.errors()),
+            content=_error_payload(
+                "VALIDATION_ERROR",
+                "Request validation failed",
+                jsonable_encoder(exc.errors()),
+            ),
         )
 
     @application.exception_handler(StarletteHTTPException)
@@ -252,6 +259,10 @@ def create_app(
         run_id: str, db: AsyncSession = Depends(get_db)
     ) -> RunDiagnosticsResponse:
         return await get_run_diagnostics(db, run_id)
+
+    @router.get("/scenarios", response_model=list[ScenarioSummary])
+    async def scenarios_list() -> list[ScenarioSummary]:
+        return list_registered_scenarios()
 
     @router.get("/experiments", response_model=list[ExperimentResponse])
     async def experiments_list(

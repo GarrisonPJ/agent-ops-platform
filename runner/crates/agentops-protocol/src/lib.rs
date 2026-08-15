@@ -1,15 +1,36 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 use chrono::DateTime;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 pub const SCHEMA_VERSION: u16 = 1;
+const MAX_SCENARIO_PARAM_KEYS: usize = 20;
+const MAX_SCENARIO_PARAM_VALUE_LENGTH: usize = 200;
 
-const ALLOWED_TOOLS: [&str; 3] = [
+fn is_valid_scenario_id(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    if bytes.len() < 2 || bytes.len() > 64 {
+        return false;
+    }
+    if !bytes[0].is_ascii_lowercase() && !bytes[0].is_ascii_digit() {
+        return false;
+    }
+    bytes[1..]
+        .iter()
+        .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || *byte == b'-')
+}
+
+const ALLOWED_TOOLS: [&str; 9] = [
     "check_service_health",
     "query_service_metrics",
     "fetch_service_logs",
+    "search_documents",
+    "fetch_document",
+    "submit_answer",
+    "invoke_service",
+    "retry_call",
+    "degrade_route",
 ];
 const ALLOWED_EVENT_TYPES: [&str; 6] = [
     "run_started",
@@ -107,6 +128,8 @@ pub struct EvaluationSpec {
     pub policy: Option<PolicyPatch>,
     #[serde(default)]
     pub limits: ExecutionLimits,
+    #[serde(default)]
+    pub scenario_params: HashMap<String, String>,
 }
 
 impl EvaluationSpec {
@@ -120,11 +143,26 @@ impl EvaluationSpec {
         if self.run_id.trim().is_empty() || self.experiment_id.trim().is_empty() {
             return Err("run_id and experiment_id are required".into());
         }
-        if self.scenario_id != "checkout-api-latency" {
+        if !is_valid_scenario_id(&self.scenario_id) {
             return Err(format!(
-                "scenario '{}' is not allowlisted",
+                "scenario '{}' does not match the allowlisted id pattern",
                 self.scenario_id
             ));
+        }
+        if self.scenario_params.len() > MAX_SCENARIO_PARAM_KEYS {
+            return Err(format!(
+                "scenario_params may contain at most {MAX_SCENARIO_PARAM_KEYS} keys"
+            ));
+        }
+        for (key, value) in &self.scenario_params {
+            if !is_valid_scenario_id(key) {
+                return Err("scenario_params keys must match the scenario_id pattern".into());
+            }
+            if value.is_empty() || value.chars().count() > MAX_SCENARIO_PARAM_VALUE_LENGTH {
+                return Err(format!(
+                    "scenario_params values must be 1 to {MAX_SCENARIO_PARAM_VALUE_LENGTH} characters"
+                ));
+            }
         }
         if self.task.is_empty() || self.task.chars().count() > 4_000 {
             return Err("task must contain 1 to 4000 characters".into());
@@ -301,6 +339,7 @@ mod tests {
             execution_mode: ExecutionMode::Fixture,
             policy: None,
             limits: ExecutionLimits::default(),
+            scenario_params: HashMap::new(),
         }
     }
 
@@ -322,10 +361,10 @@ mod tests {
     }
 
     #[test]
-    fn rejects_unknown_scenario() {
+    fn rejects_invalid_scenario_id_pattern() {
         let mut value = spec();
-        value.scenario_id = "arbitrary-command".into();
-        assert!(value.validate().unwrap_err().contains("not allowlisted"));
+        value.scenario_id = "INVALID".into();
+        assert!(value.validate().unwrap_err().contains("allowlisted"));
     }
 
     #[test]

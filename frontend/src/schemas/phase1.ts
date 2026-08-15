@@ -31,12 +31,27 @@ export const policyPatchSchema = z
   })
   .strict();
 
+export const scenarioIdSchema = z
+  .string()
+  .min(2)
+  .max(64)
+  .regex(/^[a-z0-9][a-z0-9-]{1,62}$/);
+
+export const scenarioParamsSchema = z
+  .record(
+    scenarioIdSchema,
+    z.string().min(1).max(200),
+  )
+  .refine((value) => Object.keys(value).length <= 20, {
+    message: "scenario_params may contain at most 20 keys",
+  });
+
 export const evaluationSpecSchema = z
   .object({
     schema_version: z.literal(1),
     run_id: z.string().min(1),
     experiment_id: z.string().min(1),
-    scenario_id: z.literal("checkout-api-latency"),
+    scenario_id: scenarioIdSchema.default("checkout-api-latency"),
     task: z.string().min(1).max(4_000),
     seed: z.number().int().min(0).max(2_147_483_647),
     execution_mode: executionModeSchema.optional(),
@@ -47,6 +62,7 @@ export const evaluationSpecSchema = z
         max_output_bytes: z.number().int().min(1_024).max(10_485_760),
       })
       .strict(),
+    scenario_params: scenarioParamsSchema.optional(),
   })
   .strict();
 
@@ -96,12 +112,32 @@ export const policySchema = z
   })
   .strict();
 
+export const scenarioParamSummarySchema = z
+  .object({
+    name: z.string().min(1),
+    description: z.string().min(1),
+    required: z.boolean().optional(),
+  })
+  .strict();
+
+export const scenarioSummarySchema = z
+  .object({
+    id: scenarioIdSchema,
+    name: z.string().min(1),
+    description: z.string().min(1),
+    default_task: z.string().min(1),
+    allowed_tools: z.array(z.string().min(1)),
+    params: z.array(scenarioParamSummarySchema).optional(),
+  })
+  .strict();
+
 export const experimentSchema = z
   .object({
     id: z.string().min(1),
     name: z.string().min(1),
     task: z.string().min(1),
-    scenario_id: z.literal("checkout-api-latency"),
+    scenario_id: scenarioIdSchema,
+    scenario_params: scenarioParamsSchema.optional(),
     execution_mode: executionModeSchema.optional(),
     created_at: z.string().min(1),
     runs: z.array(runSchema),
@@ -166,6 +202,7 @@ export type EvaluationSpec = z.infer<typeof evaluationSpecSchema>;
 export type RunMetrics = z.infer<typeof runMetricsSchema>;
 export type Run = z.infer<typeof runSchema>;
 export type Policy = z.infer<typeof policySchema>;
+export type Scenario = z.infer<typeof scenarioSummarySchema>;
 export type Experiment = z.infer<typeof experimentSchema>;
 export type FailureEvidence = z.infer<typeof failureEvidenceSchema>;
 export type RunAnalysis = z.infer<typeof runAnalysisSchema>;

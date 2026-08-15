@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "run_id": "00000000-0000-4000-8000-000000000005",
+  "experiment_id": "00000000-0000-4000-8000-000000000006",
+  "scenario_id": "api-fault-orchestration",
+  "task": "Stabilize a failing API dependency without exhausting the step budget",
+  "seed": 11,
+  "execution_mode": "fixture",
+  "policy": null,
+  "scenario_params": {
+    "service": "payments-api"
+  },
+  "limits": {
+    "timeout_ms": 60000,
+    "max_output_bytes": 1048576
+  }
+}
