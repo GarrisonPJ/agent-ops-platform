@@ -22,6 +22,7 @@ Phase 1 已完成并通过验收：
 - CI 验证契约、迁移、数据库恢复、后端行为、前端适配器、Rust 进程监督、Compose 和真实 Golden 闭环。
 - 持久化 Run 诊断已经关联队列、Lease、Attempt、Runner、Provider、重试、耗时与终态信号。
 - 数据库 Readiness 会验证 Alembic Head，可执行临时库备份恢复演练，持久化 Runner 可用性保持独立可观测。
+- 机器可读运维状态（`GET /api/operations/state`）、有界 Operations 聚合、Retention/脱敏执行与进程外健康探测已在 CI 中验证。
 - Policy 始终需要人工显式激活。
 
 ## 里程碑
@@ -30,7 +31,7 @@ Phase 1 已完成并通过验收：
 |---|---|---|---|
 | P0 | Phase 1.1 — Runner Recovery | 已完成 | Runner 崩溃或失联后，Run 不会永久卡住。 |
 | P1 | Phase 1.2 — OpenAI-compatible Provider | 已完成 | 真实模型复用同一套受监督、有类型、可持久化的流程，同时 CI 不依赖外部 API。 |
-| P2 | Phase 1.3 — 可观测性与运维加固 | 进行中 | 可以依据持久信号诊断队列、Lease、Runner、Provider 与迁移故障。 |
+| P2 | Phase 1.3 — 可观测性与运维加固 | 已完成 | 可以依据持久信号诊断队列、Lease、Runner、Provider 与迁移故障。 |
 | Gate | 安全与访问控制 | 条件触发 | 在引入有副作用工具、不可信用户或共享/公网运行前必须完成。 |
 
 ## Phase 1.1 — Runner Recovery
@@ -92,18 +93,19 @@ ADR-0002 已确定采用同一个逻辑 Run 的确定性重启语义。已接受
 - 定义事件与 Provider 元数据的保留和脱敏规则。
 - 只有在采集信号证明有必要时，才增加面向运维者的诊断界面。
 
-截至 2026-07-31 的实现进度：
+截至 2026-08-15 的实现进度：
 
 - **1.3A — 持久诊断：已实现。** 单 Run 诊断暴露 Run、Job、当前 Lease/Runner、Attempt、Provider、耗时、重试、恢复和终态投影；Operations Overview 汇总队列深度、状态分布、过期 Lease、恢复次数与事件重试。
 - **1.3B — 健康与可用性：已实现。** API Liveness、数据库 Readiness 和持久化 Runner Availability 已拆分，并由认证 Runner Presence 驱动。Alembic `0004`、`0005` 与 Compose Readiness 探针已通过 CI 和真实环境验证。
 - **1.3C — 诊断正确性与安全关联：已实现。** 不可变的过期 Attempt 历史会保留最终 Lease/Runner 关联，Recovery 总数包含耗尽动作。Provider Telemetry 与 Error 在入库时执行允许列表，Request ID 转为 SHA-256 指纹，`0006` 迁移会净化历史记录。
 - **1.3D — 迁移与数据恢复：已实现。** Readiness 会对比实时 `alembic_version` 与应用 Head。仅从环境读取凭据的备份及临时库恢复命令使用导出快照，并验证 Revision、所有 public 表行数、已验证外键与有序 Run Trace；独立 PostgreSQL 16 CI Job 会执行带种子的恢复演练。
 - **1.3E — 保留与脱敏：已实现。** 以 Experiment 聚合为原子 Retention Unit；Plan 生成 SHA-256 digest，Execute 绑定 Plan 文件并在 PostgreSQL 锁后复核；`durable_events.py` 统一 Provider/Completion 入库边界，`TerminalFailureKind` 取代自由文本 error；`database-recovery` CI Job 覆盖真实 PostgreSQL 16 保留锁、stale-plan、回滚与备份恢复演练。提交 `80e03e0` 已 fast-forward 到 `main`。
-- **1.3F — 告警分类与收尾：已实现。** `GET /api/operations/state` 暴露带优先级的机器可读运维状态（数据库、Schema、Runner、Lease、Provider 故障）；Provider Outage 与 Rate Limit 为独立状态；Operations Overview 与 State 评估使用有界 SQL 聚合；`scripts/health_probe.py` 与 `docs/operations/fault-matrix.md` 提供可重复的进程外探测。
+- **1.3F — 告警分类与收尾：已实现。** `GET /api/operations/state` 暴露带优先级的机器可读运维状态（数据库、Schema、Runner、Lease、Provider 故障）；Provider Outage 与 Rate Limit 为独立状态；Operations Overview 与 State 评估使用有界 SQL 聚合；`scripts/health_probe.py` 与 `docs/operations/fault-matrix.md` 提供可重复的进程外探测。提交 `98c903d` 与 `b8f4b8c` 已在 `main`。
 
-Phase 1.3 剩余工作：
+Phase 1.3 收尾（2026-08-15）：
 
-- **Phase 1.3 收尾验证。** 运行 Python、TypeScript、Rust、迁移、Compose、Golden、Recovery、备份恢复与脱敏全套检查；只有下列每项验收都有 CI 或本地演练证据时才标记 Complete。
+- **状态：已完成。** `main` 上的 CI 覆盖 backend `phase1_tests`（含 operational state）、迁移往返、PostgreSQL 备份恢复与 Retention 集成、前端 typecheck/测试/构建/Recorded E2E、Rust fmt/clippy/test、Compose 配置校验、Golden 闭环与 Runner Recovery 演练。
+- **证据：** `.github/workflows/ci.yml` 的 `backend`、`database-recovery`、`frontend`、`rust`、`compose`、`golden-e2e` Job；`docs/operations/` Runbook；ADR-0005。
 
 执行计划：
 
@@ -111,7 +113,7 @@ Phase 1.3 剩余工作：
 2. **1.3D — 迁移与数据恢复（P0）：已完成。** Readiness 已对比实时 `alembic_version` 与应用 Head；可执行的 `pg_dump` 备份和临时数据库恢复演练会验证 Schema Revision、public 表行数、已验证外键与恢复后的 Run Trace，并在独立 PostgreSQL 16 CI Job 中运行。
 3. **1.3E — 保留与脱敏（P1）：已完成。** Experiment 聚合 Retention、Plan-file Execute、PostgreSQL 锁后复核、Provider/Completion 脱敏与真实 PostgreSQL 16 集成测试均已实现；Control Plane 运维边界记录在 ADR-0004。
 4. **1.3F — 告警分类与收尾（P1）：已完成。** 机器可读运维状态、有界 Operations 查询、Provider Outage 与 Rate Limit 分类、故障矩阵与进程外 API probe 均已实现。
-5. **Phase 1.3 收尾。** 运行 Python、TypeScript、Rust、迁移、Compose、Golden、Recovery、备份恢复与脱敏全套检查；同步两份路线图与 `CONTEXT.md`；只有下列每项验收都有证据时才标记 Complete。
+5. **Phase 1.3 收尾：已完成。** 全套 CI 矩阵与运维 Runbook 已就位；下列验收项均有证据。
 
 验收：
 
@@ -126,7 +128,7 @@ Phase 1.3 剩余工作：
 - 备份与迁移演练：**已完成** — 迁移往返与独立 PostgreSQL 16 备份恢复演练均有可重复的 CI 和本地命令。
 - 保留与脱敏：**已完成** — Experiment 聚合 Retention、Plan-file Execute、PostgreSQL 锁后复核、Provider/Completion 脱敏与真实 PostgreSQL 16 集成测试均已实现。
 
-目前没有定义 Phase 1.4。Phase 1.3 收尾后，应根据实际运维数据选择下一里程碑；如果开始共享/公网使用、接入不可信 Endpoint/账户或启用有副作用工具，则条件安全门优先。
+目前没有定义 Phase 1.4。Phase 1.3 完成后，下一里程碑应依据实际运维数据选择，而非推测性功能。**Deferred until justified** 中的项只有在出现具体需求时才提升优先级。如果开始共享/公网使用、接入不可信 Endpoint/账户或启用有副作用工具，则条件安全门优先。
 
 ## 条件安全门
 

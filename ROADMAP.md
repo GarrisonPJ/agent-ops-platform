@@ -22,6 +22,7 @@ Phase 1 is complete and verified:
 - CI verifies contracts, migrations, database recovery, backend behavior, frontend adapters, Rust supervision, Compose, and the real Golden loop.
 - Durable Run diagnostics now correlate queue, lease, attempt, Runner, provider, retry, timing, and terminal signals.
 - Database readiness verifies the Alembic Head, disposable backup/restore rehearsal is executable, and durable Runner availability remains independently observable.
+- Machine-readable operational states (`GET /api/operations/state`), bounded operations aggregates, retention/redaction enforcement, and out-of-process health probes are implemented and verified in CI.
 - Policy activation remains an explicit human action.
 
 ## Milestones
@@ -30,7 +31,7 @@ Phase 1 is complete and verified:
 |---|---|---|---|
 | P0 | Phase 1.1 — Runner recovery | Complete | A crashed or disconnected Runner cannot strand a Run indefinitely. |
 | P1 | Phase 1.2 — OpenAI-compatible provider | Complete | Real model execution uses the same supervised, typed, persisted workflow without making CI depend on an external API. |
-| P2 | Phase 1.3 — Observability and operational hardening | In progress | Operators can diagnose queue, lease, Runner, provider, and migration failures from durable signals. |
+| P2 | Phase 1.3 — Observability and operational hardening | Complete | Operators can diagnose queue, lease, Runner, provider, and migration failures from durable signals. |
 | Gate | Safety and access control | Trigger-based | Required before side-effecting tools, untrusted users, or shared/public operation enter scope. |
 
 ## Phase 1.1 — Runner recovery
@@ -92,18 +93,19 @@ Scope:
 - Define retention and redaction rules for events and provider metadata.
 - Add operator-facing diagnostics only where the collected signals prove they are needed.
 
-Implementation progress as of 2026-07-31:
+Implementation progress as of 2026-08-15:
 
 - **1.3A — Durable diagnostics: implemented.** Per-Run diagnostics expose Run, Job, current Lease/Runner, Attempt, provider, timing, retries, recovery, and terminal projections. The operations overview reports queue depth, status distribution, expired leases, recoveries, and event retries.
 - **1.3B — Health and availability: implemented.** Separate API liveness, database readiness, and durable Runner availability endpoints are backed by authenticated Runner presence. Alembic revisions `0004` and `0005` and the Compose readiness probe are covered by CI and real-stack verification.
 - **1.3C — Diagnostic correctness and safe correlation: implemented.** Immutable expired-Attempt history preserves final Lease/Runner correlation, and recovery totals include exhaustion. Provider telemetry and errors are allowlisted at ingestion, Request IDs become SHA-256 fingerprints, and revision `0006` sanitizes legacy records.
 - **1.3D — Migration and data recovery: implemented.** Readiness compares the live `alembic_version` with the application Head. Environment-only backup and disposable restore commands use an exported snapshot and verify revision, every public-table row count, validated foreign keys, and an ordered Run trace. An isolated PostgreSQL 16 CI job runs the seeded rehearsal.
 - **1.3E — Retention and redaction: implemented.** Experiment aggregates are the atomic retention unit; Plan emits a SHA-256 digest and Execute binds a reviewed plan file with PostgreSQL post-lock revalidation; `durable_events.py` owns Provider/Completion ingestion boundaries and `TerminalFailureKind` replaces free-text completion errors; the `database-recovery` CI job covers real PostgreSQL 16 retention locking, stale-plan, rollback, and backup/restore rehearsal. Commit `80e03e0` is on `main`.
-- **1.3F — Alert classification and closeout: implemented.** `GET /api/operations/state` exposes machine-readable operator states with precedence across database, schema, Runner, lease, and provider faults; provider outage and rate limiting are separate states; operations overview and state evaluation use bounded SQL aggregates; `scripts/health_probe.py` and `docs/operations/fault-matrix.md` provide repeatable out-of-process probes.
+- **1.3F — Alert classification and closeout: implemented.** `GET /api/operations/state` exposes machine-readable operator states with precedence across database, schema, Runner, lease, and provider faults; provider outage and rate limiting are separate states; operations overview and state evaluation use bounded SQL aggregates; `scripts/health_probe.py` and `docs/operations/fault-matrix.md` provide repeatable out-of-process probes. Commits `98c903d` and `b8f4b8c` are on `main`.
 
-Remaining Phase 1.3 work:
+Phase 1.3 closeout (2026-08-15):
 
-- **Phase 1.3 closeout verification.** Run the full Python, TypeScript, Rust, migration, Compose, Golden, recovery, backup/restore, and redaction checks; mark Phase 1.3 Complete only when every acceptance item below is evidenced in CI or local rehearsal.
+- **Status: Complete.** CI on `main` exercises backend `phase1_tests` (including operational state), migration round-trip, PostgreSQL backup/restore and retention integration, frontend typecheck/tests/build/recorded E2E, Rust fmt/clippy/test, Compose config validation, Golden closed loop, and Runner recovery rehearsal.
+- **Evidence:** `.github/workflows/ci.yml` jobs `backend`, `database-recovery`, `frontend`, `rust`, `compose`, and `golden-e2e`; runbooks under `docs/operations/`; ADR-0005.
 
 Execution plan:
 
@@ -111,7 +113,7 @@ Execution plan:
 2. **1.3D — Migration and data recovery (P0): Complete.** Readiness now compares the live `alembic_version` with the application Head. Executable `pg_dump` backup and disposable restore rehearsal commands verify schema revision, public-table row counts, validated foreign keys, and a restored Run trace in an isolated PostgreSQL 16 CI job.
 3. **1.3E — Retention and redaction (P1): Complete.** Experiment-aggregate retention, plan-file execute, PostgreSQL post-lock revalidation, Provider/Completion redaction, and real PostgreSQL 16 integration tests are implemented; the control-plane maintenance boundary is recorded in ADR-0004.
 4. **1.3F — Alert classification and closeout (P1): Complete.** Machine-readable operational states, bounded operations queries, provider outage vs rate-limit classification, fault matrix, and out-of-process API probe are implemented.
-5. **Phase 1.3 closeout.** Run all Python, TypeScript, Rust, migration, Compose, Golden, recovery, backup/restore, and redaction checks; update both roadmaps and `CONTEXT.md`; mark the milestone Complete only when every acceptance item below is evidenced.
+5. **Phase 1.3 closeout: Complete.** Full CI matrix and operations runbooks are in place; acceptance items below are evidenced.
 
 Acceptance:
 
@@ -126,7 +128,7 @@ Acceptance status:
 - Backup and migration rehearsal: **Complete** — migration round-trip and an isolated PostgreSQL 16 backup restoration rehearsal have repeatable CI and local commands.
 - Retention and redaction: **Complete** — Experiment-aggregate retention, plan-file execute, PostgreSQL post-lock revalidation, Provider/Completion redaction, and real PostgreSQL 16 integration tests are implemented.
 
-No Phase 1.4 milestone is defined yet. After Phase 1.3 closes, the next milestone must be chosen from measured operational needs; the conditional safety gate takes priority if shared/public use, untrusted endpoints, untrusted accounts, or side-effecting tools enter scope.
+No Phase 1.4 milestone is defined yet. After Phase 1.3, the next milestone must be chosen from measured operational needs rather than speculative features. Promote work from **Deferred until justified** only when a concrete requirement appears. The conditional safety gate takes priority if shared/public use, untrusted endpoints, untrusted accounts, or side-effecting tools enter scope.
 
 ## Conditional safety gate
 

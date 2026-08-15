@@ -28,6 +28,7 @@ This file defines the shared vocabulary and invariants for the implemented Phase
 | Policy | Experiment-scoped candidate patch derived from one failed baseline and optionally validated by one replay. |
 | PolicyPatch | Phase 1 patch with only `instruction_patch`, `tool_priority`, and `max_steps`. |
 | Recorded Preview | Offline-development and regression adapter that replays Golden E2E fixtures and never implements backend business rules. |
+| OperationalState | Machine-readable rollup from `GET /api/operations/state` classifying database, schema, Runner, lease, and provider faults with fixed precedence. |
 
 ## State machines
 
@@ -122,7 +123,7 @@ Kubernetes, Docker socket execution, MCP, vector memory, training export, framew
 
 ## Planned evolution
 
-Runner recovery and the narrow OpenAI-compatible provider boundary are implemented. Observability and operational hardening is largely complete: durable diagnostics, migration-aware API/database/Runner health signals, immutable expired-Attempt correlation, safe Provider fingerprints, executable backup/restore rehearsal, retention/redaction enforcement, and machine-readable alert classification via `/api/operations/state` are implemented. Recorded Preview remains a testing adapter, not a separate delivery track. Kubernetes, MCP, vector memory, arbitrary execution, multi-tenancy, and automatic policy activation stay deferred until a measured requirement promotes them.
+Runner recovery and the narrow OpenAI-compatible provider boundary are implemented. Phase 1.3 observability and operational hardening is complete: durable diagnostics, migration-aware API/database/Runner health signals, immutable expired-Attempt correlation, safe Provider fingerprints, executable backup/restore rehearsal, retention/redaction enforcement, and machine-readable alert classification via `/api/operations/state`. Recorded Preview remains a testing adapter, not a separate delivery track. Kubernetes, MCP, vector memory, arbitrary execution, multi-tenancy, and automatic policy activation stay deferred until a measured requirement promotes them.
 
 Roadmap changes do not alter these domain invariants by themselves. Update this file and add an ADR before a milestone changes state ownership, recovery semantics, trust boundaries, or activation rules. See [ROADMAP.md](ROADMAP.md).
 
@@ -134,3 +135,4 @@ Roadmap changes do not alter these domain invariants by themselves. Update this 
 | [0002](docs/adr/0002-runner-recovery.md) | Deterministic Runner recovery | Accepted |
 | [0003](docs/adr/0003-openai-compatible-provider-boundary.md) | Narrow OpenAI-compatible provider boundary | Accepted |
 | [0004](docs/adr/0004-data-lifecycle-retention.md) | Experiment aggregate retention in the Python Control Plane | Accepted |
+| [0005](docs/adr/0005-operational-alert-classification.md) | Machine-readable operational alert classification | Accepted |
