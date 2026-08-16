@@ -64,7 +64,7 @@ async def add_experiment(
         experiment = Experiment(
             name=f"name-secret-{label}",
             task=f"task-secret-{label}",
-            scenario_id="checkout-api-latency",
+            scenario_id="checkout-api-latency.v1",
             execution_mode="fixture",
             created_at=OLD,
         )

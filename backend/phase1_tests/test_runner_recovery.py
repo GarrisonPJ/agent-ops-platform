@@ -18,7 +18,7 @@ async def create_run(client: AsyncClient) -> dict:
         json={
             "name": "Runner recovery",
             "task": "Investigate checkout API latency",
-            "scenario_id": "checkout-api-latency",
+            "scenario_id": "checkout-api-latency.v1",
         },
     )
     assert experiment.status_code == 201

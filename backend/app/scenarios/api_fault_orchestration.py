@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from app.phase1_schemas import EvaluationSpec, PolicyPatch
+from app.scenario_assertions import AssertionCombination, ScenarioAssertion
 from app.scenario_registry import (
     EmitFn,
     ScenarioHandler,
@@ -12,7 +13,7 @@ from app.scenario_registry import (
 )
 from app.scenarios._helpers import emit_step
 
-SCENARIO_ID = "api-fault-orchestration"
+from app.scenario_ids import API_FAULT_ORCHESTRATION_SCENARIO_ID as SCENARIO_ID
 TOOLS = ("invoke_service", "retry_call", "degrade_route")
 
 
@@ -91,6 +92,18 @@ class ApiFaultOrchestrationScenario:
         )
 
 
+FAULT_ASSERTIONS = (
+    ScenarioAssertion(type="tool-used", tool="retry_call", weight=1.0),
+    ScenarioAssertion(type="tool-used", tool="degrade_route", weight=1.0),
+    ScenarioAssertion(
+        type="tool-sequence",
+        sequence=("retry_call", "degrade_route", "invoke_service"),
+        weight=2.0,
+    ),
+    ScenarioAssertion(type="step-count", max_steps=4, weight=1.0),
+)
+
+
 register_scenario(
     ScenarioMetadata(
         id=SCENARIO_ID,
@@ -108,6 +121,8 @@ register_scenario(
                 required=False,
             ),
         ),
+        assertions=FAULT_ASSERTIONS,
+        assertion_combination=AssertionCombination.WEIGHTED,
     ),
     ApiFaultOrchestrationScenario(),
 )

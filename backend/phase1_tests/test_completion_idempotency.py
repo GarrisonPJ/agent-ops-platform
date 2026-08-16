@@ -19,7 +19,7 @@ async def test_terminal_complete_remains_idempotent_after_lease_expiry(api) -> N
             json={
                 "name": "Terminal idempotency",
                 "task": "Investigate checkout API latency",
-                "scenario_id": "checkout-api-latency",
+                "scenario_id": "checkout-api-latency.v1",
             },
         )
     ).json()

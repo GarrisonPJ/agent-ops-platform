@@ -2,7 +2,7 @@
   "schema_version": 1,
   "run_id": "00000000-0000-4000-8000-000000000003",
   "experiment_id": "00000000-0000-4000-8000-000000000004",
-  "scenario_id": "multi-step-research",
+  "scenario_id": "multi-step-research.v1",
   "task": "Answer a research question using search and fetch tools",
   "seed": 7,
   "execution_mode": "fixture",

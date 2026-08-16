@@ -101,7 +101,7 @@ def run_recovery_test(api_url: str) -> dict:
         {
             "name": f"Runner recovery {int(time.time())}",
             "task": "Verify Runner recovery",
-            "scenario_id": "checkout-api-latency",
+            "scenario_id": "checkout-api-latency.v1",
         },
     )
     run = request(

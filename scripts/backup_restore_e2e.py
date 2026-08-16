@@ -33,7 +33,7 @@ async def seed_run_trace(database_url: str) -> tuple[str, str]:
                 experiment_id,
                 "Backup restore rehearsal",
                 "Verify a restored Run trace",
-                "checkout-api-latency",
+                "checkout-api-latency.v1",
                 "fixture",
                 recorded_at,
             )
@@ -57,7 +57,7 @@ async def seed_run_trace(database_url: str) -> tuple[str, str]:
                         "schema_version": 1,
                         "run_id": run_id,
                         "experiment_id": experiment_id,
-                        "scenario_id": "checkout-api-latency",
+                        "scenario_id": "checkout-api-latency.v1",
                         "task": "Verify a restored Run trace",
                         "seed": 42,
                         "execution_mode": "fixture",

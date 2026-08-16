@@ -9,8 +9,10 @@ from app.phase1_schemas import (
     EvaluationSpec,
     ExecutionMode,
     PolicyPatch,
+    validate_scenario_id,
     validate_scenario_params,
 )
+from app.scenario_assertions import AssertionCombination, AssertionSuite, ScenarioAssertion
 
 EmitFn = Callable[[str, dict], None]
 
@@ -40,6 +42,8 @@ class ScenarioMetadata:
     default_task: str
     allowed_tools: tuple[str, ...]
     params: tuple[ScenarioParamDef, ...] = ()
+    assertions: tuple[ScenarioAssertion, ...] = ()
+    assertion_combination: AssertionCombination = AssertionCombination.WEIGHTED
 
 
 @dataclass(frozen=True)
@@ -100,6 +104,15 @@ def validate_registered_scenario_params(
     return normalized
 
 
+def ensure_registered_scenario(
+    scenario_id: str,
+    params: dict[str, object],
+) -> dict[str, str]:
+    """Validate versioned scenario identity, registry membership, and params."""
+    validate_scenario_id(scenario_id)
+    return validate_registered_scenario_params(scenario_id, params)
+
+
 async def run_scenario(spec: EvaluationSpec, emit: EmitFn) -> int:
     entry = require_scenario(spec.scenario_id)
     if spec.execution_mode == ExecutionMode.PROVIDER:
@@ -109,6 +122,14 @@ async def run_scenario(spec: EvaluationSpec, emit: EmitFn) -> int:
 
 def candidate_policy_for_scenario(scenario_id: str) -> PolicyPatch:
     return require_scenario(scenario_id).handler.candidate_policy_patch()
+
+
+def assertion_suite_for_scenario(scenario_id: str) -> AssertionSuite:
+    entry = require_scenario(scenario_id)
+    return AssertionSuite(
+        combination=entry.metadata.assertion_combination,
+        assertions=entry.metadata.assertions,
+    )
 
 
 class UnknownScenarioError(ValueError):

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from app.phase1_schemas import EvaluationSpec, PolicyPatch
+from app.scenario_assertions import AssertionCombination, ScenarioAssertion
 from app.scenario_registry import (
     EmitFn,
     ScenarioHandler,
@@ -12,7 +13,7 @@ from app.scenario_registry import (
 )
 from app.scenarios._helpers import emit_step
 
-SCENARIO_ID = "multi-step-research"
+from app.scenario_ids import MULTI_STEP_RESEARCH_SCENARIO_ID as SCENARIO_ID
 TOOLS = ("search_documents", "fetch_document", "submit_answer")
 
 
@@ -91,6 +92,19 @@ class MultiStepResearchScenario:
         )
 
 
+RESEARCH_ASSERTIONS = (
+    ScenarioAssertion(type="tool-used", tool="search_documents", weight=1.0),
+    ScenarioAssertion(type="tool-used", tool="fetch_document", weight=1.0),
+    ScenarioAssertion(type="tool-used", tool="submit_answer", weight=1.0),
+    ScenarioAssertion(
+        type="tool-sequence",
+        sequence=("search_documents", "fetch_document", "submit_answer"),
+        weight=2.0,
+    ),
+    ScenarioAssertion(type="step-count", max_steps=4, weight=1.0),
+)
+
+
 register_scenario(
     ScenarioMetadata(
         id=SCENARIO_ID,
@@ -108,6 +122,8 @@ register_scenario(
                 required=True,
             ),
         ),
+        assertions=RESEARCH_ASSERTIONS,
+        assertion_combination=AssertionCombination.WEIGHTED,
     ),
     MultiStepResearchScenario(),
 )

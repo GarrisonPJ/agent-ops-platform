@@ -9,8 +9,30 @@ const MAX_SCENARIO_PARAM_KEYS: usize = 20;
 const MAX_SCENARIO_PARAM_VALUE_LENGTH: usize = 200;
 
 fn is_valid_scenario_id(value: &str) -> bool {
+    let Some((base, version)) = value.rsplit_once(".v") else {
+        return false;
+    };
+    if base.is_empty() || version.is_empty() || value.len() > 64 {
+        return false;
+    }
+    if !version.chars().all(|ch| ch.is_ascii_digit()) {
+        return false;
+    }
+    let bytes = base.as_bytes();
+    if bytes.len() < 1 {
+        return false;
+    }
+    if !bytes[0].is_ascii_lowercase() && !bytes[0].is_ascii_digit() {
+        return false;
+    }
+    bytes[1..]
+        .iter()
+        .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || *byte == b'-')
+}
+
+fn is_valid_scenario_param_key(value: &str) -> bool {
     let bytes = value.as_bytes();
-    if bytes.len() < 2 || bytes.len() > 64 {
+    if bytes.is_empty() || bytes.len() > 64 {
         return false;
     }
     if !bytes[0].is_ascii_lowercase() && !bytes[0].is_ascii_digit() {
@@ -155,8 +177,8 @@ impl EvaluationSpec {
             ));
         }
         for (key, value) in &self.scenario_params {
-            if !is_valid_scenario_id(key) {
-                return Err("scenario_params keys must match the scenario_id pattern".into());
+            if !is_valid_scenario_param_key(key) {
+                return Err("scenario_params keys must match the param key pattern".into());
             }
             if value.is_empty() || value.chars().count() > MAX_SCENARIO_PARAM_VALUE_LENGTH {
                 return Err(format!(
@@ -333,7 +355,7 @@ mod tests {
             schema_version: SCHEMA_VERSION,
             run_id: "run-1".into(),
             experiment_id: "experiment-1".into(),
-            scenario_id: "checkout-api-latency".into(),
+            scenario_id: "checkout-api-latency.v1".into(),
             task: "Investigate checkout latency".into(),
             seed: 42,
             execution_mode: ExecutionMode::Fixture,
@@ -358,6 +380,21 @@ mod tests {
         value.as_object_mut().unwrap().remove("execution_mode");
         let decoded: EvaluationSpec = serde_json::from_value(value).unwrap();
         assert_eq!(decoded.execution_mode, ExecutionMode::Fixture);
+    }
+
+    #[test]
+    fn evaluation_spec_round_trips_scenario_params() {
+        let mut original = spec();
+        original
+            .scenario_params
+            .insert("topic".into(), "checkout latency".into());
+        let encoded = serde_json::to_string(&original).unwrap();
+        let decoded: EvaluationSpec = serde_json::from_str(&encoded).unwrap();
+        assert_eq!(
+            decoded.scenario_params.get("topic").map(String::as_str),
+            Some("checkout latency")
+        );
+        assert!(decoded.validate().is_ok());
     }
 
     #[test]

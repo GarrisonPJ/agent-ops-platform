@@ -20,7 +20,7 @@ async def create_baseline(client: AsyncClient) -> tuple[dict, dict]:
             json={
                 "name": "Operational state checkout",
                 "task": "Investigate operational classification",
-                "scenario_id": "checkout-api-latency",
+                "scenario_id": "checkout-api-latency.v1",
                 "execution_mode": "provider",
             },
         )

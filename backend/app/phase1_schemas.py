@@ -21,8 +21,11 @@ from app.durable_events import (
 )
 
 
-SCENARIO_ID = "checkout-api-latency"
-SCENARIO_ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]{1,62}$")
+from app.scenario_ids import (
+    DEFAULT_SCENARIO_ID,
+    SCENARIO_ID_PATTERN,
+    SCENARIO_PARAM_KEY_PATTERN,
+)
 ALLOWED_POLICY_TOOLS = frozenset(
     {
         "check_service_health",
@@ -43,7 +46,7 @@ MAX_SCENARIO_PARAM_VALUE_LENGTH = 200
 def validate_scenario_id(value: str) -> str:
     normalized = value.strip()
     if not SCENARIO_ID_PATTERN.fullmatch(normalized):
-        raise ValueError("scenario_id must match ^[a-z0-9][a-z0-9-]{1,62}$")
+        raise ValueError("scenario_id must match ^[a-z0-9][a-z0-9-]+\\.v[0-9]+$")
     return normalized
 
 
@@ -52,8 +55,8 @@ def validate_scenario_params(value: dict[str, object]) -> dict[str, str]:
         raise ValueError(f"scenario_params may contain at most {MAX_SCENARIO_PARAM_KEYS} keys")
     normalized: dict[str, str] = {}
     for key, raw in value.items():
-        if not isinstance(key, str) or not SCENARIO_ID_PATTERN.fullmatch(key):
-            raise ValueError("scenario_params keys must match the scenario_id pattern")
+        if not isinstance(key, str) or not SCENARIO_PARAM_KEY_PATTERN.fullmatch(key):
+            raise ValueError("scenario_params keys must match ^[a-z0-9][a-z0-9-]{0,62}$")
         if not isinstance(raw, str):
             raise ValueError("scenario_params values must be strings")
         if not raw or len(raw) > MAX_SCENARIO_PARAM_VALUE_LENGTH:
@@ -128,7 +131,7 @@ class EvaluationSpec(StrictModel):
     schema_version: Literal[1] = 1
     run_id: str
     experiment_id: str
-    scenario_id: str = Field(default=SCENARIO_ID, min_length=2, max_length=64)
+    scenario_id: str = Field(default=DEFAULT_SCENARIO_ID, min_length=2, max_length=64)
     task: str = Field(min_length=1, max_length=4_000)
     seed: int = Field(default=42, ge=0, le=2_147_483_647)
     execution_mode: ExecutionMode = ExecutionMode.FIXTURE
@@ -171,7 +174,7 @@ class EventEnvelope(StrictModel):
 class ExperimentCreate(StrictModel):
     name: str = Field(min_length=1, max_length=200)
     task: str = Field(min_length=1, max_length=4_000)
-    scenario_id: str = Field(default=SCENARIO_ID, min_length=2, max_length=64)
+    scenario_id: str = Field(default=DEFAULT_SCENARIO_ID, min_length=2, max_length=64)
     execution_mode: ExecutionMode = ExecutionMode.FIXTURE
     scenario_params: dict[str, str] = Field(default_factory=dict)
 

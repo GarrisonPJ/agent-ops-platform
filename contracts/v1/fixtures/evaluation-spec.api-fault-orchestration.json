@@ -2,7 +2,7 @@
   "schema_version": 1,
   "run_id": "00000000-0000-4000-8000-000000000005",
   "experiment_id": "00000000-0000-4000-8000-000000000006",
-  "scenario_id": "api-fault-orchestration",
+  "scenario_id": "api-fault-orchestration.v1",
   "task": "Stabilize a failing API dependency without exhausting the step budget",
   "seed": 11,
   "execution_mode": "fixture",

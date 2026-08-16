@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from app.phase1_provider import run_provider_agent
 from app.phase1_schemas import EvaluationSpec, PolicyPatch
+from app.scenario_assertions import AssertionCombination, ScenarioAssertion
 from app.scenario_registry import EmitFn, ScenarioHandler, ScenarioMetadata, register_scenario
 from app.scenarios._helpers import emit_step
 
-CHECKOUT_SCENARIO_ID = "checkout-api-latency"
+from app.scenario_ids import CHECKOUT_SCENARIO_ID
 CHECKOUT_TOOLS = (
     "check_service_health",
     "query_service_metrics",
@@ -84,6 +85,22 @@ class CheckoutScenario:
         )
 
 
+CHECKOUT_ASSERTIONS = (
+    ScenarioAssertion(type="tool-used", tool="check_service_health", weight=1.0),
+    ScenarioAssertion(type="tool-used", tool="query_service_metrics", weight=1.0),
+    ScenarioAssertion(
+        type="tool-sequence",
+        sequence=(
+            "check_service_health",
+            "query_service_metrics",
+            "fetch_service_logs",
+        ),
+        weight=2.0,
+    ),
+    ScenarioAssertion(type="step-count", max_steps=4, weight=1.0),
+)
+
+
 register_scenario(
     ScenarioMetadata(
         id=CHECKOUT_SCENARIO_ID,
@@ -94,6 +111,8 @@ register_scenario(
         ),
         default_task="Investigate checkout API latency",
         allowed_tools=CHECKOUT_TOOLS,
+        assertions=CHECKOUT_ASSERTIONS,
+        assertion_combination=AssertionCombination.WEIGHTED,
     ),
     CheckoutScenario(),
 )

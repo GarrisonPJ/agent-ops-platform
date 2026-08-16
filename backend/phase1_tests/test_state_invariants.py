@@ -18,7 +18,7 @@ async def create_baseline(client: AsyncClient) -> dict:
         json={
             "name": "Lease invariants",
             "task": "Investigate checkout API latency",
-            "scenario_id": "checkout-api-latency",
+            "scenario_id": "checkout-api-latency.v1",
         },
     )
     assert experiment_response.status_code == 201

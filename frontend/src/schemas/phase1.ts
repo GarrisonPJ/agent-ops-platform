@@ -33,13 +33,19 @@ export const policyPatchSchema = z
 
 export const scenarioIdSchema = z
   .string()
-  .min(2)
+  .min(4)
   .max(64)
-  .regex(/^[a-z0-9][a-z0-9-]{1,62}$/);
+  .regex(/^[a-z0-9][a-z0-9-]+\.v[0-9]+$/);
+
+export const scenarioParamKeySchema = z
+  .string()
+  .min(1)
+  .max(64)
+  .regex(/^[a-z0-9][a-z0-9-]{0,62}$/);
 
 export const scenarioParamsSchema = z
   .record(
-    scenarioIdSchema,
+    scenarioParamKeySchema,
     z.string().min(1).max(200),
   )
   .refine((value) => Object.keys(value).length <= 20, {
@@ -51,7 +57,7 @@ export const evaluationSpecSchema = z
     schema_version: z.literal(1),
     run_id: z.string().min(1),
     experiment_id: z.string().min(1),
-    scenario_id: scenarioIdSchema.default("checkout-api-latency"),
+    scenario_id: scenarioIdSchema.default("checkout-api-latency.v1"),
     task: z.string().min(1).max(4_000),
     seed: z.number().int().min(0).max(2_147_483_647),
     execution_mode: executionModeSchema.optional(),

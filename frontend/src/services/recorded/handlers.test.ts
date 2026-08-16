@@ -18,7 +18,7 @@ describe("recorded demo handlers", () => {
         expect.arrayContaining([
           expect.objectContaining({
             id: GOLDEN_EXPERIMENT_ID,
-            scenario_id: "checkout-api-latency",
+            scenario_id: "checkout-api-latency.v1",
           }),
         ]),
       );
@@ -49,7 +49,7 @@ describe("recorded demo handlers", () => {
       {
         name: "Recorded journey",
         task: "Investigate checkout API latency",
-        scenario_id: "checkout-api-latency",
+        scenario_id: "checkout-api-latency.v1",
       },
     );
     expect("data" in createdResponse).toBe(true);
@@ -65,7 +65,7 @@ describe("recorded demo handlers", () => {
       data: {
         status: "failed",
         score: -0.01221,
-        evaluation_spec: { scenario_id: "checkout-api-latency", seed: 42 },
+        evaluation_spec: { scenario_id: "checkout-api-latency.v1", seed: 42 },
       },
     });
 
@@ -121,7 +121,7 @@ describe("recorded demo handlers", () => {
       {
         name: "Provider recording",
         task: "Investigate checkout API latency",
-        scenario_id: "checkout-api-latency",
+        scenario_id: "checkout-api-latency.v1",
         execution_mode: "provider",
       },
     );

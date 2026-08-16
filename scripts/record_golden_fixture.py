@@ -79,7 +79,7 @@ def record(api_url: str) -> dict:
         {
             "name": "Checkout latency investigation",
             "task": "Investigate checkout API latency",
-            "scenario_id": "checkout-api-latency",
+            "scenario_id": "checkout-api-latency.v1",
         },
     )
     baseline = request(
@@ -115,7 +115,7 @@ def record(api_url: str) -> dict:
             "id": EXPERIMENT_ID,
             "name": "Checkout latency investigation",
             "task": "Investigate checkout API latency",
-            "scenario_id": "checkout-api-latency",
+            "scenario_id": "checkout-api-latency.v1",
             "created_at": "2026-07-16T08:00:00Z",
             "runs": [replay, baseline],
             "active_policy": None,
@@ -125,7 +125,7 @@ def record(api_url: str) -> dict:
             "id": SECONDARY_ID,
             "name": "Fresh checkout investigation",
             "task": "Investigate checkout API latency",
-            "scenario_id": "checkout-api-latency",
+            "scenario_id": "checkout-api-latency.v1",
             "created_at": "2026-07-15T14:20:00Z",
             "runs": [],
             "active_policy": None,

@@ -47,7 +47,7 @@ flowchart LR
 
 ## Closed-loop behavior
 
-1. A user creates an Experiment with the allowlisted `checkout-api-latency` scenario and either fixture or provider execution mode.
+1. A user creates an Experiment with the allowlisted `checkout-api-latency.v1` scenario and either fixture or provider execution mode.
 2. FastAPI creates a queued baseline Run and RunnerJob.
 3. A Rust Runner claims the Job under a lease and supervises the fixture or provider-backed Python agent.
 4. FastAPI validates and commits ordered events before notifying SSE clients.
