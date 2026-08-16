@@ -12,6 +12,19 @@ from typing import Any
 
 TERMINAL_STATUSES = {"succeeded", "failed", "cancelled", "timed_out"}
 
+GOLDEN_SCENARIOS = {
+    "checkout-api-latency.v1": {
+        "name_prefix": "Golden checkout latency",
+        "task": "Investigate checkout API latency",
+        "scenario_params": {},
+    },
+    "multi-step-research.v1": {
+        "name_prefix": "Golden multi-step research",
+        "task": "Answer a research question using search and fetch tools",
+        "scenario_params": {"topic": "checkout latency"},
+    },
+}
+
 
 def request(api_url: str, method: str, path: str, body: dict | None = None) -> Any:
     payload = None if body is None else json.dumps(body).encode("utf-8")
@@ -61,15 +74,19 @@ def assert_persisted_trace(api_url: str, run_id: str) -> None:
         raise AssertionError(f"run {run_id} did not replay its persisted trace")
 
 
-def run_golden_loop(api_url: str) -> dict:
+def run_golden_loop(api_url: str, scenario_id: str) -> dict:
+    if scenario_id not in GOLDEN_SCENARIOS:
+        raise ValueError(f"unsupported golden scenario: {scenario_id}")
+    config = GOLDEN_SCENARIOS[scenario_id]
     experiment = request(
         api_url,
         "POST",
         "/api/experiments",
         {
-            "name": f"Golden checkout latency {int(time.time())}",
-            "task": "Investigate checkout API latency",
-            "scenario_id": "checkout-api-latency",
+            "name": f"{config['name_prefix']} {int(time.time())}",
+            "task": config["task"],
+            "scenario_id": scenario_id,
+            "scenario_params": config["scenario_params"],
         },
     )
     baseline = request(
@@ -107,6 +124,7 @@ def run_golden_loop(api_url: str) -> dict:
         raise AssertionError("experiment does not expose the activated policy")
 
     return {
+        "scenario_id": scenario_id,
         "experiment_id": experiment["id"],
         "baseline": {
             "id": baseline["id"],
@@ -129,9 +147,19 @@ def run_golden_loop(api_url: str) -> dict:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--api-url", default="http://localhost:8000")
+    parser.add_argument(
+        "--scenario",
+        action="append",
+        choices=sorted(GOLDEN_SCENARIOS),
+        help="Run one or more built-in golden scenarios (default: all registered golden scenarios).",
+    )
     args = parser.parse_args()
     wait_for_api(args.api_url)
-    print(json.dumps(run_golden_loop(args.api_url), indent=2))
+    scenario_ids = args.scenario or sorted(GOLDEN_SCENARIOS)
+    results = {
+        scenario_id: run_golden_loop(args.api_url, scenario_id) for scenario_id in scenario_ids
+    }
+    print(json.dumps(results, indent=2))
 
 
 if __name__ == "__main__":
