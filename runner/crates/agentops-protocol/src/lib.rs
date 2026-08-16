@@ -19,7 +19,7 @@ fn is_valid_scenario_id(value: &str) -> bool {
         return false;
     }
     let bytes = base.as_bytes();
-    if bytes.len() < 1 {
+    if bytes.is_empty() {
         return false;
     }
     if !bytes[0].is_ascii_lowercase() && !bytes[0].is_ascii_digit() {
