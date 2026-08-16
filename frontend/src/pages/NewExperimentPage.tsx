@@ -10,7 +10,7 @@ import {
 import type { ExecutionMode, Scenario } from "../types/phase1";
 
 const FALLBACK_SCENARIO: Scenario = {
-  id: "checkout-api-latency",
+  id: "checkout-api-latency.v1",
   name: "Checkout API Latency",
   description:
     "Investigate elevated checkout latency using health checks, dependency metrics, and evidence-backed logs.",
@@ -23,6 +23,10 @@ const FALLBACK_SCENARIO: Scenario = {
   ],
   params: [],
 };
+
+function emptyScenarioParams(scenario: Scenario): Record<string, string> {
+  return Object.fromEntries((scenario.params ?? []).map((param) => [param.name, ""]));
+}
 
 export default function NewExperimentPage() {
   const navigate = useNavigate();
@@ -41,6 +45,9 @@ export default function NewExperimentPage() {
   );
   const [name, setName] = useState("Checkout latency investigation");
   const [task, setTask] = useState(FALLBACK_SCENARIO.default_task);
+  const [scenarioParams, setScenarioParams] = useState<Record<string, string>>(
+    emptyScenarioParams(FALLBACK_SCENARIO),
+  );
   const [executionMode, setExecutionMode] = useState<ExecutionMode>("fixture");
   const [formError, setFormError] = useState<string | null>(null);
   const [createExperiment, { isLoading }] = useCreateExperimentMutation();
@@ -54,6 +61,7 @@ export default function NewExperimentPage() {
   const selectScenario = (scenario: Scenario) => {
     setSelectedScenarioId(scenario.id);
     setTask(scenario.default_task);
+    setScenarioParams(emptyScenarioParams(scenario));
     if (scenario.id === FALLBACK_SCENARIO.id) {
       setName("Checkout latency investigation");
     } else {
@@ -68,12 +76,25 @@ export default function NewExperimentPage() {
       setFormError("Name and task are required.");
       return;
     }
+    for (const param of selectedScenario.params ?? []) {
+      if (param.required && !scenarioParams[param.name]?.trim()) {
+        setFormError(`Scenario parameter "${param.name}" is required.`);
+        return;
+      }
+    }
+    const normalizedParams = Object.fromEntries(
+      Object.entries(scenarioParams)
+        .map(([key, value]) => [key, value.trim()] as const)
+        .filter(([, value]) => value.length > 0),
+    );
     try {
       const experiment = await createExperiment({
         name: name.trim(),
         task: task.trim(),
         scenario_id: selectedScenario.id,
         execution_mode: executionMode,
+        scenario_params:
+          Object.keys(normalizedParams).length > 0 ? normalizedParams : undefined,
       }).unwrap();
       navigate(`/experiments/${experiment.id}`);
     } catch (error) {
@@ -139,6 +160,7 @@ export default function NewExperimentPage() {
                         <span className="rounded-full border border-success/20 bg-success/10 px-2 py-0.5 font-mono text-[10px] font-semibold text-success">
                           Allowlisted
                         </span>
+                        <span className="font-mono text-[10px] text-fg-subtle">{scenario.id}</span>
                       </div>
                       <p className="mt-2 text-sm leading-6 text-fg-muted">{scenario.description}</p>
                       <ul className="mt-3 grid gap-2 text-xs text-fg-muted sm:grid-cols-3">
@@ -156,6 +178,42 @@ export default function NewExperimentPage() {
             })}
           </div>
         </fieldset>
+
+        {(selectedScenario.params ?? []).length > 0 ? (
+          <fieldset className="rounded-md border border-border bg-bg-card p-5 shadow-inner-glow">
+            <legend className="px-2 font-mono text-xs font-semibold uppercase tracking-wider text-fg-muted">
+              Scenario parameters
+            </legend>
+            <div className="space-y-4">
+              {(selectedScenario.params ?? []).map((param) => (
+                <label key={param.name} className="block">
+                  <span className="text-sm font-semibold">
+                    {param.name}
+                    {param.required ? (
+                      <span className="ml-1 text-xs font-normal text-danger">required</span>
+                    ) : (
+                      <span className="ml-1 text-xs font-normal text-fg-muted">optional</span>
+                    )}
+                  </span>
+                  <span className="mt-1 block text-xs leading-5 text-fg-muted">
+                    {param.description}
+                  </span>
+                  <input
+                    value={scenarioParams[param.name] ?? ""}
+                    onChange={(event) =>
+                      setScenarioParams((current) => ({
+                        ...current,
+                        [param.name]: event.target.value,
+                      }))
+                    }
+                    maxLength={200}
+                    className="mt-2 w-full rounded-md border border-border bg-bg-root/40 px-4 py-3 text-sm text-fg-primary shadow-inner-glow placeholder:text-fg-subtle focus:border-accent/50"
+                  />
+                </label>
+              ))}
+            </div>
+          </fieldset>
+        ) : null}
 
         <fieldset className="rounded-md border border-border bg-bg-card p-5 shadow-inner-glow">
           <legend className="px-2 font-mono text-xs font-semibold uppercase tracking-wider text-fg-muted">
@@ -203,6 +261,7 @@ export default function NewExperimentPage() {
             onChange={(event) => setName(event.target.value)}
             maxLength={120}
             autoFocus
+            aria-label="Experiment name"
             className="mt-2 w-full rounded-md border border-border bg-bg-card px-4 py-3 text-sm text-fg-primary shadow-inner-glow placeholder:text-fg-subtle focus:border-accent/50"
           />
         </label>
@@ -215,6 +274,7 @@ export default function NewExperimentPage() {
             onChange={(event) => setTask(event.target.value)}
             rows={5}
             maxLength={2000}
+            aria-label="Task"
             className="mt-2 w-full resize-y rounded-md border border-border bg-bg-card px-4 py-3 text-sm leading-6 text-fg-primary shadow-inner-glow placeholder:text-fg-subtle focus:border-accent/50"
           />
         </label>

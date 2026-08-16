@@ -9,7 +9,7 @@ const mocks = vi.hoisted(() => ({
   navigate: vi.fn(),
   scenarios: [
     {
-      id: "checkout-api-latency",
+      id: "checkout-api-latency.v1",
       name: "Checkout API Latency",
       description: "Investigate elevated checkout latency.",
       default_task:
@@ -20,6 +20,20 @@ const mocks = vi.hoisted(() => ({
         "fetch_service_logs",
       ],
       params: [],
+    },
+    {
+      id: "multi-step-research.v1",
+      name: "Multi-step Research",
+      description: "Search, fetch, and answer.",
+      default_task: "Answer a research question using search and fetch tools",
+      allowed_tools: ["search_documents", "fetch_document", "submit_answer"],
+      params: [
+        {
+          name: "topic",
+          description: "Research topic used by search tools.",
+          required: true,
+        },
+      ],
     },
   ],
 }));
@@ -74,7 +88,7 @@ describe("NewExperimentPage", () => {
       expect(mocks.createExperiment).toHaveBeenCalledWith({
         name: "Checkout latency investigation",
         task: "Investigate why the checkout API latency increased after the latest deployment.",
-        scenario_id: "checkout-api-latency",
+        scenario_id: "checkout-api-latency.v1",
         execution_mode: "provider",
       }),
     );
@@ -89,6 +103,55 @@ describe("NewExperimentPage", () => {
     );
 
     expect(screen.getByRole("radio", { name: /Checkout API Latency/ })).toBeTruthy();
+    expect(screen.getByRole("radio", { name: /Multi-step Research/ })).toBeTruthy();
     expect(screen.getByText(/check_service_health/)).toBeTruthy();
+  });
+
+  it("requires scenario params before submitting research experiments", async () => {
+    mocks.createExperiment.mockReturnValue({
+      unwrap: vi.fn().mockResolvedValue({ id: "research-experiment" }),
+    });
+    render(
+      <MemoryRouter>
+        <NewExperimentPage />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("radio", { name: /Multi-step Research/ }));
+    const form = screen.getByRole("button", { name: /Create experiment/i }).closest("form");
+    expect(form).not.toBeNull();
+    fireEvent.submit(form!);
+
+    expect(await screen.findByText(/Scenario parameter "topic" is required/)).toBeTruthy();
+    expect(mocks.createExperiment).not.toHaveBeenCalled();
+  });
+
+  it("submits scenario params for research experiments", async () => {
+    mocks.createExperiment.mockReturnValue({
+      unwrap: vi.fn().mockResolvedValue({ id: "research-experiment" }),
+    });
+    render(
+      <MemoryRouter>
+        <NewExperimentPage />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("radio", { name: /Multi-step Research/ }));
+    fireEvent.change(screen.getByLabelText(/^topic/i), {
+      target: { value: "payment latency" },
+    });
+    const form = screen.getByRole("button", { name: /Create experiment/i }).closest("form");
+    expect(form).not.toBeNull();
+    fireEvent.submit(form!);
+
+    await waitFor(() =>
+      expect(mocks.createExperiment).toHaveBeenCalledWith({
+        name: "Multi-step Research investigation",
+        task: "Answer a research question using search and fetch tools",
+        scenario_id: "multi-step-research.v1",
+        execution_mode: "fixture",
+        scenario_params: { topic: "payment latency" },
+      }),
+    );
   });
 });

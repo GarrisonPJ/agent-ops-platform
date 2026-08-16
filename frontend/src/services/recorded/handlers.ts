@@ -61,7 +61,7 @@ export async function recordedHandler(
     return ok(
       cloneFixture([
         {
-          id: "checkout-api-latency",
+          id: "checkout-api-latency.v1",
           name: "Checkout API Latency",
           description:
             "Investigate elevated checkout latency using health checks, dependency metrics, and evidence-backed logs.",
@@ -74,7 +74,7 @@ export async function recordedHandler(
           params: [],
         },
         {
-          id: "multi-step-research",
+          id: "multi-step-research.v1",
           name: "Multi-step Research",
           description:
             "Answer a research question by searching documents, fetching evidence, and submitting a final answer.",
@@ -89,7 +89,7 @@ export async function recordedHandler(
           ],
         },
         {
-          id: "api-fault-orchestration",
+          id: "api-fault-orchestration.v1",
           name: "API Fault Orchestration",
           description:
             "Recover from injected upstream failures using bounded retries and a degraded fallback route.",
@@ -118,13 +118,25 @@ export async function recordedHandler(
       task?: string;
       scenario_id?: string;
       execution_mode?: ExecutionMode;
+      scenario_params?: Record<string, string>;
     };
+    if (request.scenario_id === "multi-step-research.v1") {
+      const topic = request.scenario_params?.topic?.trim();
+      if (!topic) {
+        return fail(
+          400,
+          "INVALID_SCENARIO_PARAMS",
+          "missing required scenario_params for multi-step-research.v1: topic",
+        );
+      }
+    }
     const executionMode = request.execution_mode ?? "fixture";
     const created: Experiment = {
       id: `exp-recorded-${experiments.length + 1}`,
       name: request.name?.trim() || "Recorded experiment",
       task: request.task?.trim() || goldenExperiment.task,
-      scenario_id: request.scenario_id ?? "checkout-api-latency",
+      scenario_id: request.scenario_id ?? "checkout-api-latency.v1",
+      scenario_params: request.scenario_params ?? {},
       execution_mode: executionMode,
       created_at: "2026-07-16T09:00:00Z",
       runs: [],
@@ -149,6 +161,8 @@ export async function recordedHandler(
         experiment_id: experiment.id,
         task: experiment.task,
         execution_mode: experiment.execution_mode ?? "fixture",
+        scenario_id: experiment.scenario_id,
+        scenario_params: experiment.scenario_params ?? {},
       },
     };
     const policy: Policy = {
@@ -249,6 +263,8 @@ export async function recordedHandler(
         experiment_id: experiment.id,
         task: experiment.task,
         execution_mode: experiment.execution_mode ?? "fixture",
+        scenario_id: experiment.scenario_id,
+        scenario_params: experiment.scenario_params ?? {},
         policy: policy.patch,
       },
     };
