@@ -1,4 +1,4 @@
-.PHONY: demo down logs contracts check-contracts test test-backend test-frontend test-rust db-backup db-restore-rehearsal retention-plan retention-execute health-probe
+.PHONY: demo down logs contracts check-contracts fmt fmt-check test test-backend test-frontend test-rust db-backup db-restore-rehearsal retention-plan retention-execute health-probe
 
 COMPOSE := docker compose -f infra/docker/docker-compose.phase1.yml
 
@@ -16,6 +16,14 @@ contracts:
 
 check-contracts: contracts
 	git diff --exit-code -- contracts/v1/*.schema.json
+
+fmt:
+	cd runner && cargo fmt --all
+	cd frontend && npm run format
+
+fmt-check:
+	cd runner && cargo fmt --all -- --check
+	cd frontend && npm run format:check
 
 test: check-contracts test-backend test-frontend test-rust
 
