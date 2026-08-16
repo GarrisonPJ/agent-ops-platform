@@ -3,9 +3,11 @@
   <a href="README.zh-CN.md">中文</a>
 </p>
 
-# AgentOps
+# AgentOps Workbench
 
-**A portfolio-grade closed-loop evaluation workbench for tool-using agents** — run an Experiment, inspect the durable Trace, diagnose failure, replay a candidate Policy, and decide whether to activate it.
+**A portfolio-grade closed-loop evaluation workbench for tool-using agents** — run an Experiment, inspect the durable Trace, diagnose failure, replay a candidate Policy, and decide whether to activate it. The repo name is `agent-ops-platform`; **AgentOps Workbench** is the product qualifier so this project is not confused with the unrelated [AgentOps-AI](https://github.com/AgentOps-AI/agentops) SDK or generic “agent ops” tooling.
+
+Unlike Langfuse or Phoenix, which focus on tracing and eval datasets, this workbench ships the full **policy replay + human activation gate** loop — candidates never auto-apply.
 
 ```text
 Experiment → Baseline → Trace → Failure Analysis → Candidate Policy

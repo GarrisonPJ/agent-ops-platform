@@ -3,9 +3,11 @@
   <a href="README.zh-CN.md">中文</a>
 </p>
 
-# AgentOps
+# AgentOps Workbench
 
-**面向工具型 Agent 的作品集级闭环评估工作台** — 创建 Experiment、审查持久化 Trace、诊断失败、回放候选 Policy，并决定是否激活。
+**面向工具型 Agent 的作品集级闭环评估工作台** — 创建 Experiment、审查持久化 Trace、诊断失败、回放候选 Policy，并决定是否激活。仓库名为 `agent-ops-platform`；对外使用 **AgentOps Workbench** 作为产品限定名，避免与无关的 [AgentOps-AI](https://github.com/AgentOps-AI/agentops) SDK 或泛称 “agent ops” 混淆。
+
+与 Langfuse、Phoenix 等不同，本工作台强调完整的 **策略回放 + 人工激活门禁** 闭环——候选策略不会自动生效。
 
 ```text
 Experiment → Baseline → Trace → Failure Analysis → Candidate Policy
