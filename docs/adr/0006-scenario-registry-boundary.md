@@ -29,7 +29,11 @@ Each Scenario implements a narrow protocol stable surface:
 - initial state construction from `EvaluationSpec` (including optional
   `scenario_params` within bounded size);
 - single-step execution semantics for fixture and opt-in provider modes;
-- terminal scoring inputs consumed by the existing deterministic analyzer.
+- terminal scoring through a controlled assertion vocabulary (not ad-hoc
+  scoring functions): trajectory assertions (`tool-used`, `tool-args-match`,
+  `tool-sequence`, `step-count`) and result assertions (`equals`, `contains`,
+  `json-match`), each with `weight` and `threshold`, combined via `all`,
+  `weighted`, or `any` semantics.
 
 Registration uses explicit Python registration in Phase 1.4 (not dynamic
 import of user code). Runners receive only the Scenario identifier and
@@ -39,6 +43,10 @@ load arbitrary modules from client input.
 `scenario_params` is optional, size-bounded, and validated at Run creation
 with the same allowlist discipline as provider metadata. `schema_version` stays
 1; contract changes are backward compatible with defaults.
+
+`scenario_id` uses versioned identity `<name>.v<N>`. Only Runs that share the
+same id are score-comparable; semantic changes require registering a new
+version rather than mutating an existing id.
 
 ## Consequences
 
@@ -51,3 +59,8 @@ with the same allowlist discipline as provider metadata. `schema_version` stays
   otherwise.
 - UI lists Scenarios from the registry; it does not become a second source of
   truth for what may execute.
+
+Phase 1.4 follow-on tickets (local tracker
+`.scratch/phase1.4-scenario-onboarding/`) will add versioned `<name>.v<N>`
+identity and a controlled assertion vocabulary to this boundary without
+opening arbitrary code execution.

@@ -137,19 +137,20 @@ PRD：`.scratch/phase1.4-scenario-onboarding/PRD.md`（本地跟踪器）。架�
 
 范围：
 
-- 在保持 `schema_version` 为 1 且向后兼容默认值的前提下，放宽协议 v1 中的 `scenario_id`。
-- 在 EvaluationSpec 上新增可选、有界 `scenario_params`。
-- 引入场景注册表与协议；将 `checkout-api-latency` 重构为首个注册场景。
+- 定对外名称（改名或加限定词），避免与 AgentOps-AI 撞车。
+- 协议 v1 中 `scenario_id` 采用 `<name>.v<N>`；同一 id 才可跨 Run 比分；语义变更必须升版本。`schema_version` 保持 1。
+- 保留 EvaluationSpec 上可选、有界的 `scenario_params`。
+- 注册场景用受控断言词汇判分（`tool-used`、`tool-args-match`、`tool-sequence`、`step-count` 以及结果匹配），带 weight、threshold 与明确组合语义。
 - 在创建 Run 时校验场景选择；未注册 ID 返回结构化错误。
 - 暴露 `GET /api/scenarios`，并在新建 Experiment 页面提供场景选择器。
-- 交付两个额外内置场景，分别支持 fixture（CI）与 provider（opt-in）路径。
-- 记录场景术语与贡献者指南。
+- 交付两个额外内置场景（fixture CI + provider opt-in），至少一个走完整 Golden 闭环。
+- 记录场景术语、版本化身份、断言词汇与贡献者指南。
 
 验收：
 
-- 注册表重构后 Golden checkout 闭环仍可通过。
-- 至少一个额外场景在 CI 中无需外部 API 即可完成完整闭环。
-- README 与 CONTEXT 描述注册表语义；仅当 CI 有证据时 ROADMAP 才将本里程碑标为完成。
+- 注册表与断言重构后 Golden checkout 闭环仍可通过。
+- 至少一个额外场景在 CI 中无需外部 API 即可完成完整闭环（`golden_e2e.py` 默认跑 checkout 与 multi-step-research）。
+- README、CONTEXT 与 ADR-0006 描述注册表、版本化身份与断言语义；仅当 CI 有全部验收证据时 ROADMAP 才将本里程碑标为完成（在此之前保持 **计划中**）。
 
 ## 条件安全门
 

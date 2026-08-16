@@ -137,19 +137,20 @@ PRD: `.scratch/phase1.4-scenario-onboarding/PRD.md` (local tracker). Architectur
 
 Scope:
 
-- Relax `scenario_id` in protocol v1 while keeping `schema_version` at 1 and preserving backward-compatible defaults.
-- Introduce optional bounded `scenario_params` on EvaluationSpec.
-- Add a Scenario registry and protocol; refactor `checkout-api-latency` as the first registered Scenario.
+- Decide the public name (rename or qualifier) so the workbench is not confused with AgentOps-AI.
+- Version `scenario_id` as `<name>.v<N>` in protocol v1; same id is comparable across Runs; semantic changes bump the version. Keep `schema_version` at 1.
+- Keep optional bounded `scenario_params` on EvaluationSpec.
+- Score registered Scenarios with a controlled assertion vocabulary (`tool-used`, `tool-args-match`, `tool-sequence`, `step-count`, plus result matchers) with weight, threshold, and defined combination semantics.
 - Validate Scenario selection at Run creation; reject unregistered ids with structured errors.
 - Expose `GET /api/scenarios` and a workbench Scenario picker on New Experiment.
-- Ship two additional built-in Scenarios with fixture (CI) and provider (opt-in) paths.
-- Document Scenario vocabulary and a contributor guide for adding a Scenario.
+- Ship two additional built-in Scenarios with fixture (CI) and provider (opt-in) paths, including a Golden closed loop for at least one of them.
+- Document Scenario vocabulary, versioning, assertions, and a contributor guide for adding a Scenario.
 
 Acceptance:
 
-- Golden checkout loop still passes after registry refactor.
-- At least one additional Scenario completes the full closed loop in CI without external APIs.
-- README and CONTEXT describe registry semantics; ROADMAP marks this milestone Complete only when acceptance is evidenced in CI.
+- Golden checkout loop still passes after registry and assertion refactor.
+- At least one additional Scenario completes the full closed loop in CI without external APIs (`golden_e2e.py` now runs checkout and multi-step-research by default).
+- README, CONTEXT, and ADR-0006 describe registry, versioned identity, and assertion semantics; ROADMAP marks this milestone **Complete** only when all acceptance items are evidenced in CI (status remains **Planned** until then).
 
 ## Conditional safety gate
 
