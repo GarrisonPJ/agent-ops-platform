@@ -29,6 +29,17 @@ def make_spec(policy: PolicyPatch | None = None) -> EvaluationSpec:
     )
 
 
+def make_research_spec(policy: PolicyPatch | None = None) -> EvaluationSpec:
+    return EvaluationSpec(
+        run_id="run-research-1",
+        experiment_id="experiment-research-1",
+        scenario_id="multi-step-research.v1",
+        task="Answer a research question",
+        scenario_params={"topic": "checkout latency"},
+        policy=policy,
+    )
+
+
 def test_baseline_emits_steps_and_exits_nonzero() -> None:
     result = run_agent(make_spec())
     assert result.returncode == 1
@@ -53,3 +64,32 @@ def test_replay_emits_three_evidence_ordered_steps_and_succeeds() -> None:
     ]
     assert tools == ["check_service_health", "query_service_metrics", "fetch_service_logs"]
     assert not any(item["type"].startswith("run_") for item in events)
+
+
+def test_research_baseline_repeats_search_and_exits_nonzero() -> None:
+    result = run_agent(make_research_spec())
+    assert result.returncode == 1
+    events = [json.loads(line) for line in result.stdout.splitlines()]
+    tools = [
+        item["payload"]["tool_call"]["name"]
+        for item in events
+        if item["type"] == "step_completed"
+    ]
+    assert tools == ["search_documents"] * 6
+
+
+def test_research_replay_uses_search_fetch_answer_sequence() -> None:
+    patch = PolicyPatch(
+        instruction_patch=["Search once, fetch, then answer."],
+        tool_priority={"search_documents": 1.0},
+        max_steps=6,
+    )
+    result = run_agent(make_research_spec(patch))
+    assert result.returncode == 0
+    events = [json.loads(line) for line in result.stdout.splitlines()]
+    tools = [
+        item["payload"]["tool_call"]["name"]
+        for item in events
+        if item["type"] == "step_completed"
+    ]
+    assert tools == ["search_documents", "fetch_document", "submit_answer"]

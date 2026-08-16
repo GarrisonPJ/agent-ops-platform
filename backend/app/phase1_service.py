@@ -17,9 +17,10 @@ import app.scenarios  # noqa: F401 — register built-in Scenarios
 from app.scenario_registry import (
     ScenarioParamError,
     UnknownScenarioError,
+    assertion_suite_for_scenario,
     candidate_policy_for_scenario,
+    ensure_registered_scenario,
     list_scenarios,
-    validate_registered_scenario_params,
 )
 from app.phase1_models import (
     Experiment,
@@ -360,7 +361,7 @@ async def experiment_response(db: AsyncSession, experiment: Experiment) -> Exper
 
 async def create_experiment(db: AsyncSession, data: ExperimentCreate) -> ExperimentResponse:
     try:
-        validate_registered_scenario_params(data.scenario_id, data.scenario_params)
+        normalized_params = ensure_registered_scenario(data.scenario_id, data.scenario_params)
     except UnknownScenarioError as exc:
         raise DomainError(
             400,
@@ -374,13 +375,19 @@ async def create_experiment(db: AsyncSession, data: ExperimentCreate) -> Experim
             "INVALID_SCENARIO_PARAMS",
             str(exc),
         ) from exc
+    except ValueError as exc:
+        raise DomainError(
+            422,
+            "INVALID_SCENARIO_ID",
+            str(exc),
+        ) from exc
 
     experiment = Experiment(
         id=new_id(),
         name=data.name.strip(),
         task=data.task.strip(),
         scenario_id=data.scenario_id,
-        scenario_params=dict(data.scenario_params),
+        scenario_params=dict(normalized_params),
         execution_mode=data.execution_mode.value,
     )
     db.add(experiment)
@@ -447,8 +454,36 @@ def _evaluation_spec(
     )
 
 
+def _ensure_experiment_scenario(experiment: Experiment) -> None:
+    try:
+        ensure_registered_scenario(
+            experiment.scenario_id,
+            dict(experiment.scenario_params or {}),
+        )
+    except UnknownScenarioError as exc:
+        raise DomainError(
+            400,
+            "SCENARIO_NOT_REGISTERED",
+            str(exc),
+            {"scenario_id": exc.scenario_id},
+        ) from exc
+    except ScenarioParamError as exc:
+        raise DomainError(
+            400,
+            "INVALID_SCENARIO_PARAMS",
+            str(exc),
+        ) from exc
+    except ValueError as exc:
+        raise DomainError(
+            422,
+            "INVALID_SCENARIO_ID",
+            str(exc),
+        ) from exc
+
+
 async def create_baseline_run(db: AsyncSession, experiment_id: str, seed: int) -> RunResponse:
     experiment = await require_experiment(db, experiment_id)
+    _ensure_experiment_scenario(experiment)
     run_id = new_id()
     spec = _evaluation_spec(run_id=run_id, experiment=experiment, seed=seed)
     run = Run(
@@ -932,7 +967,13 @@ async def _analyze_and_score(
     db: AsyncSession, run: Run, runner_metrics: dict | None
 ) -> None:
     trajectory, computed_metrics = await _trajectory_from_events(db, run)
-    score_result = compute_score(trajectory)
+    scenario_id = run.evaluation_spec.get("scenario_id")
+    assertion_suite = (
+        assertion_suite_for_scenario(scenario_id)
+        if isinstance(scenario_id, str)
+        else None
+    )
+    score_result = compute_score(trajectory, assertion_suite=assertion_suite)
     run.score = float(score_result["score"])
     safe_runner_metrics: dict[str, int] = {}
     if isinstance(runner_metrics, dict) and "event_retries" in runner_metrics:
@@ -944,6 +985,8 @@ async def _analyze_and_score(
         **computed_metrics,
         "score_breakdown": score_result["breakdown"],
     }
+    if "assertions" in score_result:
+        run.metrics["assertions"] = score_result["assertions"]
     report = analyze_trajectory(trajectory)
     dimensions = {key: float(value) for key, value in report.dimensions.items()}
     analysis = RunAnalysis(
@@ -1075,6 +1118,7 @@ async def replay_policy(db: AsyncSession, policy_id: str) -> PolicyResponse:
 
     baseline = await require_run(db, policy.source_run_id)
     experiment = await require_experiment(db, policy.experiment_id)
+    _ensure_experiment_scenario(experiment)
     baseline_spec = EvaluationSpec.model_validate(baseline.evaluation_spec)
     run_id = new_id()
     replay_spec = _evaluation_spec(

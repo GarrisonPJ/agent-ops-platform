@@ -1,12 +1,15 @@
 """Scoring engine — pure function for computing trajectory quality scores.
 
-The ``compute_score()`` function takes a trajectory dict and optional custom
-weights, then returns a score between -inf and 1.0 (higher = better).
+The ``compute_score()`` function takes a trajectory dict, optional custom
+weights, and an optional Scenario assertion suite, then returns a score between
+-inf and 1.0 (higher = better).
 """
 
 from __future__ import annotations
 
 from typing import Any
+
+from app.scenario_assertions import AssertionSuite, evaluate_assertion_suite
 
 
 DEFAULT_WEIGHTS: dict[str, float] = {
@@ -19,6 +22,7 @@ DEFAULT_WEIGHTS: dict[str, float] = {
 def compute_score(
     trajectory: dict[str, Any],
     weights: dict[str, float] | None = None,
+    assertion_suite: AssertionSuite | None = None,
 ) -> dict[str, Any]:
     """Compute a quality score for a trajectory.
 
@@ -59,7 +63,12 @@ def compute_score(
         total_latency_ms = sum(s.get("latency_ms", 0) or 0 for s in steps)
 
     # --- success reward -------------------------------------------------------
-    success_reward = 1.0 if status == "success" else 0.0
+    assertion_result: dict[str, Any] | None = None
+    if assertion_suite is not None and assertion_suite.assertions:
+        assertion_result = evaluate_assertion_suite(assertion_suite, trajectory)
+        success_reward = float(assertion_result["aggregate"])
+    else:
+        success_reward = 1.0 if status == "success" else 0.0
 
     # --- cost penalty ---------------------------------------------------------
     cost_penalty = (total_tokens / 1000.0) * w["cost"]
@@ -90,7 +99,7 @@ def compute_score(
 
     score = success_reward - cost_penalty - latency_penalty - tool_failure_penalty
 
-    return {
+    result: dict[str, Any] = {
         "score": score,
         "breakdown": {
             "success_reward": success_reward,
@@ -99,3 +108,6 @@ def compute_score(
             "tool_failure_penalty": -tool_failure_penalty,
         },
     }
+    if assertion_result is not None:
+        result["assertions"] = assertion_result
+    return result
