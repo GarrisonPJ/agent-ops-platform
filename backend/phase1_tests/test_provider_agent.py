@@ -11,13 +11,15 @@ from typing import Any
 
 import pytest
 
-from app.durable_events import MAX_PROVIDER_LATENCY_MS
+from app.durable_events import MAX_PROVIDER_LATENCY_MS, normalize_event_payload
 from app.phase1_provider import (
     ProviderError,
     _emit_provider_error,
     run_provider_agent,
 )
 from app.phase1_schemas import EvaluationSpec, ExecutionMode
+from app.scenario_registry import run_scenario
+from app.scenarios.multi_step_research import SCENARIO_ID as RESEARCH_SCENARIO_ID
 
 
 @dataclass(frozen=True)
@@ -109,6 +111,17 @@ def provider_spec() -> EvaluationSpec:
         experiment_id="experiment-provider",
         task="Investigate checkout API latency",
         execution_mode=ExecutionMode.PROVIDER,
+    )
+
+
+def research_provider_spec() -> EvaluationSpec:
+    return EvaluationSpec(
+        run_id="run-research-provider",
+        experiment_id="experiment-research-provider",
+        scenario_id=RESEARCH_SCENARIO_ID,
+        task="Answer a research question using document evidence",
+        execution_mode=ExecutionMode.PROVIDER,
+        scenario_params={"topic": "checkout latency"},
     )
 
 
@@ -247,6 +260,161 @@ async def test_provider_agent_uses_local_compatible_server_without_emitting_raw_
     assert server.base_url not in persisted_event_data
     assert "Authorization: Bearer header-like-secret" not in persisted_event_data
     assert "hidden reasoning" not in persisted_event_data
+
+
+@pytest.mark.asyncio
+async def test_research_provider_uses_only_research_tools_and_preserves_step_fields(
+    monkeypatch: pytest.MonkeyPatch, fake_provider_server
+) -> None:
+    server = fake_provider_server(
+        [
+            FakeReply(
+                200,
+                completion(
+                    content=None,
+                    tool_calls=[
+                        {
+                            "id": "call-search",
+                            "type": "function",
+                            "function": {
+                                "name": "search_documents",
+                                "arguments": '{"query":"checkout latency"}',
+                            },
+                        }
+                    ],
+                    prompt_tokens=11,
+                    completion_tokens=7,
+                ),
+            ),
+            FakeReply(
+                200,
+                completion(
+                    content=None,
+                    tool_calls=[
+                        {
+                            "id": "call-fetch",
+                            "type": "function",
+                            "function": {
+                                "name": "fetch_document",
+                                "arguments": '{"document_id":"doc-dependency-latency"}',
+                            },
+                        }
+                    ],
+                    prompt_tokens=13,
+                    completion_tokens=8,
+                ),
+            ),
+            FakeReply(
+                200,
+                completion(
+                    content=None,
+                    tool_calls=[
+                        {
+                            "id": "call-submit",
+                            "type": "function",
+                            "function": {
+                                "name": "submit_answer",
+                                "arguments": '{"answer":"Checkout latency is caused by payment-gateway connection pool saturation."}',
+                            },
+                        }
+                    ],
+                    prompt_tokens=17,
+                    completion_tokens=9,
+                ),
+            ),
+            FakeReply(200, completion(content="Research complete.")),
+        ]
+    )
+    configure_provider(monkeypatch, server)
+    events: list[tuple[str, dict[str, object]]] = []
+
+    status = await run_scenario(
+        research_provider_spec(), lambda kind, payload: events.append((kind, payload))
+    )
+
+    assert status == 0
+    expected_tools = ["search_documents", "fetch_document", "submit_answer"]
+    assert [
+        [tool["function"]["name"] for tool in request["json"]["tools"]]
+        for request in server.requests
+    ] == [expected_tools] * 4
+    steps = [
+        normalize_event_payload("step_completed", payload)
+        for kind, payload in events
+        if kind == "step_completed"
+    ]
+    assert [step["tool_call"]["name"] for step in steps] == expected_tools
+    assert [step["index"] for step in steps] == [0, 1, 2]
+    assert [step["tool_call"]["arguments"] for step in steps] == [
+        {"query": "checkout latency"},
+        {"document_id": "doc-dependency-latency"},
+        {"answer": "Checkout latency is caused by payment-gateway connection pool saturation."},
+    ]
+    assert [step["observation"] for step in steps] == [
+        "Found two relevant documents about dependency latency.",
+        "The document explains payment-gateway pool saturation.",
+        "Answer accepted with supporting citations.",
+    ]
+    assert all(
+        {
+            "index",
+            "decision_summary",
+            "tool_call",
+            "observation",
+            "latency_ms",
+            "token_prompt",
+            "token_completion",
+        }
+        <= set(step)
+        for step in steps
+    )
+    assert [step["token_prompt"] for step in steps] == [11, 13, 17]
+    assert [step["token_completion"] for step in steps] == [7, 8, 9]
+    assert all(isinstance(step["latency_ms"], int) for step in steps)
+
+
+@pytest.mark.asyncio
+async def test_research_provider_fails_once_for_an_unsupported_tool(
+    monkeypatch: pytest.MonkeyPatch, fake_provider_server
+) -> None:
+    server = fake_provider_server(
+        [
+            FakeReply(
+                200,
+                completion(
+                    content=None,
+                    tool_calls=[
+                        {
+                            "id": "call-checkout-tool",
+                            "type": "function",
+                            "function": {
+                                "name": "check_service_health",
+                                "arguments": "{}",
+                            },
+                        }
+                    ],
+                ),
+            )
+        ]
+    )
+    configure_provider(monkeypatch, server)
+    events: list[tuple[str, dict[str, object]]] = []
+
+    status = await run_scenario(
+        research_provider_spec(), lambda kind, payload: events.append((kind, payload))
+    )
+
+    assert status == 1
+    assert len(server.requests) == 1
+    assert [tool["function"]["name"] for tool in server.requests[0]["json"]["tools"]] == [
+        "search_documents",
+        "fetch_document",
+        "submit_answer",
+    ]
+    assert not any(kind == "step_completed" for kind, _payload in events)
+    error = next(payload["provider_error"] for kind, payload in events if "provider_error" in payload)
+    assert error["code"] == "PROVIDER_UNSUPPORTED_TOOL"
+    assert error["attempts"] == 1
 
 
 @pytest.mark.asyncio

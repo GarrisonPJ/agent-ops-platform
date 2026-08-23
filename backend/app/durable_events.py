@@ -90,6 +90,9 @@ class ToolCallSummary(DurableModel):
         "check_service_health",
         "query_service_metrics",
         "fetch_service_logs",
+        "search_documents",
+        "fetch_document",
+        "submit_answer",
     ]
     arguments: dict[str, str] = Field(default_factory=dict, max_length=MAX_TOOL_ARGUMENTS)
 
@@ -126,7 +129,11 @@ _ALLOWED_TOOL_ARGUMENT_VALUES = {
     "service": frozenset({"checkout-api"}),
     "metric": frozenset({"dependency_latency"}),
     "window": frozenset({"5m"}),
-    "query": frozenset({"payment dependency timeout"}),
+    "query": frozenset({"checkout latency", "payment dependency timeout"}),
+    "document_id": frozenset({"doc-dependency-latency"}),
+    "answer": frozenset(
+        {"Checkout latency is caused by payment-gateway connection pool saturation."}
+    ),
 }
 
 
@@ -332,6 +339,9 @@ def _normalize_tool_call(value: object) -> dict[str, object] | None:
         "check_service_health",
         "query_service_metrics",
         "fetch_service_logs",
+        "search_documents",
+        "fetch_document",
+        "submit_answer",
     }:
         return None
     raw_arguments = value.get("arguments", {})

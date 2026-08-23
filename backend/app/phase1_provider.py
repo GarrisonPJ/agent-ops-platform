@@ -258,6 +258,11 @@ def provider_tool_definitions() -> list[dict[str, object]]:
 async def run_provider_agent(
     spec: EvaluationSpec,
     emit: Callable[[str, dict[str, object]], None],
+    *,
+    tool_definitions: Callable[[], list[dict[str, object]]] | None = None,
+    tool_result: Callable[[EvaluationSpec, str], tuple[dict[str, str], str]] | None = None,
+    instructions: tuple[str, ...] | None = None,
+    scenario_label: str = "checkout",
 ) -> int:
     """Run the safe fixture tools selected by an OpenAI-compatible model."""
 
@@ -268,11 +273,12 @@ async def run_provider_agent(
         return 1
 
     provider = OpenAICompatibleProvider(settings)
-    instructions = [
+    base_instructions = instructions or (
         "You investigate checkout API latency using only the provided tools.",
         "Use at most one tool call per response.",
         "Do not request shell commands, network access, or arbitrary code execution.",
-    ]
+    )
+    instructions = list(base_instructions)
     if spec.policy is not None:
         instructions.extend(spec.policy.instruction_patch)
     messages: list[dict[str, object]] = [
@@ -284,7 +290,10 @@ async def run_provider_agent(
 
     try:
         while step_index < max_steps:
-            response = await provider.chat(messages, provider_tool_definitions())
+            response = await provider.chat(
+                messages,
+                provider_tool_definitions() if tool_definitions is None else tool_definitions(),
+            )
             provider_payload: dict[str, object] = {
                 "model": settings.model,
                 "latency_ms": response.latency_ms,
@@ -317,7 +326,10 @@ async def run_provider_agent(
 
             tool_call = response.tool_calls[0]
             try:
-                arguments, observation = _fixture_tool_result(tool_call.name)
+                if tool_result is None:
+                    arguments, observation = _fixture_tool_result(tool_call.name)
+                else:
+                    arguments, observation = tool_result(spec, tool_call.name)
             except ProviderError as error:
                 error.request_id = error.request_id or response.request_id
                 _emit_provider_error(emit, error)
@@ -326,7 +338,9 @@ async def run_provider_agent(
                 "step_completed",
                 {
                     "index": step_index,
-                    "decision_summary": f"Provider selected {tool_call.name} for the checkout scenario.",
+                    "decision_summary": (
+                        f"Provider selected {tool_call.name} for the {scenario_label} scenario."
+                    ),
                     "tool_call": {"name": tool_call.name, "arguments": arguments},
                     "observation": observation,
                     "latency_ms": response.latency_ms,
