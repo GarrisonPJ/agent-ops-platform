@@ -47,7 +47,12 @@ test("completes the recorded create-to-activate product loop", async ({
   await expect(page.getByText("Succeeded", { exact: true })).toBeVisible();
   await page.getByRole("tab", { name: /improve/i }).click();
   await expect(page.getByText("Replay comparison")).toBeVisible();
+  await expect(page.getByText("Persisted before / after facts")).toBeVisible();
   await expect(page.getByText("Score delta")).toBeVisible();
+  await expect(page.getByText("Step diff")).toBeVisible();
+  await expect(page.getByText("Dimensions")).toBeVisible();
+  await expect(page.getByText("Failure classifications")).toBeVisible();
+  await expect(page.getByText("Improved", { exact: true }).first()).toBeVisible();
   await page.getByRole("button", { name: "Activate policy" }).click();
   await expect(
     page.getByText("Policy activated for this experiment."),

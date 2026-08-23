@@ -22,6 +22,14 @@ import {
   getApiErrorMessage,
   totalTokens,
 } from "../lib/phase1Format";
+import {
+  compareAnalysis,
+  compareMetric,
+  compareSteps,
+  type ComparisonStatus,
+  type MetricComparison,
+  type StepComparison,
+} from "../lib/comparison";
 import { toast } from "../lib/toast";
 import {
   useActivatePolicyMutation,
@@ -50,7 +58,7 @@ function isTab(value: string | null): value is Tab {
 }
 
 function formatFailureType(value: string): string {
-  return value.replaceAll("_", " ");
+  return value.replace(/_/g, " ");
 }
 
 function effectiveStatus(run: Run, events: EventEnvelope[]): RunStatus {
@@ -217,6 +225,130 @@ function PolicyDiff({ policy, baseline }: { policy: Policy; baseline: Run }) {
   );
 }
 
+const STATUS_RANK: Record<ComparisonStatus, number> = { regressed: 0, improved: 1, unchanged: 2 };
+
+function statusLabel(status: ComparisonStatus) {
+  return status[0].toUpperCase() + status.slice(1);
+}
+
+function statusClasses(status: ComparisonStatus) {
+  if (status === "regressed") return "border-error/30 bg-error/[0.07] text-error";
+  if (status === "improved") return "border-success/25 bg-success/[0.06] text-success";
+  return "border-border bg-white/[0.025] text-fg-muted";
+}
+
+function formatSigned(value: number | null, formatter: (value: number) => string) {
+  if (value == null) return "—";
+  return `${value > 0 ? "+" : ""}${formatter(value)}`;
+}
+
+function ComparisonMetricRow({
+  label,
+  comparison,
+  formatter,
+}: {
+  label: string;
+  comparison: MetricComparison;
+  formatter: (value: number) => string;
+}) {
+  return (
+    <div className={`rounded-md border p-4 ${statusClasses(comparison.status)}`}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="font-mono text-[10px] uppercase tracking-wider text-fg-subtle">{label}</p>
+        <span className="rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide">
+          {statusLabel(comparison.status)}
+        </span>
+      </div>
+      <div className="mt-3 grid grid-cols-[1fr_auto_1fr] items-baseline gap-2 font-mono">
+        <span>{comparison.before == null ? "—" : formatter(comparison.before)}</span>
+        <ArrowRight className="h-4 w-4 text-fg-subtle" />
+        <span className="text-right">{comparison.after == null ? "—" : formatter(comparison.after)}</span>
+      </div>
+      <p className="mt-2 text-right font-mono text-xs text-fg-muted">{formatSigned(comparison.delta, formatter)}</p>
+    </div>
+  );
+}
+
+function sortComparisons(entries: [string, MetricComparison][]) {
+  return [...entries].sort(
+    ([leftKey, left], [rightKey, right]) =>
+      STATUS_RANK[left.status] - STATUS_RANK[right.status] || leftKey.localeCompare(rightKey),
+  );
+}
+
+function AnalysisComparisonList({
+  title,
+  comparisons,
+  emptyMessage,
+}: {
+  title: string;
+  comparisons: Record<string, MetricComparison>;
+  emptyMessage: string;
+}) {
+  const entries = sortComparisons(Object.entries(comparisons));
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h3 className="text-sm font-semibold">{title}</h3>
+        {entries.some(([, item]) => item.status === "regressed") ? <span className="font-mono text-[10px] uppercase tracking-wider text-error">Regression first</span> : null}
+      </div>
+      {entries.length ? (
+        <div className="grid gap-3 sm:grid-cols-2">
+          {entries.map(([key, item]) => <ComparisonMetricRow key={key} label={formatFailureType(key)} comparison={item} formatter={(value) => `${Math.round(value * 100)}%`} />)}
+        </div>
+      ) : (
+        <p className="rounded-md border border-border bg-bg-card p-4 text-sm text-fg-muted">{emptyMessage}</p>
+      )}
+    </div>
+  );
+}
+
+function stepToolName(step: StepComparison) {
+  const toolCall = (step.after ?? step.before)?.tool_call;
+  if (!toolCall || typeof toolCall !== "object") return null;
+  const name = (toolCall as { name?: unknown }).name;
+  return typeof name === "string" ? name : null;
+}
+
+function StepDiffRow({ step }: { step: StepComparison }) {
+  const toolName = stepToolName(step);
+  return (
+    <li className={`rounded-md border p-4 ${statusClasses(step.status)}`}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="font-mono text-xs font-semibold">Step {step.index + 1}</span>
+          <span className="rounded-full border border-current/20 px-2 py-0.5 text-[10px] uppercase tracking-wide">{step.kind}</span>
+          {toolName ? <code className="font-mono text-[11px] text-fg-muted">{toolName}</code> : null}
+        </div>
+        <span className="text-[10px] font-semibold uppercase tracking-wide">{statusLabel(step.status)}</span>
+      </div>
+      {step.kind === "changed" ? (
+        <div className="mt-3 grid gap-2 text-xs text-fg-muted sm:grid-cols-2">
+          <p><span className="font-mono text-[10px] uppercase text-fg-subtle">Before</span><br />{String(step.before?.decision_summary ?? step.before?.observation ?? "No summary")}</p>
+          <p><span className="font-mono text-[10px] uppercase text-fg-subtle">After</span><br />{String(step.after?.decision_summary ?? step.after?.observation ?? "No summary")}</p>
+        </div>
+      ) : null}
+    </li>
+  );
+}
+
+function StepComparisonList({ steps }: { steps: StepComparison[] }) {
+  const ordered = [...steps].sort((left, right) => STATUS_RANK[left.status] - STATUS_RANK[right.status] || left.index - right.index);
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h3 id="step-diff-heading" className="text-sm font-semibold">Step diff</h3>
+        {ordered.some((step) => step.status === "regressed") ? <span className="font-mono text-[10px] uppercase tracking-wider text-error">Regressions first</span> : null}
+      </div>
+      {ordered.length ? <ol className="space-y-2">{ordered.map((step) => <StepDiffRow key={step.index} step={step} />)}</ol> : <p className="rounded-md border border-border bg-bg-card p-4 text-sm text-fg-muted">No persisted step events are available for comparison yet.</p>}
+    </div>
+  );
+}
+
+function runStepCount(run: Run, events: EventEnvelope[]) {
+  return run.metrics.step_count ?? run.metrics.steps ?? events.filter((event) => event.type === "step_completed").length;
+}
+
 export default function RunDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -260,6 +392,46 @@ export default function RunDetailPage() {
       : undefined;
     return baseline && replay ? { baseline, replay } : null;
   }, [experiment, policy]);
+
+  const baselineStream = useRunStream(comparison?.baseline.id);
+  const replayStream = useRunStream(comparison?.replay.id);
+  const baselineEvents = comparison?.baseline.id === id ? events : baselineStream.events;
+  const replayEvents = comparison?.replay.id === id ? events : replayStream.events;
+  const comparisonReady = Boolean(
+    comparison &&
+      !PENDING_STATUSES.includes(comparison.baseline.status) &&
+      !PENDING_STATUSES.includes(comparison.replay.status),
+  );
+  const {
+    data: baselineAnalysis,
+    error: baselineAnalysisError,
+    isFetching: baselineAnalysisLoading,
+  } = useGetRunAnalysisQuery(comparison?.baseline.id ?? "", { skip: !comparisonReady });
+  const {
+    data: replayAnalysis,
+    error: replayAnalysisError,
+    isFetching: replayAnalysisLoading,
+  } = useGetRunAnalysisQuery(comparison?.replay.id ?? "", { skip: !comparisonReady });
+  const analysisComparison = useMemo(
+    () => compareAnalysis(baselineAnalysis, replayAnalysis),
+    [baselineAnalysis, replayAnalysis],
+  );
+  const stepComparison = useMemo(
+    () => (comparison ? compareSteps(baselineEvents, replayEvents) : []),
+    [baselineEvents, comparison, replayEvents],
+  );
+  const directionFor = (key: string, fallback: "maximize" | "minimize") =>
+    baselineAnalysis?.metric_directions[key] ?? replayAnalysis?.metric_directions[key] ?? fallback;
+  const runComparisons = comparison
+    ? {
+        score: compareMetric(comparison.baseline.score, comparison.replay.score, directionFor("score", "maximize")),
+        steps: compareMetric(runStepCount(comparison.baseline, baselineEvents), runStepCount(comparison.replay, replayEvents), "minimize"),
+        latency: compareMetric(comparison.baseline.metrics.latency_ms, comparison.replay.metrics.latency_ms, directionFor("latency_ms", "minimize")),
+        tokens: compareMetric(totalTokens(comparison.baseline), totalTokens(comparison.replay), directionFor("total_tokens", "minimize")),
+      }
+    : null;
+  const comparisonAnalysisLoading = baselineAnalysisLoading || replayAnalysisLoading;
+  const comparisonAnalysisError = baselineAnalysisError || replayAnalysisError;
 
   const setTab = (tab: Tab) => setSearchParams({ view: tab });
   const tabKeyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
@@ -372,10 +544,7 @@ export default function RunDetailPage() {
         <Metric label="Score" value={formatScore(run.score)} tone={run.score != null && run.score >= 0.8 ? "success" : status === "failed" ? "error" : "default"} />
         <Metric
           label="Steps"
-          value={String(
-            run.metrics?.step_count ??
-              events.filter((event) => event.type === "step_completed").length,
-          )}
+          value={String(runStepCount(run, events))}
         />
         <Metric label="Latency" value={formatDuration(run.metrics?.latency_ms as number | undefined)} />
         <Metric label="Tokens" value={totalTokens(run)?.toLocaleString() ?? "—"} />
@@ -482,20 +651,45 @@ export default function RunDetailPage() {
                 </div>
 
                 <aside className="space-y-4">
-                  {comparison ? (
-                    <div className="rounded-md border border-success/20 bg-success/[0.04] p-5 shadow-inner-glow">
-                      <p className="font-mono text-[10px] uppercase tracking-wider text-success">Replay comparison</p>
-                      <div className="mt-4 grid grid-cols-[1fr_auto_1fr] items-center gap-3">
-                        <div><p className="text-xs text-fg-muted">Baseline</p><p className="mt-1 font-mono text-2xl font-semibold">{formatScore(comparison.baseline.score)}</p></div>
-                        <ArrowRight className="h-5 w-5 text-fg-subtle" />
-                        <div className="text-right"><p className="text-xs text-fg-muted">Candidate</p><p className="mt-1 font-mono text-2xl font-semibold text-success">{formatScore(comparison.replay.score)}</p></div>
-                      </div>
-                      <dl className="mt-5 space-y-2 border-t border-success/10 pt-4 text-sm">
-                        <div className="flex justify-between gap-4"><dt className="text-fg-muted">Score delta</dt><dd className="font-mono text-success">+{(policy.score_delta ?? 0).toFixed(2)}</dd></div>
-                        <div className="flex justify-between gap-4"><dt className="text-fg-muted">Steps</dt><dd className="font-mono">{comparison.baseline.metrics?.step_count ?? "—"} → {comparison.replay.metrics?.step_count ?? "—"}</dd></div>
-                        <div className="flex justify-between gap-4"><dt className="text-fg-muted">Latency</dt><dd className="font-mono">{formatDuration(comparison.baseline.metrics?.latency_ms as number | undefined)} → {formatDuration(comparison.replay.metrics?.latency_ms as number | undefined)}</dd></div>
-                      </dl>
-                      <Link to={`/runs/${comparison.replay.id}?view=trace`} className="mt-5 inline-flex items-center gap-2 text-sm font-semibold text-success">Open replay trace <ArrowRight className="h-4 w-4" /></Link>
+                  {comparison && runComparisons ? (
+                    <div className="space-y-6">
+                      <section className="space-y-4" aria-labelledby="replay-comparison-heading">
+                        <div className="flex flex-wrap items-baseline justify-between gap-2">
+                          <div>
+                            <p className="font-mono text-[10px] uppercase tracking-wider text-success">Replay comparison</p>
+                            <h2 id="replay-comparison-heading" className="mt-1 text-lg font-semibold">Persisted before / after facts</h2>
+                          </div>
+                          <span className="font-mono text-[10px] text-fg-subtle">{comparison.baseline.id.slice(0, 8)} → {comparison.replay.id.slice(0, 8)}</span>
+                        </div>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <ComparisonMetricRow label="Score delta" comparison={runComparisons.score} formatter={formatScore} />
+                          <ComparisonMetricRow label="Steps" comparison={runComparisons.steps} formatter={(value) => String(value)} />
+                          <ComparisonMetricRow label="Latency" comparison={runComparisons.latency} formatter={formatDuration} />
+                          <ComparisonMetricRow label="Tokens" comparison={runComparisons.tokens} formatter={(value) => value.toLocaleString()} />
+                        </div>
+                      </section>
+
+                      <section className="space-y-5" aria-labelledby="analysis-comparison-heading">
+                        <div className="flex flex-wrap items-baseline justify-between gap-2">
+                          <h2 id="analysis-comparison-heading" className="text-lg font-semibold">Analysis comparison</h2>
+                          {comparisonAnalysisError ? <span className="text-xs text-error">Analysis unavailable</span> : null}
+                        </div>
+                        {comparisonAnalysisLoading ? <LoadingSkeleton variant="detail" /> : null}
+                        {comparisonAnalysisError ? <ErrorBanner title="Comparison analysis unavailable" message={getApiErrorMessage(comparisonAnalysisError)} /> : null}
+                        {analysisComparison ? (
+                          <div className="space-y-5">
+                            <ComparisonMetricRow label="Failure rate" comparison={analysisComparison.failureRate} formatter={(value) => `${Math.round(value * 100)}%`} />
+                            <AnalysisComparisonList title="Dimensions" comparisons={analysisComparison.dimensions} emptyMessage="No persisted dimension metrics changed." />
+                            <AnalysisComparisonList title="Failure classifications" comparisons={analysisComparison.failureTypes} emptyMessage="No persisted failure classifications were recorded." />
+                          </div>
+                        ) : null}
+                      </section>
+
+                      <section aria-labelledby="step-diff-heading">
+                        <StepComparisonList steps={stepComparison} />
+                      </section>
+
+                      <Link to={`/runs/${comparison.replay.id}?view=trace`} className="inline-flex items-center gap-2 text-sm font-semibold text-success">Open replay trace <ArrowRight className="h-4 w-4" /></Link>
                     </div>
                   ) : (
                     <div className="rounded-md border border-border bg-bg-card p-5 shadow-inner-glow"><p className="text-sm font-semibold">Replay required</p><p className="mt-2 text-sm leading-6 text-fg-muted">Run the candidate against the same spec and seed before activation becomes available.</p></div>
