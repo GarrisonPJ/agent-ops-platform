@@ -79,6 +79,16 @@ from app.durable_events import (
 LEASE_SECONDS = 15
 RUNNER_AVAILABILITY_SECONDS = 15
 MAX_RUN_ATTEMPTS = 3
+ANALYSIS_METRIC_DIRECTIONS: dict[str, str] = {
+    "score": "maximize",
+    "failure_rate": "minimize",
+    "latency_ms": "minimize",
+    "total_tokens": "minimize",
+    "planning": "minimize",
+    "execution": "minimize",
+    "context": "minimize",
+    "budget": "minimize",
+}
 RECOVERABLE_RUN_STATUSES = {
     RunStatus.CLAIMED.value,
     RunStatus.RUNNING.value,
@@ -833,6 +843,11 @@ async def _trajectory_from_events(db: AsyncSession, run: Run) -> tuple[dict, dic
             latest_attempt_start = index
 
     latest_events = events[latest_attempt_start:]
+    provider_error = any(
+        event.event_type == "process_output"
+        and isinstance(event.payload.get("provider_error"), dict)
+        for event in latest_events
+    )
     for event in latest_events:
         if event.event_type != "step_completed":
             continue
@@ -857,10 +872,12 @@ async def _trajectory_from_events(db: AsyncSession, run: Run) -> tuple[dict, dic
         max_steps = int(policy.get("max_steps") or max_steps)
     trajectory = {
         "status": "success" if run.status == RunStatus.SUCCEEDED.value else "failed",
+        "run_status": run.status,
         "steps": steps,
         "max_steps": max_steps,
         "total_tokens": prompt_tokens + completion_tokens,
         "total_latency_ms": total_latency,
+        "provider_error": provider_error,
     }
     metrics = {
         "steps": len(steps),
@@ -987,13 +1004,20 @@ async def _analyze_and_score(
     }
     if "assertions" in score_result:
         run.metrics["assertions"] = score_result["assertions"]
-    report = analyze_trajectory(trajectory)
+    report = analyze_trajectory(trajectory, assertion_suite=assertion_suite)
     dimensions = {key: float(value) for key, value in report.dimensions.items()}
+
+    evidence = []
+    for item in report.evidence:
+        serialized = asdict(item)
+        if serialized.get("failure_type") is None:
+            serialized.pop("failure_type", None)
+        evidence.append(serialized)
     analysis = RunAnalysis(
         run_id=run.id,
         dimensions=dimensions,
-        evidence=[asdict(item) for item in report.evidence],
-        dominant_type=report.dominant,
+        evidence=evidence,
+        dominant_type=report.dominant_classification or report.dominant,
         failure_rate=max(dimensions.values(), default=0.0),
     )
     db.add(analysis)
@@ -1102,7 +1126,22 @@ async def get_analysis(db: AsyncSession, run_id: str) -> AnalysisResponse:
         if run.status not in TERMINAL_RUN_STATUSES:
             raise DomainError(409, "ANALYSIS_PENDING", "Analysis is not ready")
         raise DomainError(404, "ANALYSIS_NOT_FOUND", "No analysis exists for this run")
-    return AnalysisResponse.model_validate(analysis)
+    response = AnalysisResponse.model_validate(analysis)
+    response.failure_types = _failure_type_rates(response.evidence)
+    response.metric_directions = dict(ANALYSIS_METRIC_DIRECTIONS)
+    return response
+
+
+def _failure_type_rates(evidence: list[dict]) -> dict[str, float]:
+    counts: dict[str, int] = {}
+    total = len(evidence)
+    if total == 0:
+        return {}
+    for item in evidence:
+        failure_type = item.get("failure_type")
+        if isinstance(failure_type, str) and failure_type:
+            counts[failure_type] = counts.get(failure_type, 0) + 1
+    return {key: value / total for key, value in counts.items()}
 
 
 async def replay_policy(db: AsyncSession, policy_id: str) -> PolicyResponse:

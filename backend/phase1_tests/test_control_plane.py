@@ -114,6 +114,9 @@ async def test_full_baseline_replay_activate_loop(api) -> None:
     analysis = await client.get(f"/api/runs/{baseline['id']}/analysis")
     assert analysis.status_code == 200
     assert set(analysis.json()["dimensions"]) >= {"planning", "budget"}
+    assert analysis.json()["metric_directions"]["score"] == "maximize"
+    assert analysis.json()["metric_directions"]["failure_rate"] == "minimize"
+    assert "loop_no_progress" in analysis.json()["failure_types"]
 
     experiment_detail = (await client.get(f"/api/experiments/{experiment['id']}")).json()
     candidate = experiment_detail["candidate_policy"]

@@ -8,9 +8,22 @@ planning, execution, context, and budget.  The main entry point is
 from __future__ import annotations
 
 from dataclasses import dataclass, field, asdict
+from enum import StrEnum
 from typing import Any
 
+from app.scenario_assertions import AssertionSuite, evaluate_assertion_suite
+
 # ── Data structures ────────────────────────────────────────────────────────────────
+
+
+class FailureClassification(StrEnum):
+    """Controlled failure labels derived from persisted trajectory facts."""
+
+    TOOL_SELECTION_ERROR = "tool_selection_error"
+    PARAMETER_ERROR = "parameter_error"
+    LOOP_NO_PROGRESS = "loop_no_progress"
+    TIMEOUT = "timeout"
+    PROVIDER_ERROR = "provider_error"
 
 
 @dataclass
@@ -18,10 +31,11 @@ class FailureEvidence:
     """A single piece of evidence for a failure in a specific dimension."""
 
     dimension: str  # planning / execution / context / budget
-    step_index: int  # 0-based step index
+    step_index: int | None  # 0-based step index; None for run-level evidence
     reason: str  # human-readable reason
     severity: float  # 0.0 - 1.0
     details: dict | None = None  # extra data (e.g. keyword matched, ratio)
+    failure_type: str | None = None
 
 
 @dataclass
@@ -32,6 +46,8 @@ class FailureReport:
     dominant: str | None = None
     evidence: list[FailureEvidence] = field(default_factory=list)
     needs_human_review: bool = False
+    classification_rates: dict[str, float] = field(default_factory=dict)
+    dominant_classification: str | None = None
 
 
 # ── Error-keyword sets (case-insensitive) ──────────────────────────────────────
@@ -81,6 +97,7 @@ def _detect_planning(steps: list[dict]) -> list[FailureEvidence]:
                         ),
                         severity=1.0,
                         details={"tool": name, "repetitions": streak_length},
+                        failure_type=FailureClassification.LOOP_NO_PROGRESS.value,
                     )
                 )
         else:
@@ -125,6 +142,9 @@ def _detect_execution(steps: list[dict]) -> list[FailureEvidence]:
                     reason="; ".join(reasons),
                     severity=1.0,
                     details=details or None,
+                    failure_type=(
+                        FailureClassification.TIMEOUT.value if is_timeout else None
+                    ),
                 )
             )
 
@@ -204,10 +224,71 @@ def _detect_budget(steps: list[dict], trajectory: dict) -> list[FailureEvidence]
     return []
 
 
+def _assertion_failure_evidence(
+    trajectory: dict, assertion_suite: AssertionSuite | None
+) -> list[FailureEvidence]:
+    if assertion_suite is None or not assertion_suite.assertions:
+        return []
+    result = evaluate_assertion_suite(assertion_suite, trajectory)
+    evidence: list[FailureEvidence] = []
+    classification_by_assertion = {
+        "tool-used": FailureClassification.TOOL_SELECTION_ERROR,
+        "tool-args-match": FailureClassification.PARAMETER_ERROR,
+        "tool-sequence": FailureClassification.LOOP_NO_PROGRESS,
+        "step-count": FailureClassification.LOOP_NO_PROGRESS,
+    }
+    for item in result["assertions"]:
+        if item["passed"] or item["type"] not in classification_by_assertion:
+            continue
+        failure_type = classification_by_assertion[item["type"]]
+        steps = trajectory.get("steps", [])
+        last_index = steps[-1].get("index") if steps else None
+        evidence.append(
+            FailureEvidence(
+                dimension="planning",
+                step_index=last_index,
+                reason=f"Scenario assertion failed: {item['type']}",
+                severity=1.0 - float(item["score"]),
+                details={"assertion_type": item["type"]},
+                failure_type=failure_type.value,
+            )
+        )
+    return evidence
+
+
+def _run_level_failure_evidence(trajectory: dict) -> list[FailureEvidence]:
+    evidence: list[FailureEvidence] = []
+    steps = trajectory.get("steps", [])
+    last_index = steps[-1].get("index") if steps else None
+    if trajectory.get("provider_error"):
+        evidence.append(
+            FailureEvidence(
+                dimension="execution",
+                step_index=last_index,
+                reason="Provider execution reported a controlled error",
+                severity=1.0,
+                failure_type=FailureClassification.PROVIDER_ERROR.value,
+            )
+        )
+    if trajectory.get("run_status", trajectory.get("status")) == "timed_out":
+        evidence.append(
+            FailureEvidence(
+                dimension="execution",
+                step_index=last_index,
+                reason="Run reached its configured timeout",
+                severity=1.0,
+                failure_type=FailureClassification.TIMEOUT.value,
+            )
+        )
+    return evidence
+
+
 # ── Analysis entry points ────────────────────────────────────────────────────────────
 
 
-def analyze_trajectory(trajectory: dict) -> FailureReport:
+def analyze_trajectory(
+    trajectory: dict, assertion_suite: AssertionSuite | None = None
+) -> FailureReport:
     """Analyze a single trajectory for failures across all four dimensions.
 
     Parameters
@@ -227,7 +308,18 @@ def analyze_trajectory(trajectory: dict) -> FailureReport:
     total_steps = len(steps)
 
     if total_steps == 0:
-        return FailureReport()
+        run_level_evidence = _run_level_failure_evidence(trajectory)
+        return FailureReport(
+            evidence=run_level_evidence,
+            classification_rates={
+                item.failure_type: 1.0
+                for item in run_level_evidence
+                if item.failure_type is not None
+            },
+            dominant_classification=(
+                run_level_evidence[0].failure_type if run_level_evidence else None
+            ),
+        )
 
     # Gather evidence from all detectors
     all_evidence: list[FailureEvidence] = []
@@ -235,6 +327,8 @@ def analyze_trajectory(trajectory: dict) -> FailureReport:
     all_evidence.extend(_detect_execution(steps))
     all_evidence.extend(_detect_context(steps))
     all_evidence.extend(_detect_budget(steps, trajectory))
+    all_evidence.extend(_assertion_failure_evidence(trajectory, assertion_suite))
+    all_evidence.extend(_run_level_failure_evidence(trajectory))
 
     if not all_evidence:
         return FailureReport()
@@ -257,11 +351,30 @@ def analyze_trajectory(trajectory: dict) -> FailureReport:
     active_dims = [d for d, r in dimensions.items() if r > 0]
     needs_human_review = len(active_dims) >= 3
 
+    classification_steps: dict[str, set[int]] = {}
+    for evidence in all_evidence:
+        if evidence.failure_type is None:
+            continue
+        classification_steps.setdefault(evidence.failure_type, set()).add(
+            evidence.step_index if evidence.step_index is not None else -1
+        )
+    classification_rates = {
+        failure_type: len(step_indices) / total_steps
+        for failure_type, step_indices in classification_steps.items()
+    }
+    dominant_classification = (
+        max(classification_rates, key=classification_rates.get)
+        if classification_rates
+        else None
+    )
+
     return FailureReport(
         dimensions=dimensions,
         dominant=dominant,
         evidence=all_evidence,
         needs_human_review=needs_human_review,
+        classification_rates=classification_rates,
+        dominant_classification=dominant_classification,
     )
 
 

@@ -448,6 +448,10 @@ class AnalysisResponse(BaseModel):
     evidence: list[dict]
     dominant_type: str | None
     failure_rate: float
+    failure_types: dict[str, float] = Field(default_factory=dict)
+    metric_directions: dict[str, Literal["maximize", "minimize"]] = Field(
+        default_factory=dict
+    )
 
 
 class RejectPolicyRequest(StrictModel):

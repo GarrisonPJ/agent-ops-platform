@@ -49,6 +49,10 @@ function isTab(value: string | null): value is Tab {
   return TABS.includes(value as Tab);
 }
 
+function formatFailureType(value: string): string {
+  return value.replaceAll("_", " ");
+}
+
 function effectiveStatus(run: Run, events: EventEnvelope[]): RunStatus {
   const last = events[events.length - 1];
   if (!last) return run.status;
@@ -417,10 +421,23 @@ export default function RunDetailPage() {
                     <div key={dimension} className="rounded-md border border-border bg-bg-card p-4 shadow-inner-glow">
                       <p className="font-mono text-[10px] uppercase tracking-wider text-fg-subtle">{dimension}</p>
                       <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/[0.06]"><div className="h-full rounded-full bg-accent-amber" style={{ width: `${Math.min(Math.max(value, 0), 1) * 100}%` }} /></div>
-                      <p className="mt-2 font-mono text-sm">{Math.round(value * 100)}%</p>
+                      <div className="mt-2 flex items-baseline justify-between gap-2">
+                        <p className="font-mono text-sm">{Math.round(value * 100)}%</p>
+                        {analysis.metric_directions[dimension] ? <span className="text-[10px] text-fg-subtle">{analysis.metric_directions[dimension] === "minimize" ? "lower is better" : "higher is better"}</span> : null}
+                      </div>
                     </div>
                   ))}
                 </div>
+                {Object.keys(analysis.failure_types).length ? (
+                  <div className="flex flex-wrap items-center gap-2 border-b border-border pb-5">
+                    <span className="font-mono text-[10px] uppercase tracking-wider text-fg-subtle">Failure classifications</span>
+                    {Object.entries(analysis.failure_types).map(([failureType, value]) => (
+                      <span key={failureType} className="rounded-full border border-accent-amber/20 bg-accent-amber/[0.06] px-2.5 py-1 text-xs capitalize text-fg-muted">
+                        {formatFailureType(failureType)} {Math.round(value * 100)}%
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
                 <div className="rounded-md border border-border bg-bg-card p-5 shadow-inner-glow">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
@@ -435,7 +452,7 @@ export default function RunDetailPage() {
                         <li key={`${evidence.dimension}-${evidence.step_index}-${index}`} className="flex gap-3 rounded-md border border-accent-amber/15 bg-accent-amber/[0.04] p-4">
                           <WarningCircle className="mt-0.5 h-5 w-5 shrink-0 text-accent-amber" weight="fill" />
                           <div>
-                            <div className="flex flex-wrap items-center gap-2"><span className="text-sm font-semibold capitalize">{evidence.dimension}</span>{evidence.step_index != null ? <span className="font-mono text-[10px] text-fg-subtle">Step {evidence.step_index + 1}</span> : null}</div>
+                            <div className="flex flex-wrap items-center gap-2"><span className="text-sm font-semibold capitalize">{formatFailureType(evidence.failure_type ?? evidence.dimension)}</span>{evidence.step_index != null ? <span className="font-mono text-[10px] text-fg-subtle">Step {evidence.step_index + 1}</span> : null}</div>
                             <p className="mt-1 text-sm leading-6 text-fg-muted">{evidence.reason}</p>
                           </div>
                         </li>

@@ -159,6 +159,7 @@ export const failureEvidenceSchema = z
     reason: z.string().min(1),
     severity: z.number().min(0).max(1),
     details: z.record(z.string(), z.unknown()).nullable(),
+    failure_type: z.string().min(1).optional(),
   })
   .strict();
 
@@ -169,6 +170,10 @@ export const runAnalysisSchema = z
     evidence: z.array(failureEvidenceSchema),
     dominant_type: z.string().nullable(),
     failure_rate: z.number().min(0).max(1),
+    failure_types: z.record(z.string(), z.number().min(0).max(1)).default({}),
+    metric_directions: z
+      .record(z.string(), z.enum(["maximize", "minimize"]))
+      .default({}),
   })
   .strict();
 
