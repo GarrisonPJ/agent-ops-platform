@@ -93,6 +93,9 @@ class ToolCallSummary(DurableModel):
         "search_documents",
         "fetch_document",
         "submit_answer",
+        "invoke_service",
+        "retry_call",
+        "degrade_route",
     ]
     arguments: dict[str, str] = Field(default_factory=dict, max_length=MAX_TOOL_ARGUMENTS)
 
@@ -126,7 +129,7 @@ _TERMINAL_FAILURE_MESSAGES = {
 
 _TERMINAL_FAILURE_VALUES = {item.value: item for item in TerminalFailureKind}
 _ALLOWED_TOOL_ARGUMENT_VALUES = {
-    "service": frozenset({"checkout-api"}),
+    "service": frozenset({"checkout-api", "payments-api"}),
     "metric": frozenset({"dependency_latency"}),
     "window": frozenset({"5m"}),
     "query": frozenset({"checkout latency", "payment dependency timeout"}),
@@ -134,6 +137,8 @@ _ALLOWED_TOOL_ARGUMENT_VALUES = {
     "answer": frozenset(
         {"Checkout latency is caused by payment-gateway connection pool saturation."}
     ),
+    "attempts": frozenset({"2"}),
+    "mode": frozenset({"cached-read"}),
 }
 
 
@@ -342,6 +347,9 @@ def _normalize_tool_call(value: object) -> dict[str, object] | None:
         "search_documents",
         "fetch_document",
         "submit_answer",
+        "invoke_service",
+        "retry_call",
+        "degrade_route",
     }:
         return None
     raw_arguments = value.get("arguments", {})

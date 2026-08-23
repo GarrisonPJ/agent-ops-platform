@@ -19,6 +19,7 @@ from app.phase1_provider import (
 )
 from app.phase1_schemas import EvaluationSpec, ExecutionMode
 from app.scenario_registry import run_scenario
+from app.scenarios.api_fault_orchestration import SCENARIO_ID as FAULT_SCENARIO_ID
 from app.scenarios.multi_step_research import SCENARIO_ID as RESEARCH_SCENARIO_ID
 
 
@@ -122,6 +123,17 @@ def research_provider_spec() -> EvaluationSpec:
         task="Answer a research question using document evidence",
         execution_mode=ExecutionMode.PROVIDER,
         scenario_params={"topic": "checkout latency"},
+    )
+
+
+def fault_provider_spec() -> EvaluationSpec:
+    return EvaluationSpec(
+        run_id="run-fault-provider",
+        experiment_id="experiment-fault-provider",
+        scenario_id=FAULT_SCENARIO_ID,
+        task="Stabilize a failing API dependency without exhausting the step budget",
+        execution_mode=ExecutionMode.PROVIDER,
+        scenario_params={"service": "payments-api"},
     )
 
 
@@ -410,6 +422,165 @@ async def test_research_provider_fails_once_for_an_unsupported_tool(
         "search_documents",
         "fetch_document",
         "submit_answer",
+    ]
+    assert not any(kind == "step_completed" for kind, _payload in events)
+    error = next(payload["provider_error"] for kind, payload in events if "provider_error" in payload)
+    assert error["code"] == "PROVIDER_UNSUPPORTED_TOOL"
+    assert error["attempts"] == 1
+
+
+@pytest.mark.asyncio
+async def test_fault_provider_uses_only_fault_tools_and_preserves_step_fields(
+    monkeypatch: pytest.MonkeyPatch, fake_provider_server
+) -> None:
+    server = fake_provider_server(
+        [
+            FakeReply(
+                200,
+                completion(
+                    content=None,
+                    tool_calls=[
+                        {
+                            "id": "call-retry",
+                            "type": "function",
+                            "function": {
+                                "name": "retry_call",
+                                "arguments": '{"service":"payments-api","attempts":2}',
+                            },
+                        }
+                    ],
+                    prompt_tokens=11,
+                    completion_tokens=7,
+                ),
+            ),
+            FakeReply(
+                200,
+                completion(
+                    content=None,
+                    tool_calls=[
+                        {
+                            "id": "call-degrade",
+                            "type": "function",
+                            "function": {
+                                "name": "degrade_route",
+                                "arguments": '{"service":"payments-api","mode":"cached-read"}',
+                            },
+                        }
+                    ],
+                    prompt_tokens=13,
+                    completion_tokens=8,
+                ),
+            ),
+            FakeReply(
+                200,
+                completion(
+                    content=None,
+                    tool_calls=[
+                        {
+                            "id": "call-invoke",
+                            "type": "function",
+                            "function": {
+                                "name": "invoke_service",
+                                "arguments": '{"service":"payments-api"}',
+                            },
+                        }
+                    ],
+                    prompt_tokens=17,
+                    completion_tokens=9,
+                ),
+            ),
+            FakeReply(200, completion(content="Recovery complete.")),
+        ]
+    )
+    configure_provider(monkeypatch, server)
+    events: list[tuple[str, dict[str, object]]] = []
+
+    status = await run_scenario(
+        fault_provider_spec(), lambda kind, payload: events.append((kind, payload))
+    )
+
+    assert status == 0
+    expected_tools = ["invoke_service", "retry_call", "degrade_route"]
+    assert [
+        [tool["function"]["name"] for tool in request["json"]["tools"]]
+        for request in server.requests
+    ] == [expected_tools] * 4
+    steps = [
+        normalize_event_payload("step_completed", payload)
+        for kind, payload in events
+        if kind == "step_completed"
+    ]
+    assert [step["tool_call"]["name"] for step in steps] == [
+        "retry_call",
+        "degrade_route",
+        "invoke_service",
+    ]
+    assert [step["index"] for step in steps] == [0, 1, 2]
+    assert [step["tool_call"]["arguments"] for step in steps] == [
+        {"service": "payments-api", "attempts": "2"},
+        {"service": "payments-api", "mode": "cached-read"},
+        {"service": "payments-api"},
+    ]
+    assert [step["observation"] for step in steps] == [
+        "Retry succeeded after one transient 503 response.",
+        "Fallback route returned stale but acceptable responses.",
+        "Service responded 200 OK through the degraded route.",
+    ]
+    assert all(
+        {
+            "index",
+            "decision_summary",
+            "tool_call",
+            "observation",
+            "latency_ms",
+            "token_prompt",
+            "token_completion",
+        }
+        <= set(step)
+        for step in steps
+    )
+    assert [step["token_prompt"] for step in steps] == [11, 13, 17]
+    assert [step["token_completion"] for step in steps] == [7, 8, 9]
+    assert all(isinstance(step["latency_ms"], int) for step in steps)
+
+
+@pytest.mark.asyncio
+async def test_fault_provider_fails_once_for_an_unsupported_tool(
+    monkeypatch: pytest.MonkeyPatch, fake_provider_server
+) -> None:
+    server = fake_provider_server(
+        [
+            FakeReply(
+                200,
+                completion(
+                    content=None,
+                    tool_calls=[
+                        {
+                            "id": "call-checkout-tool",
+                            "type": "function",
+                            "function": {
+                                "name": "check_service_health",
+                                "arguments": "{}",
+                            },
+                        }
+                    ],
+                ),
+            )
+        ]
+    )
+    configure_provider(monkeypatch, server)
+    events: list[tuple[str, dict[str, object]]] = []
+
+    status = await run_scenario(
+        fault_provider_spec(), lambda kind, payload: events.append((kind, payload))
+    )
+
+    assert status == 1
+    assert len(server.requests) == 1
+    assert [tool["function"]["name"] for tool in server.requests[0]["json"]["tools"]] == [
+        "invoke_service",
+        "retry_call",
+        "degrade_route",
     ]
     assert not any(kind == "step_completed" for kind, _payload in events)
     error = next(payload["provider_error"] for kind, payload in events if "provider_error" in payload)

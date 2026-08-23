@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from app.phase1_provider import ProviderError, run_provider_agent
 from app.phase1_schemas import EvaluationSpec, PolicyPatch
 from app.scenario_assertions import AssertionCombination, ScenarioAssertion
 from app.scenario_registry import (
@@ -15,6 +16,86 @@ from app.scenarios._helpers import emit_step
 
 from app.scenario_ids import API_FAULT_ORCHESTRATION_SCENARIO_ID as SCENARIO_ID
 TOOLS = ("invoke_service", "retry_call", "degrade_route")
+FAULT_PROVIDER_INSTRUCTIONS = (
+    "You recover a failing API dependency using only the provided fault tools.",
+    "Use at most one tool call per response.",
+    "Do not request shell commands, network access, or arbitrary code execution.",
+)
+
+
+def _provider_tool_definitions() -> list[dict[str, object]]:
+    return [
+        {
+            "type": "function",
+            "function": {
+                "name": "invoke_service",
+                "description": "Invoke the deterministic service and observe its current response.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {"service": {"type": "string"}},
+                    "required": ["service"],
+                    "additionalProperties": False,
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "retry_call",
+                "description": "Retry the deterministic service call with a bounded attempt count.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "service": {"type": "string"},
+                        "attempts": {"type": "integer"},
+                    },
+                    "required": ["service", "attempts"],
+                    "additionalProperties": False,
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "degrade_route",
+                "description": "Route the deterministic service through a bounded degraded mode.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "service": {"type": "string"},
+                        "mode": {"type": "string"},
+                    },
+                    "required": ["service", "mode"],
+                    "additionalProperties": False,
+                },
+            },
+        },
+    ]
+
+
+def _provider_tool_result(spec: EvaluationSpec, name: str) -> tuple[dict[str, str], str]:
+    service = _target_service(spec)
+    if name == "retry_call":
+        return (
+            {"service": service, "attempts": "2"},
+            "Retry succeeded after one transient 503 response.",
+        )
+    if name == "degrade_route":
+        return (
+            {"service": service, "mode": "cached-read"},
+            "Fallback route returned stale but acceptable responses.",
+        )
+    if name == "invoke_service":
+        return (
+            {"service": service},
+            "Service responded 200 OK through the degraded route.",
+        )
+    raise ProviderError(
+        "PROVIDER_UNSUPPORTED_TOOL",
+        "Provider selected a tool outside the allowlist",
+        retryable=False,
+        attempts=1,
+    )
 
 
 def _target_service(spec: EvaluationSpec) -> str:
@@ -75,7 +156,14 @@ class ApiFaultOrchestrationScenario:
         return _replay(spec, emit) if spec.policy is not None else _baseline(spec, emit)
 
     async def run_provider(self, spec: EvaluationSpec, emit: EmitFn) -> int:
-        return self.run_fixture(spec, emit)
+        return await run_provider_agent(
+            spec,
+            emit,
+            tool_definitions=_provider_tool_definitions,
+            tool_result=_provider_tool_result,
+            instructions=FAULT_PROVIDER_INSTRUCTIONS,
+            scenario_label="fault orchestration",
+        )
 
     def candidate_policy_patch(self) -> PolicyPatch:
         return PolicyPatch(
