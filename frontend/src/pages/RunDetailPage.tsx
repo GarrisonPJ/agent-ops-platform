@@ -4,6 +4,7 @@ import {
   CheckCircle,
   Clock,
   Code,
+  Flask,
   Lightning,
   Play,
   Stop,
@@ -39,10 +40,12 @@ import {
   useGetRunQuery,
   useRejectPolicyMutation,
   useReplayPolicyMutation,
+  useSaveRegressionCaseMutation,
 } from "../services/experimentsApi";
 import type {
   EventEnvelope,
   Policy,
+  RegressionCase,
   Run,
   RunStatus,
   StepCompletedPayload,
@@ -349,6 +352,52 @@ function runStepCount(run: Run, events: EventEnvelope[]) {
   return run.metrics.step_count ?? run.metrics.steps ?? events.filter((event) => event.type === "step_completed").length;
 }
 
+function apiErrorCode(error: unknown): string | null {
+  if (!error || typeof error !== "object" || !("data" in error)) return null;
+  const data = (error as { data?: unknown }).data;
+  if (!data || typeof data !== "object" || !("code" in data)) return null;
+  const code = (data as { code?: unknown }).code;
+  return typeof code === "string" ? code : null;
+}
+
+function RegressionCaseReport({ regressionCase, runs }: { regressionCase: RegressionCase; runs: Run[] }) {
+  const source = runs.find((run) => run.id === regressionCase.source_run_id);
+  const replay = regressionCase.replay_run_id ? runs.find((run) => run.id === regressionCase.replay_run_id) : undefined;
+  const comparisons = source && replay ? {
+    score: compareMetric(source.score, replay.score, "maximize"),
+    steps: compareMetric(runStepCount(source, []), runStepCount(replay, []), "minimize"),
+    latency: compareMetric(source.metrics.latency_ms, replay.metrics.latency_ms, "minimize"),
+    tokens: compareMetric(totalTokens(source), totalTokens(replay), "minimize"),
+  } : null;
+
+  return (
+    <article className="rounded-md border border-border bg-bg-card p-4 shadow-inner-glow">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <span className="font-mono text-xs text-fg-muted">{regressionCase.scenario_id} · seed {regressionCase.seed}</span>
+        <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${regressionCase.reproducibility === "deterministic" ? "border-success/25 text-success" : "border-accent-amber/25 text-accent-amber"}`}>
+          {regressionCase.reproducibility === "deterministic" ? "deterministic" : "provider boundary"}
+        </span>
+      </div>
+      {!regressionCase.eligible_for_replay ? <p className="mt-2 text-xs leading-5 text-fg-muted">Recorded for analysis only. Provider behavior cannot be completely reproduced.</p> : null}
+      {regressionCase.eligible_for_replay && !replay ? <p className="mt-2 text-xs leading-5 text-fg-muted">Replay required before activation.</p> : null}
+      {replay ? (
+        <div className="mt-3 space-y-3 border-t border-border pt-3">
+          <div className="flex flex-wrap items-center justify-between gap-2 text-xs"><span className="text-fg-muted">Regression replay</span><LifecycleBadge status={replay.status} /></div>
+          {comparisons ? (
+            <div className="grid gap-2 sm:grid-cols-2">
+              <ComparisonMetricRow label="Score" comparison={comparisons.score} formatter={formatScore} />
+              <ComparisonMetricRow label="Steps" comparison={comparisons.steps} formatter={(value) => String(value)} />
+              <ComparisonMetricRow label="Latency" comparison={comparisons.latency} formatter={formatDuration} />
+              <ComparisonMetricRow label="Tokens" comparison={comparisons.tokens} formatter={(value) => value.toLocaleString()} />
+            </div>
+          ) : null}
+          <Link to={`/runs/${replay.id}?view=trace`} className="inline-flex items-center gap-1 text-xs font-semibold text-accent">Open regression replay <ArrowRight className="h-3.5 w-3.5" /></Link>
+        </div>
+      ) : null}
+    </article>
+  );
+}
+
 export default function RunDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -367,6 +416,7 @@ export default function RunDetailPage() {
   const [replayPolicy, { isLoading: isReplaying }] = useReplayPolicyMutation();
   const [activatePolicy, { isLoading: isActivating }] = useActivatePolicyMutation();
   const [rejectPolicy, { isLoading: isRejecting }] = useRejectPolicyMutation();
+  const [saveRegressionCase, { isLoading: isSavingRegressionCase }] = useSaveRegressionCaseMutation();
 
   const lastEvent = events[events.length - 1];
   useEffect(() => {
@@ -432,6 +482,9 @@ export default function RunDetailPage() {
     : null;
   const comparisonAnalysisLoading = baselineAnalysisLoading || replayAnalysisLoading;
   const comparisonAnalysisError = baselineAnalysisError || replayAnalysisError;
+  const regressionCase = experiment?.regression_cases.find((item) => item.id === run?.regression_case_id);
+  const regressionCases = experiment?.regression_cases ?? [];
+  const experimentRuns = experiment?.runs ?? [];
 
   const setTab = (tab: Tab) => setSearchParams({ view: tab });
   const tabKeyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
@@ -472,6 +525,21 @@ export default function RunDetailPage() {
     }
   };
 
+  const saveAsRegressionCase = async () => {
+    if (!run) return;
+    setActionError(null);
+    try {
+      await saveRegressionCase(run.id).unwrap();
+      toast.success("Regression case saved.");
+      await refetchRun();
+      await refetchExperiment();
+    } catch (error) {
+      const message = getApiErrorMessage(error);
+      setActionError(message);
+      toast.error(message);
+    }
+  };
+
   const activate = async () => {
     if (!policy) return;
     setActionError(null);
@@ -480,6 +548,11 @@ export default function RunDetailPage() {
       toast.success("Policy activated for this experiment.");
       await refetchExperiment();
     } catch (error) {
+      if (apiErrorCode(error) === "REGRESSION_REPLAY_PENDING") {
+        toast.info("Regression replay started. Review the results before activating again.");
+        await refetchExperiment();
+        return;
+      }
       const message = getApiErrorMessage(error);
       setActionError(message);
       toast.error(message);
@@ -530,15 +603,28 @@ export default function RunDetailPage() {
           </div>
           <h1 className="mt-4 max-w-3xl text-2xl font-semibold tracking-tight sm:text-3xl">{run.evaluation_spec.task}</h1>
         </div>
-        {canCancel ? (
-          <button type="button" onClick={() => void cancel()} disabled={isCancelling} className="inline-flex w-fit items-center gap-2 rounded-md border border-error/25 bg-error/[0.06] px-4 py-2.5 text-sm font-semibold text-error hover:bg-error/10 disabled:cursor-wait disabled:opacity-60">
-            <Stop className="h-4 w-4" weight="fill" /> {isCancelling ? "Requesting…" : "Cancel run"}
-          </button>
-        ) : null}
+        <div className="flex flex-wrap gap-2">
+          {terminal && ["failed", "timed_out"].includes(status) && !run.regression_case_id ? (
+            <button type="button" onClick={() => void saveAsRegressionCase()} disabled={isSavingRegressionCase} className="inline-flex w-fit items-center gap-2 rounded-md border border-accent-amber/25 bg-accent-amber/[0.06] px-4 py-2.5 text-sm font-semibold text-accent-amber hover:bg-accent-amber/10 disabled:cursor-wait disabled:opacity-60">
+              <Flask className="h-4 w-4" weight="fill" /> {isSavingRegressionCase ? "Saving…" : "Save regression case"}
+            </button>
+          ) : null}
+          {canCancel ? (
+            <button type="button" onClick={() => void cancel()} disabled={isCancelling} className="inline-flex w-fit items-center gap-2 rounded-md border border-error/25 bg-error/[0.06] px-4 py-2.5 text-sm font-semibold text-error hover:bg-error/10 disabled:cursor-wait disabled:opacity-60">
+              <Stop className="h-4 w-4" weight="fill" /> {isCancelling ? "Requesting…" : "Cancel run"}
+            </button>
+          ) : null}
+        </div>
       </div>
 
       {run.error ? <div className="mt-6"><ErrorBanner title={status === "timed_out" ? "Run timed out" : "Run did not complete"} message={run.error} /></div> : null}
       {actionError ? <div className="mt-6"><ErrorBanner title="Action failed" message={actionError} /></div> : null}
+      {regressionCase ? (
+        <div className="mt-6 flex items-start gap-3 rounded-md border border-accent-amber/20 bg-accent-amber/[0.05] p-4 text-sm">
+          <Flask className="mt-0.5 h-5 w-5 shrink-0 text-accent-amber" weight="fill" />
+          <div><p className="font-semibold">Regression case saved</p><p className="mt-1 text-fg-muted">{regressionCase.reproducibility_note}</p></div>
+        </div>
+      ) : null}
 
       <div className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Metric label="Score" value={formatScore(run.score)} tone={run.score != null && run.score >= 0.8 ? "success" : status === "failed" ? "error" : "default"} />
@@ -651,6 +737,17 @@ export default function RunDetailPage() {
                 </div>
 
                 <aside className="space-y-4">
+                  {regressionCases.length ? (
+                    <section className="space-y-3" aria-labelledby="regression-cases-heading">
+                      <div className="flex items-baseline justify-between gap-2">
+                        <h2 id="regression-cases-heading" className="text-lg font-semibold">Regression cases</h2>
+                        <span className="font-mono text-[10px] text-fg-subtle">{regressionCases.length} saved</span>
+                      </div>
+                      <div className="space-y-2">
+                        {regressionCases.map((item) => <RegressionCaseReport key={item.id} regressionCase={item} runs={experimentRuns} />)}
+                      </div>
+                    </section>
+                  ) : null}
                   {comparison && runComparisons ? (
                     <div className="space-y-6">
                       <section className="space-y-4" aria-labelledby="replay-comparison-heading">

@@ -114,6 +114,55 @@ describe("recorded demo handlers", () => {
   });
 
 
+  it("saves a fixture failure and gates activation on its regression replay", async () => {
+    const createdResponse = await recordedHandler("POST", "/experiments", {
+      name: "Recorded regression",
+      task: "Investigate checkout API latency",
+      scenario_id: "checkout-api-latency.v1",
+    });
+    if (!("data" in createdResponse)) return;
+    const experimentId = (createdResponse.data as { id: string }).id;
+    const baselineResponse = await recordedHandler(
+      "POST",
+      `/experiments/${experimentId}/runs`,
+      {},
+    );
+    if (!("data" in baselineResponse)) return;
+    const runId = (baselineResponse.data as { id: string }).id;
+
+    const saved = await recordedHandler("POST", `/runs/${runId}/regression-case`);
+    expect(saved).toMatchObject({
+      data: {
+        source_run_id: runId,
+        reproducibility: "deterministic",
+        eligible_for_replay: true,
+      },
+    });
+    expect(await recordedHandler("POST", `/runs/${runId}/regression-case`)).toEqual(saved);
+
+    await recordedHandler("POST", `/policies/${candidatePolicy.id}/replay`);
+    const gated = await recordedHandler(
+      "POST",
+      `/policies/${candidatePolicy.id}/activate`,
+    );
+    expect(gated).toMatchObject({
+      error: { status: 409, data: { code: "REGRESSION_REPLAY_PENDING" } },
+    });
+    expect(await recordedHandler("GET", `/experiments/${experimentId}`)).toMatchObject({
+      data: {
+        regression_cases: [
+          {
+            replay_policy_id: candidatePolicy.id,
+            replay_run_id: expect.stringContaining("recorded-regression-replay"),
+          },
+        ],
+      },
+    });
+    expect(
+      await recordedHandler("POST", `/policies/${candidatePolicy.id}/activate`),
+    ).toMatchObject({ data: { status: "active" } });
+  });
+
   it("keeps the selected provider mode as recorded response data", async () => {
     const createdResponse = await recordedHandler(
       "POST",
@@ -138,6 +187,15 @@ describe("recorded demo handlers", () => {
     );
     expect(baselineResponse).toMatchObject({
       data: { evaluation_spec: { execution_mode: "provider" } },
+    });
+    if (!("data" in baselineResponse)) return;
+    const runId = (baselineResponse.data as { id: string }).id;
+    expect(await recordedHandler("POST", `/runs/${runId}/regression-case`)).toMatchObject({
+      data: {
+        reproducibility: "provider_boundary",
+        eligible_for_replay: false,
+        reproducibility_note: expect.stringContaining("cannot be completely reproduced"),
+      },
     });
   });
 

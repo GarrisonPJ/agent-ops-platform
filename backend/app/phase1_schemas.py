@@ -96,6 +96,11 @@ class ExecutionMode(StrEnum):
     PROVIDER = "provider"
 
 
+class RegressionReproducibility(StrEnum):
+    DETERMINISTIC = "deterministic"
+    PROVIDER_BOUNDARY = "provider_boundary"
+
+
 TERMINAL_RUN_STATUSES = {
     RunStatus.SUCCEEDED.value,
     RunStatus.FAILED.value,
@@ -216,6 +221,7 @@ class RunResponse(BaseModel):
     kind: Literal["baseline", "replay"]
     source_run_id: str | None
     policy_id: str | None
+    regression_case_id: str | None = None
     status: RunStatus
     score: float | None
     metrics: dict
@@ -427,6 +433,24 @@ class PolicyResponse(BaseModel):
     created_at: datetime
 
 
+class RegressionCaseResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    experiment_id: str
+    source_run_id: str
+    scenario_id: str
+    seed: int
+    scenario_params: dict[str, str] = Field(default_factory=dict)
+    execution_mode: ExecutionMode
+    reproducibility: RegressionReproducibility
+    reproducibility_note: str
+    eligible_for_replay: bool
+    replay_run_id: str | None
+    replay_policy_id: str | None
+    created_at: datetime
+
+
 class ExperimentResponse(BaseModel):
     id: str
     name: str
@@ -436,6 +460,7 @@ class ExperimentResponse(BaseModel):
     execution_mode: ExecutionMode = ExecutionMode.FIXTURE
     created_at: datetime
     runs: list[RunResponse] = Field(default_factory=list)
+    regression_cases: list[RegressionCaseResponse] = Field(default_factory=list)
     active_policy: PolicyResponse | None = None
     candidate_policy: PolicyResponse | None = None
 

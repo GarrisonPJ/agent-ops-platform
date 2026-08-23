@@ -1,6 +1,6 @@
 import type { FetchArgs } from "@reduxjs/toolkit/query";
 import type { BaseQueryFn } from "@reduxjs/toolkit/query/react";
-import type { ExecutionMode, Experiment, Policy, Run } from "../../types/phase1";
+import type { ExecutionMode, Experiment, Policy, RegressionCase, Run } from "../../types/phase1";
 import {
   BASELINE_RUN_ID,
   CANDIDATE_POLICY_ID,
@@ -140,6 +140,7 @@ export async function recordedHandler(
       execution_mode: executionMode,
       created_at: "2026-07-16T09:00:00Z",
       runs: [],
+      regression_cases: [],
       active_policy: null,
       candidate_policy: null,
     };
@@ -184,6 +185,57 @@ export async function recordedHandler(
         : item,
     );
     return ok(cloneFixture(run));
+  }
+
+  const regressionCaseMatch = path.match(/^\/runs\/([^/]+)\/regression-case$/);
+  if (method === "POST" && regressionCaseMatch) {
+    const run = experiments
+      .flatMap((item) => item.runs)
+      .find((item) => item.id === regressionCaseMatch[1]);
+    if (!run) return fail(404, "RUN_NOT_FOUND", "Run not found.");
+    const experiment = findExperiment(run.experiment_id);
+    if (!experiment) return fail(404, "EXPERIMENT_NOT_FOUND", "Experiment not found.");
+    const existing = experiment.regression_cases.find((item) => item.source_run_id === run.id);
+    if (existing) return ok(cloneFixture(existing));
+    if (!["failed", "timed_out"].includes(run.status)) {
+      return fail(
+        409,
+        "REGRESSION_CASE_SOURCE_NOT_ELIGIBLE",
+        "Only failed or timed-out runs can be saved as regression cases",
+      );
+    }
+    const provider = run.evaluation_spec.execution_mode === "provider";
+    const regressionCase: RegressionCase = {
+      id: `recorded-regression-${experiment.regression_cases.length + 1}`,
+      experiment_id: experiment.id,
+      source_run_id: run.id,
+      scenario_id: run.evaluation_spec.scenario_id,
+      seed: run.evaluation_spec.seed,
+      scenario_params: run.evaluation_spec.scenario_params ?? {},
+      execution_mode: run.evaluation_spec.execution_mode ?? "fixture",
+      reproducibility: provider ? "provider_boundary" : "deterministic",
+      reproducibility_note: provider
+        ? "Provider execution depends on external model behavior and cannot be completely reproduced."
+        : "Fixture execution is deterministic for the stored scenario, seed, and parameters.",
+      eligible_for_replay: !provider,
+      replay_run_id: null,
+      replay_policy_id: null,
+      created_at: "2026-07-16T09:00:00Z",
+    };
+    experiments = experiments.map((item) =>
+      item.id !== experiment.id
+        ? item
+        : {
+            ...item,
+            regression_cases: [regressionCase, ...item.regression_cases],
+            runs: item.runs.map((itemRun) =>
+              itemRun.id === run.id
+                ? { ...itemRun, regression_case_id: regressionCase.id }
+                : itemRun,
+            ),
+          },
+    );
+    return ok(cloneFixture(regressionCase));
   }
 
   const experimentMatch = path.match(/^\/experiments\/([^/]+)$/);
@@ -285,6 +337,57 @@ export async function recordedHandler(
     );
     if (!experiment?.candidate_policy) {
       return fail(404, "POLICY_NOT_FOUND", "Policy not found.");
+    }
+    const pending = experiment.regression_cases
+      .filter((item) => item.eligible_for_replay)
+      .find((item) => {
+        const replay = item.replay_run_id
+          ? experiment.runs.find((run) => run.id === item.replay_run_id)
+          : null;
+        return replay?.status !== "succeeded";
+      });
+    if (pending) {
+      const replayId = `recorded-regression-replay-${pending.id}`;
+      const regressionReplay: Run = {
+        ...cloneFixture(replayRun),
+        id: replayId,
+        experiment_id: experiment.id,
+        source_run_id: pending.source_run_id,
+        policy_id: experiment.candidate_policy.id,
+        regression_case_id: pending.id,
+        status: "succeeded",
+        evaluation_spec: {
+          ...replayRun.evaluation_spec,
+          run_id: replayId,
+          experiment_id: experiment.id,
+          scenario_id: pending.scenario_id,
+          seed: pending.seed,
+          scenario_params: pending.scenario_params,
+          policy: experiment.candidate_policy.patch,
+        },
+      };
+      experiments = experiments.map((item) =>
+        item.id !== experiment.id
+          ? item
+          : {
+              ...item,
+              regression_cases: item.regression_cases.map((candidate) =>
+                candidate.id === pending.id
+                  ? {
+                      ...candidate,
+                      replay_run_id: regressionReplay.id,
+                      replay_policy_id: experiment.candidate_policy?.id ?? null,
+                    }
+                  : candidate,
+              ),
+              runs: [regressionReplay, ...item.runs],
+            },
+      );
+      return fail(
+        409,
+        "REGRESSION_REPLAY_PENDING",
+        "Regression cases must replay successfully before policy activation",
+      );
     }
     const active: Policy = {
       ...experiment.candidate_policy,

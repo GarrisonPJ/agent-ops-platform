@@ -91,6 +91,7 @@ export const runSchema = z
     kind: z.enum(["baseline", "replay"]),
     source_run_id: z.string().nullable(),
     policy_id: z.string().nullable(),
+    regression_case_id: z.string().nullable().optional().default(null),
     status: runStatusSchema,
     score: z.number().nullable(),
     metrics: runMetricsSchema,
@@ -114,6 +115,24 @@ export const policySchema = z
     rationale: z.string().min(1),
     score_delta: z.number().nullable(),
     reject_reason: z.string().nullable(),
+    created_at: z.string().min(1),
+  })
+  .strict();
+
+export const regressionCaseSchema = z
+  .object({
+    id: z.string().min(1),
+    experiment_id: z.string().min(1),
+    source_run_id: z.string().min(1),
+    scenario_id: scenarioIdSchema,
+    seed: z.number().int().nonnegative(),
+    scenario_params: scenarioParamsSchema.optional().default({}),
+    execution_mode: executionModeSchema,
+    reproducibility: z.enum(["deterministic", "provider_boundary"]),
+    reproducibility_note: z.string().min(1),
+    eligible_for_replay: z.boolean(),
+    replay_run_id: z.string().nullable(),
+    replay_policy_id: z.string().nullable(),
     created_at: z.string().min(1),
   })
   .strict();
@@ -147,6 +166,7 @@ export const experimentSchema = z
     execution_mode: executionModeSchema.optional(),
     created_at: z.string().min(1),
     runs: z.array(runSchema),
+    regression_cases: z.array(regressionCaseSchema).optional().default([]),
     active_policy: policySchema.nullable(),
     candidate_policy: policySchema.nullable(),
   })
@@ -213,6 +233,7 @@ export type EvaluationSpec = z.infer<typeof evaluationSpecSchema>;
 export type RunMetrics = z.infer<typeof runMetricsSchema>;
 export type Run = z.infer<typeof runSchema>;
 export type Policy = z.infer<typeof policySchema>;
+export type RegressionCase = z.infer<typeof regressionCaseSchema>;
 export type Scenario = z.infer<typeof scenarioSummarySchema>;
 export type Experiment = z.infer<typeof experimentSchema>;
 export type FailureEvidence = z.infer<typeof failureEvidenceSchema>;

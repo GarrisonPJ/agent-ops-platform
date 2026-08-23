@@ -38,6 +38,7 @@ from app.data_retention import (
 from app.phase1_models import (
     Experiment,
     Policy,
+    RegressionCase,
     Run,
     RunAnalysis,
     RunEvent,
@@ -229,6 +230,7 @@ async def test_plan_is_bounded_content_free_and_has_no_side_effect(api) -> None:
         "runner_attempts": 1,
         "run_analyses": 1,
         "policies": 1,
+        "regression_cases": 0,
     }
     assert "name-secret" not in serialized
     assert "task-secret" not in serialized
@@ -517,6 +519,10 @@ async def test_nonterminal_recent_and_protected_units_are_blocked(api) -> None:
         "policy_source",
         "policy_replay",
         "policy_parent",
+        "run_regression_case",
+        "regression_source",
+        "regression_replay",
+        "regression_policy",
     ],
 )
 @pytest.mark.asyncio
@@ -541,6 +547,49 @@ async def test_cross_experiment_references_block_deletion(
             run.source_run_id = target_run
         elif reference_kind == "run_policy":
             run.policy_id = target_policy
+        elif reference_kind == "run_regression_case":
+            regression_case = RegressionCase(
+                experiment_id=target_experiment,
+                source_run_id=target_run,
+                scenario_id="checkout-api-latency.v1",
+                seed=42,
+                scenario_params={},
+                execution_mode="fixture",
+                reproducibility="deterministic",
+                reproducibility_note="fixture",
+                eligible_for_replay=True,
+                created_at=OLD,
+            )
+            db.add(regression_case)
+            await db.flush()
+            run.regression_case_id = regression_case.id
+        elif reference_kind.startswith("regression_"):
+            db.add(
+                RegressionCase(
+                    experiment_id=external_experiment,
+                    source_run_id=(
+                        target_run
+                        if reference_kind == "regression_source"
+                        else external_run
+                    ),
+                    scenario_id="checkout-api-latency.v1",
+                    seed=42,
+                    scenario_params={},
+                    execution_mode="fixture",
+                    reproducibility="deterministic",
+                    reproducibility_note="fixture",
+                    eligible_for_replay=True,
+                    replay_run_id=(
+                        target_run if reference_kind == "regression_replay" else None
+                    ),
+                    replay_policy_id=(
+                        target_policy
+                        if reference_kind == "regression_policy"
+                        else None
+                    ),
+                    created_at=OLD,
+                )
+            )
         else:
             policy = Policy(
                 experiment_id=external_experiment,
@@ -665,6 +714,34 @@ async def test_stale_plan_aborts_when_aggregate_row_counts_change(api) -> None:
 
 
 @pytest.mark.asyncio
+async def test_stale_plan_aborts_when_regression_case_count_changes(api) -> None:
+    _, factory = api
+    experiment_id, run_id, _ = await add_experiment(factory, label="regression-stale")
+    async with factory() as db:
+        plan = await plan_retention(db, CUTOFF)
+    async with factory() as db:
+        db.add(
+            RegressionCase(
+                experiment_id=experiment_id,
+                source_run_id=run_id,
+                scenario_id="checkout-api-latency.v1",
+                seed=42,
+                scenario_params={},
+                execution_mode="fixture",
+                reproducibility="deterministic",
+                reproducibility_note="fixture",
+                eligible_for_replay=True,
+                created_at=OLD,
+            )
+        )
+        await db.commit()
+
+    async with factory() as db:
+        with pytest.raises(RetentionPlanStaleError, match="RETENTION_PLAN_STALE"):
+            await execute_retention(db, plan, confirmation=EXECUTE_CONFIRMATION)
+
+
+@pytest.mark.asyncio
 async def test_execute_rolls_back_after_delete_failure(api, monkeypatch) -> None:
     _, factory = api
     first_experiment, first_run, first_policy = await add_experiment(
@@ -737,6 +814,26 @@ async def test_execute_deletes_only_the_complete_eligible_aggregate(api) -> None
         factory, label="retain", run_status="queued", completed_at=None
     )
     async with factory() as db:
+        regression_case = RegressionCase(
+            experiment_id=target_experiment,
+            source_run_id=target_run,
+            scenario_id="checkout-api-latency.v1",
+            seed=42,
+            scenario_params={},
+            execution_mode="fixture",
+            reproducibility="deterministic",
+            reproducibility_note="fixture",
+            eligible_for_replay=True,
+            created_at=OLD,
+        )
+        db.add(regression_case)
+        await db.flush()
+        regression_case_id = regression_case.id
+        run = await db.get(Run, target_run)
+        assert run is not None
+        run.regression_case_id = regression_case.id
+        await db.commit()
+    async with factory() as db:
         plan = await plan_retention(db, CUTOFF, limit=1)
         report = await execute_retention(
             db,
@@ -749,6 +846,7 @@ async def test_execute_deletes_only_the_complete_eligible_aggregate(api) -> None
         assert await db.get(Experiment, retained_experiment) is not None
         assert await db.get(Run, target_run) is None
         assert await db.get(Policy, target_policy) is None
+        assert await db.get(RegressionCase, regression_case_id) is None
         for model in (RunEvent, RunnerJob, RunnerAttempt, RunAnalysis):
             count = int(
                 (

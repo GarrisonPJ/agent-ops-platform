@@ -22,6 +22,7 @@ from app.phase1_database import make_engine
 from app.phase1_models import (
     Experiment,
     Policy,
+    RegressionCase,
     Run,
     RunAnalysis,
     RunEvent,
@@ -34,7 +35,7 @@ from app.phase1_schemas import PolicyStatus, TERMINAL_RUN_STATUSES
 EXECUTE_CONFIRMATION = "DELETE_ELIGIBLE_EXPERIMENTS"
 DEFAULT_LIMIT = 100
 MAX_LIMIT = 500
-RETENTION_PLAN_VERSION = 1
+RETENTION_PLAN_VERSION = 2
 RETENTION_PLAN_STALE = 'RETENTION_PLAN_STALE'
 RETENTION_PLAN_INVALID = 'RETENTION_PLAN_INVALID'
 RETENTION_LOCK_TIMEOUT = 'RETENTION_LOCK_TIMEOUT'
@@ -51,7 +52,7 @@ POSTGRES_RETENTION_STATEMENT_TIMEOUT_STATEMENT = (
     f'SET LOCAL statement_timeout = \'{POSTGRES_RETENTION_STATEMENT_TIMEOUT}\''
 )
 POSTGRES_RETENTION_LOCK = (
-    "LOCK TABLE experiments, runs, policies IN SHARE ROW EXCLUSIVE MODE"
+    "LOCK TABLE experiments, runs, policies, regression_cases IN SHARE ROW EXCLUSIVE MODE"
 )
 PROTECTED_POLICY_STATUSES = (
     PolicyStatus.CANDIDATE.value,
@@ -81,6 +82,7 @@ class RetentionUnit:
     runner_attempt_count: int
     analysis_count: int
     policy_count: int
+    regression_case_count: int = 0
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -92,6 +94,7 @@ class RetentionUnit:
                 "runner_attempts": self.runner_attempt_count,
                 "run_analyses": self.analysis_count,
                 "policies": self.policy_count,
+                "regression_cases": self.regression_case_count,
             },
         }
 
@@ -103,6 +106,7 @@ _PLAN_ROW_COUNT_KEYS = (
     'runner_attempts',
     'run_analyses',
     'policies',
+    'regression_cases',
 )
 
 
@@ -315,6 +319,7 @@ class RetentionPlan:
                     runner_attempt_count=int(row_counts['runner_attempts']),
                     analysis_count=int(row_counts['run_analyses']),
                     policy_count=int(row_counts['policies']),
+                    regression_case_count=int(row_counts['regression_cases']),
                 )
             )
         parsed_units = tuple(units)
@@ -498,8 +503,14 @@ def _retention_predicates(terminal_before: datetime) -> _RetentionPredicates:
         .where(Policy.experiment_id == Experiment.id)
         .correlate(Experiment)
     )
+    target_regression_case_ids = (
+        select(RegressionCase.id)
+        .where(RegressionCase.experiment_id == Experiment.id)
+        .correlate(Experiment)
+    )
     external_run = aliased(Run)
     external_policy = aliased(Policy)
+    external_regression_case = aliased(RegressionCase)
     has_runs = exists(
         select(Run.id).where(Run.experiment_id == Experiment.id)
     ).correlate(Experiment)
@@ -528,6 +539,7 @@ def _retention_predicates(terminal_before: datetime) -> _RetentionPredicates:
             or_(
                 external_run.source_run_id.in_(target_run_ids),
                 external_run.policy_id.in_(target_policy_ids),
+                external_run.regression_case_id.in_(target_regression_case_ids),
             ),
         )
     ).correlate(Experiment)
@@ -541,13 +553,25 @@ def _retention_predicates(terminal_before: datetime) -> _RetentionPredicates:
             ),
         )
     ).correlate(Experiment)
+    external_regression_case_reference = exists(
+        select(external_regression_case.id).where(
+            external_regression_case.experiment_id != Experiment.id,
+            or_(
+                external_regression_case.source_run_id.in_(target_run_ids),
+                external_regression_case.replay_run_id.in_(target_run_ids),
+                external_regression_case.replay_policy_id.in_(target_policy_ids),
+            ),
+        )
+    ).correlate(Experiment)
     return _RetentionPredicates(
         has_runs=has_runs,
         nonterminal_run=nonterminal_run,
         terminal_after_cutoff=terminal_after_cutoff,
         protected_policy=protected_policy,
         cross_experiment_reference=or_(
-            external_run_reference, external_policy_reference
+            external_run_reference,
+            external_policy_reference,
+            external_regression_case_reference,
         ),
     )
 
@@ -642,6 +666,11 @@ async def _grouped_counts(
         .where(Policy.experiment_id.in_(experiment_ids))
         .group_by(Policy.experiment_id)
     )
+    regression_cases = await grouped(
+        select(RegressionCase.experiment_id, func.count(RegressionCase.id))
+        .where(RegressionCase.experiment_id.in_(experiment_ids))
+        .group_by(RegressionCase.experiment_id)
+    )
     return tuple(
         RetentionUnit(
             experiment_id=experiment_id,
@@ -651,6 +680,7 @@ async def _grouped_counts(
             runner_attempt_count=attempts.get(experiment_id, 0),
             analysis_count=analyses.get(experiment_id, 0),
             policy_count=policies.get(experiment_id, 0),
+            regression_case_count=regression_cases.get(experiment_id, 0),
         )
         for experiment_id in experiment_ids
     )

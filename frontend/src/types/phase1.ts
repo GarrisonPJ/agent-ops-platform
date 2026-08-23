@@ -11,6 +11,7 @@ import type {
   RunAnalysis,
   RunMetrics,
   RunStatus,
+  RegressionCase,
   Scenario,
 } from "../schemas/phase1";
 
@@ -28,6 +29,7 @@ export type {
   RunAnalysis,
   RunMetrics,
   RunStatus,
+  RegressionCase,
   Scenario,
 };
 

@@ -38,6 +38,7 @@ from app.migrations import application_alembic_head
 from app.phase1_models import (
     Experiment,
     Policy,
+    RegressionCase,
     Run,
     RunAnalysis,
     RunEvent,
@@ -62,9 +63,10 @@ COMPLETE_COUNTS = {
     'runner_attempts': 1,
     'run_analyses': 1,
     'policies': 1,
+    'regression_cases': 0,
 }
 RETENTION_TABLES = (
-    'experiments, runs, policies, runner_jobs, runner_attempts, '
+    'experiments, runs, policies, regression_cases, runner_jobs, runner_attempts, '
     'run_events, run_analyses, runner_presence'
 )
 DELETE_AUDIT_SEQUENCE = 'retention_test_delete_audit_sequence'
@@ -258,6 +260,11 @@ async def aggregate_counts(
             select(func.count())
             .select_from(Policy)
             .where(Policy.experiment_id == experiment_id)
+        ),
+        'regression_cases': await count(
+            select(func.count())
+            .select_from(RegressionCase)
+            .where(RegressionCase.experiment_id == experiment_id)
         ),
     }
 

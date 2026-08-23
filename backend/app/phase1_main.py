@@ -43,6 +43,7 @@ from app.phase1_schemas import (
     ReadinessResponse,
     RunnerAvailabilityResponse,
     PolicyResponse,
+    RegressionCaseResponse,
     RejectPolicyRequest,
     RunDiagnosticsResponse,
     RunCreate,
@@ -58,6 +59,7 @@ from app.phase1_service import (
     complete_job,
     create_baseline_run,
     create_experiment,
+    create_regression_case,
     experiment_response,
     get_analysis,
     get_operations_overview,
@@ -65,6 +67,7 @@ from app.phase1_service import (
     heartbeat,
     list_experiments,
     list_registered_scenarios,
+    list_regression_cases,
     next_event_sequence,
     persist_events,
     reject_policy,
@@ -296,6 +299,25 @@ def create_app(
     @router.get("/runs/{run_id}", response_model=RunResponse)
     async def runs_get(run_id: str, db: AsyncSession = Depends(get_db)) -> RunResponse:
         return run_response(await require_run(db, run_id))
+
+    @router.post(
+        "/runs/{run_id}/regression-case",
+        response_model=RegressionCaseResponse,
+        status_code=201,
+    )
+    async def runs_regression_case(
+        run_id: str, db: AsyncSession = Depends(get_db)
+    ) -> RegressionCaseResponse:
+        return await create_regression_case(db, run_id)
+
+    @router.get(
+        "/experiments/{experiment_id}/regression-cases",
+        response_model=list[RegressionCaseResponse],
+    )
+    async def experiments_regression_cases(
+        experiment_id: str, db: AsyncSession = Depends(get_db)
+    ) -> list[RegressionCaseResponse]:
+        return await list_regression_cases(db, experiment_id)
 
     @router.post("/runs/{run_id}/cancel", response_model=RunResponse)
     async def runs_cancel(run_id: str, db: AsyncSession = Depends(get_db)) -> RunResponse:

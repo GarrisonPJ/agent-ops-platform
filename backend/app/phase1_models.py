@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from sqlalchemy import JSON, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
+from sqlalchemy import Boolean, JSON, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -41,6 +41,9 @@ class Run(Base):
     kind: Mapped[str] = mapped_column(String(20), nullable=False)
     source_run_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("runs.id", ondelete="SET NULL"), nullable=True)
     policy_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    regression_case_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("regression_cases.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="queued", index=True)
     score: Mapped[float | None] = mapped_column(Float, nullable=True)
     metrics: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
@@ -129,3 +132,32 @@ class RunAnalysis(Base):
     evidence: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
     dominant_type: Mapped[str | None] = mapped_column(String(40), nullable=True)
     failure_rate: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+
+
+class RegressionCase(Base):
+    __tablename__ = "regression_cases"
+    __table_args__ = (UniqueConstraint("source_run_id", name="uq_regression_cases_source_run"),)
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    experiment_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("experiments.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    source_run_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("runs.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    scenario_id: Mapped[str] = mapped_column(String(100), nullable=False)
+    seed: Mapped[int] = mapped_column(Integer, nullable=False)
+    scenario_params: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    execution_mode: Mapped[str] = mapped_column(String(20), nullable=False)
+    reproducibility: Mapped[str] = mapped_column(String(30), nullable=False)
+    reproducibility_note: Mapped[str] = mapped_column(Text, nullable=False)
+    eligible_for_replay: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default=text("true"), index=True
+    )
+    replay_run_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("runs.id", ondelete="SET NULL"), nullable=True
+    )
+    replay_policy_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("policies.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)

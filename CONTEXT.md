@@ -25,6 +25,7 @@ This file defines the shared vocabulary and invariants for the implemented Phase
 | RunEvent | Durable, ordered execution fact. The unique key is `run_id + sequence`. |
 | Trace | The ordered projection of persisted RunEvents shown in the UI. It is not a separate source of truth. |
 | RunAnalysis | Deterministic failure dimensions, evidence, dominant type, and failure rate for one run. |
+| RegressionCase | A failed or timed-out Run preserved as a regression asset with its scenario, seed, parameters, execution mode, and reproducibility boundary. |
 | Policy | Experiment-scoped candidate patch derived from one failed baseline and optionally validated by one replay. |
 | PolicyPatch | Phase 1 patch with only `instruction_patch`, `tool_priority`, and `max_steps`. |
 | Scenario | A built-in, allowlisted evaluation world with stable metadata, tool surface, fixture semantics, terminal assertions, and optional bounded `scenario_params`. |
@@ -78,6 +79,8 @@ claimed/running/cancelling -- exhausted attempts --> failed or cancelled
 13. `scenario_params` is optional, size-bounded, and validated against Scenario metadata at Experiment and Run creation.
 14. Terminal scores for registered Scenarios derive from declared ScenarioAssertions, not ad-hoc scoring functions.
 15. Product events expose a concise `decision_summary`, not hidden chain-of-thought.
+16. A RegressionCase preserves the source Run's execution facts; fixture cases are deterministic and replay-eligible, while provider cases retain an explicit non-reproducibility boundary and do not gate activation.
+17. Policy activation remains a human action and is blocked until every replay-eligible RegressionCase succeeds against the candidate Policy.
 
 ## Built-in scenarios
 

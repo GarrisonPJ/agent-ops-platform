@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   experimentSchema,
   policySchema,
+  regressionCaseSchema,
   runAnalysisSchema,
   runSchema,
   scenarioSummarySchema,
@@ -11,6 +12,7 @@ import type {
   CreateExperimentRequest,
   Experiment,
   Policy,
+  RegressionCase,
   Run,
   RunAnalysis,
   Scenario,
@@ -80,6 +82,14 @@ export const experimentsApi = createApi({
       transformResponse: (response) => runSchema.parse(response),
       invalidatesTags: (_result, _error, id) => [{ type: "Run", id }],
     }),
+    saveRegressionCase: builder.mutation<RegressionCase, string>({
+      query: (id) => ({ url: `/runs/${id}/regression-case`, method: "POST" }),
+      transformResponse: (response) => regressionCaseSchema.parse(response),
+      invalidatesTags: (result, _error, id) => [
+        { type: "Run", id },
+        { type: "Experiment", id: result?.experiment_id ?? "" },
+      ],
+    }),
     getRunAnalysis: builder.query<RunAnalysis, string>({
       query: (id) => `/runs/${id}/analysis`,
       transformResponse: (response) => runAnalysisSchema.parse(response),
@@ -114,6 +124,7 @@ export const {
   useCreateBaselineRunMutation,
   useGetRunQuery,
   useCancelRunMutation,
+  useSaveRegressionCaseMutation,
   useGetRunAnalysisQuery,
   useReplayPolicyMutation,
   useActivatePolicyMutation,

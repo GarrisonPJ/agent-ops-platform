@@ -25,6 +25,7 @@ from app.scenario_registry import (
 from app.phase1_models import (
     Experiment,
     Policy,
+    RegressionCase,
     Run,
     RunAnalysis,
     RunEvent,
@@ -60,6 +61,8 @@ from app.phase1_schemas import (
     PolicyPatch,
     PolicyResponse,
     PolicyStatus,
+    RegressionCaseResponse,
+    RegressionReproducibility,
     RunResponse,
     RunStatus,
     ScenarioParamSummary,
@@ -341,6 +344,17 @@ async def experiment_response(db: AsyncSession, experiment: Experiment) -> Exper
         .scalars()
         .all()
     )
+    regression_cases = list(
+        (
+            await db.execute(
+                select(RegressionCase)
+                .where(RegressionCase.experiment_id == experiment.id)
+                .order_by(RegressionCase.created_at.desc())
+            )
+        )
+        .scalars()
+        .all()
+    )
     active = next((item for item in policies if item.status == PolicyStatus.ACTIVE.value), None)
     candidate = next(
         (
@@ -364,6 +378,7 @@ async def experiment_response(db: AsyncSession, experiment: Experiment) -> Exper
         execution_mode=ExecutionMode(experiment.execution_mode),
         created_at=experiment.created_at,
         runs=[run_response(item) for item in runs],
+        regression_cases=[RegressionCaseResponse.model_validate(item) for item in regression_cases],
         active_policy=policy_response(active) if active else None,
         candidate_policy=policy_response(candidate) if candidate else None,
     )
@@ -508,6 +523,71 @@ async def create_baseline_run(db: AsyncSession, experiment_id: str, seed: int) -
     await db.commit()
     await db.refresh(run)
     return run_response(run)
+
+
+async def list_regression_cases(
+    db: AsyncSession, experiment_id: str
+) -> list[RegressionCaseResponse]:
+    await require_experiment(db, experiment_id)
+    cases = list(
+        (
+            await db.execute(
+                select(RegressionCase)
+                .where(RegressionCase.experiment_id == experiment_id)
+                .order_by(RegressionCase.created_at.desc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return [RegressionCaseResponse.model_validate(item) for item in cases]
+
+
+async def create_regression_case(
+    db: AsyncSession, run_id: str
+) -> RegressionCaseResponse:
+    run = await require_run(db, run_id)
+    existing = (
+        await db.execute(
+            select(RegressionCase).where(RegressionCase.source_run_id == run.id)
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        return RegressionCaseResponse.model_validate(existing)
+    if run.status not in {RunStatus.FAILED.value, RunStatus.TIMED_OUT.value}:
+        raise DomainError(
+            409,
+            "REGRESSION_CASE_SOURCE_NOT_ELIGIBLE",
+            "Only failed or timed-out runs can be saved as regression cases",
+        )
+
+    spec = EvaluationSpec.model_validate(run.evaluation_spec)
+    deterministic = spec.execution_mode == ExecutionMode.FIXTURE
+    case = RegressionCase(
+        id=new_id(),
+        experiment_id=run.experiment_id,
+        source_run_id=run.id,
+        scenario_id=spec.scenario_id,
+        seed=spec.seed,
+        scenario_params=dict(spec.scenario_params),
+        execution_mode=spec.execution_mode.value,
+        reproducibility=(
+            RegressionReproducibility.DETERMINISTIC.value
+            if deterministic
+            else RegressionReproducibility.PROVIDER_BOUNDARY.value
+        ),
+        reproducibility_note=(
+            "Fixture execution is deterministic for the stored scenario, seed, and parameters."
+            if deterministic
+            else "Provider execution depends on external model behavior and cannot be completely reproduced."
+        ),
+        eligible_for_replay=deterministic,
+    )
+    db.add(case)
+    run.regression_case_id = case.id
+    await db.commit()
+    await db.refresh(case)
+    return RegressionCaseResponse.model_validate(case)
 
 
 async def cancel_run(db: AsyncSession, run_id: str) -> RunResponse:
@@ -1068,7 +1148,7 @@ async def _record_terminal_effects(
         RunStatus.TIMED_OUT.value,
     }:
         await _create_candidate(db, run)
-    if run.kind == "replay" and run.policy_id:
+    if run.kind == "replay" and run.policy_id and run.regression_case_id is None:
         policy = await require_policy(db, run.policy_id)
         baseline = await require_run(db, run.source_run_id or policy.source_run_id)
         policy.score_delta = (run.score or 0.0) - (baseline.score or 0.0)
@@ -1195,6 +1275,79 @@ async def activate_policy(db: AsyncSession, policy_id: str) -> PolicyResponse:
     replay = await require_run(db, policy.replay_run_id)
     if replay.status != RunStatus.SUCCEEDED.value:
         raise DomainError(409, "REPLAY_NOT_SUCCEEDED", "Replay did not succeed")
+
+    cases = list(
+        (
+            await db.execute(
+                select(RegressionCase)
+                .where(
+                    RegressionCase.experiment_id == policy.experiment_id,
+                    RegressionCase.eligible_for_replay.is_(True),
+                )
+                .order_by(RegressionCase.created_at.asc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+    pending_case_ids: list[str] = []
+    pending_run_ids: list[str] = []
+    for case in cases:
+        case_run = None
+        if case.replay_policy_id == policy.id and case.replay_run_id:
+            case_run = await require_run(db, case.replay_run_id)
+            if case_run.status == RunStatus.SUCCEEDED.value:
+                continue
+            if case_run.status in {
+                RunStatus.QUEUED.value,
+                RunStatus.CLAIMED.value,
+                RunStatus.RUNNING.value,
+                RunStatus.CANCELLING.value,
+            }:
+                pending_case_ids.append(case.id)
+                pending_run_ids.append(case_run.id)
+                continue
+
+        source = await require_run(db, case.source_run_id)
+        source_spec = EvaluationSpec.model_validate(source.evaluation_spec)
+        run_id = new_id()
+        regression_spec = EvaluationSpec(
+            run_id=run_id,
+            experiment_id=policy.experiment_id,
+            scenario_id=case.scenario_id,
+            task=source_spec.task,
+            seed=case.seed,
+            execution_mode=ExecutionMode(case.execution_mode),
+            policy=PolicyPatch.model_validate(policy.patch),
+            limits=source_spec.limits,
+            scenario_params=dict(case.scenario_params or {}),
+        )
+        regression_run = Run(
+            id=run_id,
+            experiment_id=policy.experiment_id,
+            kind="replay",
+            source_run_id=case.source_run_id,
+            policy_id=policy.id,
+            regression_case_id=case.id,
+            status=RunStatus.QUEUED.value,
+            evaluation_spec=regression_spec.model_dump(mode="json"),
+            metrics={},
+        )
+        db.add_all([regression_run, RunnerJob(run_id=run_id, attempt=1)])
+        await db.flush()
+        case.replay_run_id = run_id
+        case.replay_policy_id = policy.id
+        pending_case_ids.append(case.id)
+        pending_run_ids.append(run_id)
+
+    if pending_case_ids:
+        await db.commit()
+        raise DomainError(
+            409,
+            "REGRESSION_REPLAY_PENDING",
+            "Regression cases must replay successfully before policy activation",
+            {"case_ids": pending_case_ids, "run_ids": pending_run_ids},
+        )
     await db.execute(
         update(Policy)
         .where(

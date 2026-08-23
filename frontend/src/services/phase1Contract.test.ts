@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   eventEnvelopeSchema,
+  experimentSchema,
   recordedJourneySchema,
 } from "../schemas/phase1";
 import { goldenJourney } from "./recorded/fixtures";
@@ -30,5 +31,10 @@ describe("Phase 1 frontend contract", () => {
         }),
       ),
     ).toBeNull();
+  });
+
+  it("defaults legacy experiment recordings to an empty regression set", () => {
+    const { regression_cases: _regressionCases, ...legacy } = goldenJourney.experiment;
+    expect(experimentSchema.parse(legacy).regression_cases).toEqual([]);
   });
 });
