@@ -14,7 +14,7 @@ Phase 1 已完成并通过验收：
 
 - Experiment 可以创建确定性的 Baseline 与 Replay。
 - FastAPI 负责领域状态、持久化、Lease、评分、分析和 Policy 决策。
-- PostgreSQL 持久化 Run、Job、有序事件、Analysis 与 Policy。
+- PostgreSQL 持久化 Run、Job、有序事件、Analysis、Policy 与 RegressionCase。
 - Rust Runner 领取带 Lease 的 Job，监督白名单 Python 进程，重试事件上传，并处理取消与超时。
 - 过期 Runner Lease 会在领取时回收，支持 Attempt 隔离、按 Sequence 重启、取消意图保留和有界耗尽。
 - React 提供 Experiment、Trace、Analysis、Improve、Replay 及人工激活/拒绝流程。
@@ -23,6 +23,8 @@ Phase 1 已完成并通过验收：
 - 持久化 Run 诊断已经关联队列、Lease、Attempt、Runner、Provider、重试、耗时与终态信号。
 - 数据库 Readiness 会验证 Alembic Head，可执行临时库备份恢复演练，持久化 Runner 可用性保持独立可观测。
 - 机器可读运维状态（`GET /api/operations/state`）、有界 Operations 聚合、Retention/脱敏执行与进程外健康探测已在 CI 中验证。
+- 三个版本化内置 Scenario 均支持确定性 Fixture 和窄边界、场景专属的 Provider 执行。
+- 确定性失败归类、持久化 Before/After 对比与回归用例重放已接入人工 Policy 门禁。
 - Policy 始终需要人工显式激活。
 
 ## 里程碑
@@ -32,7 +34,8 @@ Phase 1 已完成并通过验收：
 | P0 | Phase 1.1 — Runner Recovery | 已完成 | Runner 崩溃或失联后，Run 不会永久卡住。 |
 | P1 | Phase 1.2 — OpenAI-compatible Provider | 已完成 | 真实模型复用同一套受监督、有类型、可持久化的流程，同时 CI 不依赖外部 API。 |
 | P2 | Phase 1.3 — 可观测性与运维加固 | 已完成 | 可以依据持久信号诊断队列、Lease、Runner、Provider 与迁移故障。 |
-| P1 | Phase 1.4 — 场景接入 | 计划中 | 操作者从注册内置场景中选择；平台不再局限于一个硬编码 Demo。 |
+| P1 | Phase 1.4 — 场景接入 | 已完成 | 操作者从注册内置场景中选择；平台不再局限于一个硬编码 Demo。 |
+| P1 | 闭环深化后续 | 已完成 | 失败 Run 成为可归类、可对比并在激活前门禁的回归资产。 |
 | Gate | 安全与访问控制 | 条件触发 | 在引入有副作用工具、不可信用户或共享/公网运行前必须完成。 |
 
 ## Phase 1.1 — Runner Recovery
@@ -129,11 +132,16 @@ Phase 1.3 收尾（2026-08-15）：
 - 备份与迁移演练：**已完成** — 迁移往返与独立 PostgreSQL 16 备份恢复演练均有可重复的 CI 和本地命令。
 - 保留与脱敏：**已完成** — Experiment 聚合 Retention、Plan-file Execute、PostgreSQL 锁后复核、Provider/Completion 脱敏与真实 PostgreSQL 16 集成测试均已实现。
 
-目前没有定义 Phase 1.5。Phase 1.4 完成后，下一里程碑应依据实际运维数据选择，而非推测性功能。**Deferred until justified** 中的项只有在出现具体需求时才提升优先级。如果开始共享/公网使用、接入不可信 Endpoint/账户或启用有副作用工具，则条件安全门优先。
+目前没有定义 Phase 1.5。Phase 1.4 及其闭环深化后续均已完成，下一里程碑应依据实际运维数据选择，而非推测性功能。**Deferred until justified** 中的项只有在出现具体需求时才提升优先级。如果开始共享/公网使用、接入不可信 Endpoint/账户或启用有副作用工具，则条件安全门优先。
 
 ## Phase 1.4 — 场景接入
 
 PRD：`.scratch/phase1.4-scenario-onboarding/PRD.md`（本地跟踪器）。架构边界：[ADR-0006](docs/adr/0006-scenario-registry-boundary.md)。
+
+CI 收口（2026-08-23）：
+
+- **状态：已完成。** GitHub Actions run `31922310312` 的六个 Job 全部成功：`backend`、`database-recovery`、`frontend`、`rust`、`compose`、`golden-e2e`。
+- **Provider 后续：已完成。** `multi-step-research.v1` 与 `api-fault-orchestration.v1` 已复用共享的有界 Provider Client，并且只暴露各自场景专属工具（`340ca9a`、`bddbbdd`）。Fixture 仍是确定性 CI 默认路径。
 
 范围：
 
@@ -150,7 +158,18 @@ PRD：`.scratch/phase1.4-scenario-onboarding/PRD.md`（本地跟踪器）。架�
 
 - 注册表与断言重构后 Golden checkout 闭环仍可通过。
 - 至少一个额外场景在 CI 中无需外部 API 即可完成完整闭环（`golden_e2e.py` 默认跑 checkout 与 multi-step-research）。
-- README、CONTEXT 与 ADR-0006 描述注册表、版本化身份与断言语义；仅当 CI 有全部验收证据时 ROADMAP 才将本里程碑标为完成（在此之前保持 **计划中**）。
+- README、CONTEXT 与 ADR-0006 描述注册表、版本化身份与断言语义；CI 具备全部验收证据后，ROADMAP 将本里程碑标为 **已完成**。
+
+## 闭环深化后续
+
+PRD：`.scratch/closed-loop-depth/PRD.md`（本地跟踪器）。
+
+收口（2026-08-23）：
+
+- **状态：已完成。** 确定性失败分类与指标方向（`ca33d93`）、持久化 Before/After 对比及回归优先高亮（`4847e6e`）、失败 Run 回归固化与激活前重放门禁（`98d387e`）均已进入 `main`。
+- Fixture 失败可将 Scenario、Seed 与参数保存为确定性回归资产。Provider 失败会记录明确的不可完全复现边界，不进入自动回放门禁。
+- Regression Replay 复用正常 Run 流程、进入 Improve 报告，且不会自动激活 Policy；操作者审查结果后必须再次显式激活。
+- 本地收口通过 backend `141 passed, 1 skipped`（PostgreSQL Retention 集成需要 `RETENTION_POSTGRES_URL`）、frontend `27 passed`、TypeScript、生产构建、协议检查、Rust 格式检查，以及 Windows Chromium Recorded E2E `2 passed`。
 
 ## 条件安全门
 

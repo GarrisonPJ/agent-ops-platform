@@ -33,18 +33,18 @@ make demo
 
 Open [http://localhost:5173](http://localhost:5173) and walk the Golden loop: create an Experiment, watch the baseline fail, review Analysis, replay the candidate Policy, then Activate or Reject.
 
-Phase 1 is complete (recovery, provider boundary, observability). **Phase 1.4 — Scenario onboarding** is in progress: multiple registered built-in Scenarios instead of one hard-coded demo. See [ROADMAP.md](ROADMAP.md).
+Phase 1 through **Phase 1.4 — Scenario onboarding** is complete: three registered built-in Scenarios support deterministic fixtures and narrow, scenario-specific Provider paths. The closed loop also includes deterministic failure classification, persisted Before/After comparison, and regression-case replay before human activation. See [ROADMAP.md](ROADMAP.md).
 
 ## Deterministic Golden workflow
 
 The built-in scenario investigates checkout API latency:
 
 1. The baseline repeatedly fetches the same logs, exhausts its six-step budget, and fails.
-2. The rule-based analyzer identifies **Planning** and **Budget** failures with event evidence.
-3. AgentOps proposes a typed policy patch: avoid duplicate calls and check health, then metrics, then evidence-backed logs.
-4. The same evaluation spec and seed are replayed through the Rust Runner.
-5. The replay diagnoses the dependency issue in three steps and scores higher.
-6. The candidate remains inert until a person selects **Activate** or **Reject**.
+2. The rule-based analyzer identifies controlled failure types and metric directions from persisted event evidence.
+3. The failed Run can be saved as a deterministic RegressionCase with its Scenario, seed, and parameters.
+4. AgentOps proposes a typed policy patch: avoid duplicate calls and check health, then metrics, then evidence-backed logs.
+5. The same evaluation spec and seed are replayed through the Rust Runner; Improve shows persisted score, analysis, step, latency, token, and trajectory differences.
+6. Activation first replays eligible RegressionCases. The candidate remains inert until a person reviews those results and explicitly selects **Activate** again or rejects it.
 
 No LLM key or external service is required.
 
@@ -55,12 +55,12 @@ Fixture execution remains the default, deterministic CI and Golden path. An Expe
 ```bash
 AGENTOPS_PROVIDER_BASE_URL=https://provider.example/v1
 AGENTOPS_PROVIDER_API_KEY=replace-me
-AGENTOPS_PROVIDER_MODEL=checkout-model
+AGENTOPS_PROVIDER_MODEL=scenario-model
 AGENTOPS_PROVIDER_TIMEOUT_MS=10000
 AGENTOPS_PROVIDER_MAX_RETRIES=1
 ```
 
-With Compose, place these values in the ignored `.env` file and run `make demo`; only the `runner` service receives them. Select **OpenAI-compatible provider** when creating the Experiment. The Python boundary calls `/chat/completions`, permits only the three checkout fixture tools, honors timeout/retry/cancellation, and records safe model, latency, request-count, and token metrics. It never persists the credential, endpoint, or hidden reasoning. Missing or failed configuration produces a structured terminal Run error. CI uses a local fake compatible server; live-provider checks are explicitly opt-in.
+With Compose, place these values in the ignored `.env` file and run `make demo`; only the `runner` service receives them. Select **OpenAI-compatible provider** when creating the Experiment. The Python boundary calls `/chat/completions`, exposes only the selected Scenario's explicit tool set, honors timeout/retry/cancellation, and records safe model, latency, request-count, and token metrics. Checkout, multi-step research, and API fault orchestration each have their own bounded tool definitions and deterministic observations. Credentials, endpoints, and hidden reasoning are never persisted. Missing or failed configuration produces a structured terminal Run error. CI uses local fake compatible servers; live-provider checks are explicitly opt-in.
 
 ## Run the real stack
 
@@ -113,8 +113,8 @@ flowchart LR
 | React + RTK Query | Experiment workflow, durable Trace, Analysis, Improve, replay comparison, human decision |
 | FastAPI | Experiments, run and policy state machines, leases, persistence, scoring, analysis, SSE |
 | Rust Runner | Process groups, heartbeat/cancel, timeout, bounded JSONL, event retry, terminal cleanup |
-| PostgreSQL | Experiments, runs, jobs, ordered events, analyses, and policies |
-| Python agent | Deterministic fixture path plus a narrow, opt-in provider path for the same allowlisted checkout scenario |
+| PostgreSQL | Experiments, runs, jobs, ordered events, analyses, policies, and regression cases |
+| Python agent | Registered Scenario handlers with deterministic fixtures and narrow, scenario-specific opt-in Provider paths |
 
 Python Pydantic models own protocol v1. Versioned JSON Schemas and Golden fixtures live in [contracts/v1](contracts/v1); Rust Serde types validate those same fixtures in CI.
 
@@ -127,13 +127,13 @@ Python Pydantic models own protocol v1. Versioned JSON Schemas and Golden fixtur
 - Expired leases cannot append events or complete a non-terminal run; repeated terminal completion remains idempotent.
 - When a lease expires, the next authenticated claim increments the Attempt, fences the old lease, and resumes from the next event sequence.
 - Jobs select an allowlisted `scenario_id`; API clients can select only `fixture` or `provider` execution and cannot provide an executable, shell command, provider URL, model, or credential.
-- The Runner alone receives provider configuration. Provider calls are bounded, cancelable `/chat/completions` requests and can select only the checkout fixture tools.
+- The Runner alone receives provider configuration. Provider calls are bounded, cancelable `/chat/completions` requests and can select only the registered tool definitions for the chosen Scenario.
 - Latest-attempt Provider model identity, latency, request count, and token usage are persisted as Run metrics; credentials, endpoint values, and hidden reasoning are not.
 - Runner commands and arguments are separate. It never connects to Docker or the database.
 - JSONL lines are capped at 64 KiB and combined output at 1 MiB by default.
 - Linux/WSL jobs run in their own process group; cancellation sends SIGTERM, then SIGKILL after two seconds.
 - Product events expose `decision_summary`, never hidden chain-of-thought.
-- Policy activation always requires an explicit human action and a successful positive replay.
+- Policy activation always requires a successful positive replay, successful eligible RegressionCase replays, and an explicit human action after reviewing those results.
 
 ## Product surface
 
@@ -179,7 +179,7 @@ CI covers Python, migrations, TypeScript, recorded-preview contracts, Rust proto
 
 Phase 1 has no Kubernetes executor, Docker socket, MCP server, vector memory, training export, framework adapters, user-supplied provider endpoints or credentials, arbitrary code execution, accounts, multi-tenancy, billing, or automatic policy activation.
 
-Those capabilities remain deferred until a measured requirement promotes them. Phase 1.4 adds registered built-in Scenarios; see [ROADMAP.md](ROADMAP.md).
+Those capabilities remain deferred until a measured requirement promotes them. Phase 1.4 and the closed-loop depth follow-up are complete; see [ROADMAP.md](ROADMAP.md).
 
 ## Project direction
 

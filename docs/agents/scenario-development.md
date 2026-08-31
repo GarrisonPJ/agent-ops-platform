@@ -14,7 +14,7 @@ Create `backend/app/scenarios/<slug>.py` with:
 
 1. **Metadata** — versioned id, human name, description, default task, tool allowlist, optional `ScenarioParamDef` entries, and terminal `ScenarioAssertion` entries with an `AssertionCombination` mode.
 2. **Fixture path** — deterministic baseline (should fail analyzably) and replay (should succeed in fewer steps when `policy` is present on the spec).
-3. **Provider path** — checkout uses the OpenAI-compatible boundary; other Scenarios may delegate to fixture until a narrow provider surface exists.
+3. **Provider path** — expose only this Scenario's explicit tool definitions and deterministic tool executor through the shared bounded `run_provider_agent()` client. Checkout, multi-step research, and API fault orchestration are the reference integrations. Do not silently delegate `provider` mode to the fixture path.
 4. **`candidate_policy_patch()`** — typed `PolicyPatch` using only tools from the union in `ALLOWED_POLICY_TOOLS` (`phase1_schemas.py`).
 
 Reuse `emit_step()` from `scenarios/_helpers.py` so events match the existing analyzer and scoring pipeline.
@@ -83,6 +83,7 @@ Params are stored on `experiments.scenario_params` (Alembic revision `0007`). No
 - Registry unit tests: registered lookup, unknown id rejection, param validation, non-versioned id rejection.
 - Assertion unit tests in `phase1_tests/test_scenario_assertions.py` for new assertion combinations if needed.
 - Agent tests in `phase1_tests/test_demo_agent.py` for baseline/replay fixture semantics.
+- Provider tests in `phase1_tests/test_provider_agent.py` with the local fake compatible server: success sequence, persisted event fields, unsupported-tool rejection, timeout/retry, and safe errors. Never call an external API in CI.
 - API tests: `POST /api/experiments` and `POST /api/experiments/{id}/runs` with valid/invalid `scenario_id` and `scenario_params`.
 - Extend `scripts/golden_e2e.py` (or add a scenario entry to `GOLDEN_SCENARIOS`) so CI exercises the full closed loop without external APIs.
 - `make test` / CI matrix: backend, rust, frontend, compose, golden-e2e.
@@ -90,7 +91,7 @@ Params are stored on `experiments.scenario_params` (Alembic revision `0007`). No
 ## 6. Document the change
 
 - Add the Scenario row to **Built-in scenarios** in `CONTEXT.md`.
-- Keep `ROADMAP.md` Phase 1.4 acceptance honest — mark Complete only when CI evidences the new Scenario in the closed loop.
+- Keep `ROADMAP.md` honest: Phase 1.4 is complete, so record a new Scenario as a bounded follow-up and do not redefine the milestone without new acceptance evidence.
 
 ## Toy Scenario walkthrough
 

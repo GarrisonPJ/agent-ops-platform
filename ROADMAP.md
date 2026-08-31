@@ -14,7 +14,7 @@ Phase 1 is complete and verified:
 
 - Experiments create deterministic baseline and replay runs.
 - FastAPI owns domain state, persistence, leases, scoring, analysis, and policy decisions.
-- PostgreSQL stores runs, jobs, ordered events, analyses, and policies.
+- PostgreSQL stores runs, jobs, ordered events, analyses, policies, and regression cases.
 - The Rust Runner claims leased jobs, supervises an allowlisted Python process, retries event delivery, and enforces cancellation and timeout.
 - Expired Runner leases are reclaimed with attempt fencing, sequence-aware restart, cancellation preservation, and bounded exhaustion.
 - React provides the Experiment, Trace, Analysis, Improve, replay, and human activation/rejection workflow.
@@ -23,6 +23,8 @@ Phase 1 is complete and verified:
 - Durable Run diagnostics now correlate queue, lease, attempt, Runner, provider, retry, timing, and terminal signals.
 - Database readiness verifies the Alembic Head, disposable backup/restore rehearsal is executable, and durable Runner availability remains independently observable.
 - Machine-readable operational states (`GET /api/operations/state`), bounded operations aggregates, retention/redaction enforcement, and out-of-process health probes are implemented and verified in CI.
+- Three versioned built-in Scenarios support deterministic fixture execution and narrow, scenario-specific provider execution.
+- Deterministic failure classification, persisted Before/After comparisons, and regression-case replay now inform the human policy gate.
 - Policy activation remains an explicit human action.
 
 ## Milestones
@@ -32,7 +34,8 @@ Phase 1 is complete and verified:
 | P0 | Phase 1.1 — Runner recovery | Complete | A crashed or disconnected Runner cannot strand a Run indefinitely. |
 | P1 | Phase 1.2 — OpenAI-compatible provider | Complete | Real model execution uses the same supervised, typed, persisted workflow without making CI depend on an external API. |
 | P2 | Phase 1.3 — Observability and operational hardening | Complete | Operators can diagnose queue, lease, Runner, provider, and migration failures from durable signals. |
-| P1 | Phase 1.4 — Scenario onboarding | Planned | Operators choose from registered built-in Scenarios; the platform is no longer limited to one hard-coded demo. |
+| P1 | Phase 1.4 — Scenario onboarding | Complete | Operators choose from registered built-in Scenarios; the platform is no longer limited to one hard-coded demo. |
+| P1 | Closed-loop depth follow-up | Complete | Failed Runs become classified, comparison-ready regression assets that gate policy activation. |
 | Gate | Safety and access control | Trigger-based | Required before side-effecting tools, untrusted users, or shared/public operation enter scope. |
 
 ## Phase 1.1 — Runner recovery
@@ -129,11 +132,16 @@ Acceptance status:
 - Backup and migration rehearsal: **Complete** — migration round-trip and an isolated PostgreSQL 16 backup restoration rehearsal have repeatable CI and local commands.
 - Retention and redaction: **Complete** — Experiment-aggregate retention, plan-file execute, PostgreSQL post-lock revalidation, Provider/Completion redaction, and real PostgreSQL 16 integration tests are implemented.
 
-No Phase 1.5 milestone is defined yet. After Phase 1.4, the next milestone must be chosen from measured operational needs rather than speculative features. Promote work from **Deferred until justified** only when a concrete requirement appears. The conditional safety gate takes priority if shared/public use, untrusted endpoints, untrusted accounts, or side-effecting tools enter scope.
+No Phase 1.5 milestone is defined yet. With Phase 1.4 and its closed-loop depth follow-up complete, the next milestone must be chosen from measured operational needs rather than speculative features. Promote work from **Deferred until justified** only when a concrete requirement appears. The conditional safety gate takes priority if shared/public use, untrusted endpoints, untrusted accounts, or side-effecting tools enter scope.
 
 ## Phase 1.4 — Scenario onboarding
 
 PRD: `.scratch/phase1.4-scenario-onboarding/PRD.md` (local tracker). Architecture boundary: [ADR-0006](docs/adr/0006-scenario-registry-boundary.md).
+
+CI closeout (2026-08-23):
+
+- **Status: Complete.** GitHub Actions run `31922310312` passed all six jobs: `backend`, `database-recovery`, `frontend`, `rust`, `compose`, and `golden-e2e`.
+- **Provider follow-up: Complete.** `multi-step-research.v1` and `api-fault-orchestration.v1` now use the shared bounded Provider client with only their scenario-specific tools exposed (`340ca9a`, `bddbbdd`). Fixture execution remains the deterministic CI default.
 
 Scope:
 
@@ -150,7 +158,18 @@ Acceptance:
 
 - Golden checkout loop still passes after registry and assertion refactor.
 - At least one additional Scenario completes the full closed loop in CI without external APIs (`golden_e2e.py` now runs checkout and multi-step-research by default).
-- README, CONTEXT, and ADR-0006 describe registry, versioned identity, and assertion semantics; ROADMAP marks this milestone **Complete** only when all acceptance items are evidenced in CI (status remains **Planned** until then).
+- README, CONTEXT, and ADR-0006 describe registry, versioned identity, and assertion semantics; ROADMAP marks this milestone **Complete** when all acceptance items are evidenced in CI.
+
+## Closed-loop depth follow-up
+
+PRD: `.scratch/closed-loop-depth/PRD.md` (local tracker).
+
+Closeout (2026-08-23):
+
+- **Status: Complete.** Deterministic failure taxonomy and metric directions (`ca33d93`), persisted Before/After comparison with regression-first highlighting (`4847e6e`), and failed-Run regression cases with activation-time replay gating (`98d387e`) are on `main`.
+- Fixture failures can be saved with scenario, seed, and parameters as deterministic regression assets. Provider failures retain an explicit non-reproducible boundary and do not enter automatic replay gating.
+- Regression replays reuse the normal Run pipeline, appear in the Improve report, and never auto-activate a Policy. A person reviews the result and explicitly activates again.
+- Local closeout passed backend `141 passed, 1 skipped` (the PostgreSQL retention integration requires `RETENTION_POSTGRES_URL`), frontend `27 passed`, TypeScript, production build, protocol checks, Rust formatting, and Windows Chromium recorded E2E `2 passed`.
 
 ## Conditional safety gate
 

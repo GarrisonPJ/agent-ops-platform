@@ -2,6 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-07-26
+- Amended: 2026-08-23 for registered Scenario-specific tool surfaces
 
 ## Context
 
@@ -20,9 +21,11 @@ the deterministic Golden path.
   Runner-only operator environment variables. The API and frontend accept no
   provider endpoint, model, or credential fields.
 - The Python boundary makes bounded `/chat/completions` calls. In provider mode
-  the model can choose only `check_service_health`, `query_service_metrics`,
-  and `fetch_service_logs`; those calls return deterministic fixture data and
-  cannot execute arbitrary code or network actions.
+  the model can choose only the explicit tool definitions supplied by the
+  selected registered Scenario. Checkout, multi-step research, and API fault
+  orchestration each provide a separate allowlist and deterministic tool
+  executor; those tools cannot execute arbitrary code or additional network
+  actions.
 - Timeout and retry are bounded, and `asyncio.CancelledError` propagates to the
   Runner so normal process cancellation semantics still apply. Safe structured
   provider errors are emitted as existing `process_output` events.
@@ -59,3 +62,6 @@ the deterministic Golden path.
 - Operators configure trusted endpoints only at deployment time. Supporting
   user-supplied endpoints, side-effecting tools, broader model APIs, or
   provider-specific hidden-reasoning retention requires a new safety decision.
+- Adding a Scenario-specific Provider path does not expand this trust boundary
+  when it reuses the bounded client, exposes only registered tools, returns
+  deterministic observations, and preserves the same telemetry redaction.

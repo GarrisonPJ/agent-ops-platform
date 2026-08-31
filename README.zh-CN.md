@@ -33,18 +33,18 @@ make demo
 
 打开 [http://localhost:5173](http://localhost:5173)，走完 Golden 闭环：创建 Experiment、观察 baseline 失败、查看 Analysis、回放候选 Policy，然后 Activate 或 Reject。
 
-Phase 1 已完成（恢复、Provider 边界、可观测性）。**Phase 1.4 — 场景接入** 进行中：从单一硬编码 Demo 升级为多个注册内置场景。详见 [ROADMAP.md](ROADMAP.md)。
+Phase 1 至 **Phase 1.4 — 场景接入** 已完成：三个注册内置 Scenario 均支持确定性 Fixture 与窄边界、场景专属的 Provider 路径。闭环同时具备确定性失败归类、持久化 Before/After 对比，以及人工激活前的回归用例重放。详见 [ROADMAP.zh-CN.md](ROADMAP.zh-CN.md)。
 
 ## 确定性 Golden 流程
 
 内置场景用于调查 checkout API 延迟：
 
 1. Baseline 重复读取相同日志，耗尽六步预算后失败。
-2. 确定性规则分析器依据事件证据识别出 **Planning** 与 **Budget** 问题。
-3. AgentOps 生成一个有类型约束的候选策略：禁止相同调用重复，依次检查 health、metrics 和证据相关 logs。
-4. Rust Runner 使用相同 EvaluationSpec 和 Seed 发起 Replay。
-5. Replay 用三步定位依赖异常，并得到更高分数。
-6. Candidate 不会自动生效，必须由人选择 **Activate** 或 **Reject**。
+2. 确定性规则分析器依据持久化事件证据识别受控失败类型与指标方向。
+3. 失败 Run 可连同 Scenario、Seed 与参数保存为确定性 RegressionCase。
+4. AgentOps 生成一个有类型约束的候选策略：禁止相同调用重复，依次检查 health、metrics 和证据相关 logs。
+5. Rust Runner 使用相同 EvaluationSpec 与 Seed 发起 Replay；Improve 展示持久化的分数、分析、步骤、延迟、Token 与轨迹差异。
+6. 激活会先重放所有符合条件的 RegressionCase。Candidate 不会自动生效；操作者审查结果后必须再次显式选择 **Activate**，或拒绝它。
 
 整个流程不需要 LLM Key，也不依赖外部服务。
 
@@ -55,12 +55,12 @@ Fixture 仍是默认的确定性 CI 与 Golden 路径。Experiment 也可以选�
 ```bash
 AGENTOPS_PROVIDER_BASE_URL=https://provider.example/v1
 AGENTOPS_PROVIDER_API_KEY=replace-me
-AGENTOPS_PROVIDER_MODEL=checkout-model
+AGENTOPS_PROVIDER_MODEL=scenario-model
 AGENTOPS_PROVIDER_TIMEOUT_MS=10000
 AGENTOPS_PROVIDER_MAX_RETRIES=1
 ```
 
-使用 Compose 时，把这些值写入被忽略的 `.env`，然后执行 `make demo`；只有 `runner` 服务会接收它们。创建 Experiment 时选择 **OpenAI-compatible provider**。Python 边界只调用 `/chat/completions`，只允许三个 checkout fixture 工具，支持 timeout、有限重试与取消，并持久化安全的模型、延迟、请求次数和 token 指标；不会持久化凭证、endpoint 或隐藏推理。配置缺失或 Provider 失败会产生结构化的 Run 终态错误。CI 使用本地 fake compatible server，真实 Provider 检查必须显式开启。
+使用 Compose 时，把这些值写入被忽略的 `.env`，然后执行 `make demo`；只有 `runner` 服务会接收它们。创建 Experiment 时选择 **OpenAI-compatible provider**。Python 边界只调用 `/chat/completions`，并且只暴露所选 Scenario 的显式工具集，同时支持 timeout、有限重试与取消，并持久化安全的模型、延迟、请求次数和 Token 指标。Checkout、多步检索与 API 故障编排分别拥有各自的有界工具定义和确定性 observation；凭证、endpoint 与隐藏推理不会持久化。配置缺失或 Provider 失败会产生结构化的 Run 终态错误。CI 使用本地 fake compatible server，真实 Provider 检查必须显式开启。
 
 ## 启动真实闭环
 
@@ -113,8 +113,8 @@ flowchart LR
 | React + RTK Query | Experiment 流程、可恢复 Trace、Analysis、Improve、Replay 对比与人工决策 |
 | FastAPI | Experiment、Run/Policy 状态机、Lease、持久化、评分、分析和 SSE |
 | Rust Runner | 进程组、Heartbeat/Cancel、Timeout、有界 JSONL、事件重试和退出清理 |
-| PostgreSQL | Experiment、Run、Job、有序事件、Analysis 与 Policy |
-| Python Agent | 同一白名单 checkout 场景的确定性 Fixture 路径与最小化、显式启用的 Provider 路径 |
+| PostgreSQL | Experiment、Run、Job、有序事件、Analysis、Policy 与 RegressionCase |
+| Python Agent | 注册 Scenario Handler，提供确定性 Fixture 与窄边界、场景专属的 Provider 路径 |
 
 Python Pydantic 类型是协议 v1 的事实来源。版本化 JSON Schema 与 Golden fixtures 位于 [contracts/v1](contracts/v1)，Rust Serde 类型在 CI 中验证同一批 fixtures。
 
@@ -127,13 +127,13 @@ Python Pydantic 类型是协议 v1 的事实来源。版本化 JSON Schema 与 G
 - 过期 Lease 不能继续上报或完成非终态任务；终态重复完成仍保持幂等。
 - Lease 过期后，下一次认证 claim 会递增 Attempt、隔离旧 Lease，并从下一个事件 Sequence 继续。
 - Job 只包含白名单 `scenario_id`；API 用户只可选择 `fixture` 或 `provider`，不能提交 executable、shell 命令、Provider URL、模型或凭证。
-- Provider 配置只传入 Runner。Provider 调用是有界、可取消的 `/chat/completions` 请求，并且只能选择 checkout fixture 工具。
+- Provider 配置只传入 Runner。Provider 调用是有界、可取消的 `/chat/completions` 请求，并且只能选择所选 Scenario 注册的工具定义。
 - 最新 Attempt 的 Provider 模型标识、延迟、请求次数和 token 用量会写入 Run metrics；凭证、endpoint 与隐藏推理不会写入。
 - Runner 分离 command 与 args，不连接 Docker daemon，也不直连数据库。
 - JSONL 单行默认最多 64 KiB，总输出默认最多 1 MiB。
 - Linux/WSL 子进程运行在独立进程组；取消时先 SIGTERM，两秒后 SIGKILL。
 - 产品事件仅展示 `decision_summary`，不记录或暗示隐藏 Chain-of-Thought。
-- Policy 必须在 Replay 成功且分数提升后，由人显式激活。
+- Policy 必须在主 Replay 分数提升、符合条件的 RegressionCase Replay 成功后，由人审查结果并显式激活。
 
 ## 产品范围
 
@@ -179,7 +179,7 @@ CI 覆盖 Python、数据库迁移、TypeScript、Recorded Preview 契约、Rust
 
 Phase 1 不包含 Kubernetes Executor、Docker Socket、MCP Server、向量记忆、Training Export、多框架适配、用户提供的 Provider endpoint 或凭证、任意代码执行、账户、多租户、计费或自动激活 Policy。
 
-这些能力继续暂缓，只有可量化需求才能将其提升到主线。当前优先级是可观测性与运维加固，详见 [ROADMAP.zh-CN.md](ROADMAP.zh-CN.md)。
+这些能力继续暂缓，只有可量化需求才能将其提升到主线。Phase 1.4 与闭环深化后续均已完成，详见 [ROADMAP.zh-CN.md](ROADMAP.zh-CN.md)。
 
 ## 项目方向
 

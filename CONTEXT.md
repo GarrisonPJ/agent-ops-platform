@@ -15,7 +15,7 @@ This file defines the shared vocabulary and invariants for the implemented Phase
 |---|---|
 | Control Plane | Python-owned API and explicit operator maintenance commands. It is the only boundary allowed to read or mutate PostgreSQL state. |
 | Experiment | Stable container for a task, allowlisted scenario, and selected execution mode. A policy is active only inside its experiment. |
-| Retention Unit | One complete Experiment aggregate, including its Runs, RunEvents, Runner records, analyses, and policies. It is retained or deleted as a whole. |
+| Retention Unit | One complete Experiment aggregate, including its Runs, RunEvents, Runner records, analyses, policies, and RegressionCases. It is retained or deleted as a whole. |
 | EvaluationSpec | Versioned, immutable execution input: run/experiment IDs, scenario, task, seed, execution mode, limits, and optional policy patch. |
 | ExecutionMode | `fixture` keeps the deterministic Golden path; `provider` delegates reasoning to the Runner-configured OpenAI-compatible boundary while retaining the same allowlisted tools. |
 | Run | One baseline or replay attempt with an explicit lifecycle, score, metrics, and immutable EvaluationSpec. |
@@ -129,7 +129,7 @@ SSE clients reconnect with `after=<lastSequence>`. The API replays later persist
 | Control Plane | Domain state, persistence, leases, scoring, analysis, policy decisions, and explicit operator maintenance | Child process supervision |
 | Rust Runner | Process group, JSONL transport, heartbeat, retry, cancel, timeout | Database access, scoring, policy logic |
 | Python Agent | Deterministic fixture behavior or narrow provider orchestration for the allowlisted scenario | Run lifecycle, persistence, arbitrary tools, or arbitrary execution |
-| PostgreSQL | Durable system facts | Workflow behavior |
+| PostgreSQL | Durable system facts, including RegressionCases and their replay references | Workflow behavior |
 
 Frontend state follows the project convention:
 
@@ -141,9 +141,9 @@ Frontend state follows the project convention:
 
 Kubernetes, Docker socket execution, MCP, vector memory, training export, framework adapters, user-supplied provider endpoints or credentials, arbitrary command execution, accounts, multi-tenancy, billing, and automatic activation are outside the current product.
 
-## Planned evolution
+## Current evolution boundary
 
-Runner recovery and the narrow OpenAI-compatible provider boundary are implemented. Phase 1.3 observability and operational hardening is complete: durable diagnostics, migration-aware API/database/Runner health signals, immutable expired-Attempt correlation, safe Provider fingerprints, executable backup/restore rehearsal, retention/redaction enforcement, and machine-readable alert classification via `/api/operations/state`. Recorded Preview remains a testing adapter, not a separate delivery track. Kubernetes, MCP, vector memory, arbitrary execution, multi-tenancy, and automatic policy activation stay deferred until a measured requirement promotes them.
+Runner recovery, Phase 1.3 operational hardening, Phase 1.4 Scenario onboarding, and the closed-loop depth follow-up are complete. The current system includes three registered Scenario fixture/Provider paths, deterministic failure classification, persisted Before/After comparison, RegressionCase replay gating, durable diagnostics, migration-aware health signals, immutable expired-Attempt correlation, safe Provider fingerprints, executable backup/restore rehearsal, retention/redaction enforcement, and machine-readable alert classification via `/api/operations/state`. Recorded Preview remains a testing adapter, not a separate delivery track. Kubernetes, MCP, vector memory, arbitrary execution, multi-tenancy, and automatic policy activation stay deferred until a measured requirement promotes them.
 
 Roadmap changes do not alter these domain invariants by themselves. Update this file and add an ADR before a milestone changes state ownership, recovery semantics, trust boundaries, or activation rules. See [ROADMAP.md](ROADMAP.md).
 
