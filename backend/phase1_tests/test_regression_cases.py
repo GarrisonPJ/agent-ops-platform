@@ -1,9 +1,16 @@
 from __future__ import annotations
 
+import asyncio
+import sqlite3
 from datetime import datetime, timezone
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.phase1_service import _is_regression_case_source_unique_violation
+from app.phase1_models import RegressionCase
 
 
 AUTH = {"Authorization": "Bearer test-runner-token"}
@@ -107,6 +114,92 @@ async def test_failed_fixture_run_can_be_saved_idempotently(api) -> None:
     listed = await client.get(f"/api/experiments/{experiment['id']}/regression-cases")
     assert listed.status_code == 200
     assert [item["id"] for item in listed.json()] == [first.json()["id"]]
+
+
+@pytest.mark.asyncio
+async def test_concurrent_regression_case_creation_returns_the_same_case(api, monkeypatch) -> None:
+    client, _ = api
+    _, run = await create_run(client)
+    await complete(client, await claim(client), "failed")
+
+    original_commit = AsyncSession.commit
+    commits_reached = 0
+    all_commits_reached = asyncio.Barrier(2)
+    first_commit_done = asyncio.Event()
+
+    async def commit_after_both_regression_cases_reach_commit(session: AsyncSession) -> None:
+        nonlocal commits_reached
+        if any(isinstance(item, RegressionCase) for item in session.new):
+            commits_reached += 1
+            commit_number = commits_reached
+            await asyncio.wait_for(all_commits_reached.wait(), timeout=5)
+            if commit_number == 1:
+                await original_commit(session)
+                first_commit_done.set()
+                return
+            await asyncio.wait_for(first_commit_done.wait(), timeout=5)
+            raise IntegrityError(
+                "INSERT INTO regression_cases",
+                {},
+                sqlite3.IntegrityError(
+                    "UNIQUE constraint failed: regression_cases.source_run_id"
+                ),
+            )
+        await original_commit(session)
+
+    monkeypatch.setattr(AsyncSession, "commit", commit_after_both_regression_cases_reach_commit)
+
+    responses = await asyncio.wait_for(
+        asyncio.gather(
+            client.post(f"/api/runs/{run['id']}/regression-case"),
+            client.post(f"/api/runs/{run['id']}/regression-case"),
+        ),
+        timeout=5,
+    )
+
+    assert [response.status_code for response in responses] == [201, 201]
+    assert responses[0].json()["id"] == responses[1].json()["id"]
+    detail = await client.get(f"/api/experiments/{run['experiment_id']}")
+    assert detail.json()["runs"][0]["regression_case_id"] == responses[0].json()["id"]
+    listed = await client.get(f"/api/experiments/{run['experiment_id']}/regression-cases")
+    assert [item["id"] for item in listed.json()] == [responses[0].json()["id"]]
+
+
+def test_source_unique_conflict_detection_handles_wrapped_asyncpg_error() -> None:
+    native_error = Exception(
+        'duplicate key value violates unique constraint "uq_regression_cases_source_run"'
+    )
+    native_error.constraint_name = "uq_regression_cases_source_run"
+    adapter_error = Exception("asyncpg adapter error")
+    adapter_error.__cause__ = native_error
+    error = IntegrityError("INSERT INTO regression_cases", {}, adapter_error)
+
+    assert _is_regression_case_source_unique_violation(error) is True
+
+
+@pytest.mark.asyncio
+async def test_regression_case_creation_does_not_swallow_other_integrity_errors(
+    api, monkeypatch
+) -> None:
+    client, _ = api
+    _, run = await create_run(client)
+    await complete(client, await claim(client), "failed")
+
+    original_commit = AsyncSession.commit
+
+    async def commit_with_unrelated_conflict(session: AsyncSession) -> None:
+        if any(isinstance(item, RegressionCase) for item in session.new):
+            raise IntegrityError(
+                "INSERT INTO regression_cases",
+                {},
+                sqlite3.IntegrityError("UNIQUE constraint failed: regression_cases.id"),
+            )
+        await original_commit(session)
+
+    monkeypatch.setattr(AsyncSession, "commit", commit_with_unrelated_conflict)
+
+    with pytest.raises(IntegrityError, match="regression_cases.id"):
+        await client.post(f"/api/runs/{run['id']}/regression-case")
 
 
 @pytest.mark.asyncio

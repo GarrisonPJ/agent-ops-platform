@@ -9,6 +9,7 @@ from uuid import uuid4
 
 from pydantic import ValidationError
 from sqlalchemy import func, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.failure_analyzer import analyze_trajectory
@@ -97,6 +98,11 @@ RECOVERABLE_RUN_STATUSES = {
     RunStatus.RUNNING.value,
     RunStatus.CANCELLING.value,
 }
+NON_REPLAYABLE_POLICY_STATUSES = {
+    PolicyStatus.REJECTED.value,
+    PolicyStatus.ACTIVE.value,
+    PolicyStatus.SUPERSEDED.value,
+}
 
 
 
@@ -113,6 +119,35 @@ class DomainError(Exception):
         self.code = code
         self.message = message
         self.details = details
+
+
+REGRESSION_CASE_SOURCE_UNIQUE_CONSTRAINT = "uq_regression_cases_source_run"
+
+
+def _is_regression_case_source_unique_violation(exc: IntegrityError) -> bool:
+    """Return whether the database rejected a duplicate regression source run."""
+    pending: list[BaseException] = [exc]
+    visited: set[int] = set()
+    while pending:
+        current = pending.pop()
+        if id(current) in visited:
+            continue
+        visited.add(id(current))
+        constraint_name = getattr(current, "constraint_name", None) or getattr(
+            getattr(current, "diag", None), "constraint_name", None
+        )
+        if constraint_name == REGRESSION_CASE_SOURCE_UNIQUE_CONSTRAINT:
+            return True
+        message = str(current).lower()
+        if message == "unique constraint failed: regression_cases.source_run_id":
+            return True
+        if f'unique constraint "{REGRESSION_CASE_SOURCE_UNIQUE_CONSTRAINT}"' in message:
+            return True
+        for attribute in ("orig", "__cause__", "__context__"):
+            nested = getattr(current, attribute, None)
+            if isinstance(nested, BaseException):
+                pending.append(nested)
+    return False
 
 
 def _aware(value: datetime | None) -> datetime | None:
@@ -585,7 +620,18 @@ async def create_regression_case(
     )
     db.add(case)
     run.regression_case_id = case.id
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        if not _is_regression_case_source_unique_violation(exc):
+            raise
+        existing = (
+            await db.execute(
+                select(RegressionCase).where(RegressionCase.source_run_id == run_id)
+            )
+        ).scalar_one()
+        return RegressionCaseResponse.model_validate(existing)
     await db.refresh(case)
     return RegressionCaseResponse.model_validate(case)
 
@@ -1168,27 +1214,52 @@ async def complete_job(
     failure_kind: TerminalFailureKind | str | None,
     metrics: dict | None,
 ) -> RunResponse:
-    job, run = await _leased_job(
-        db, lease_id=lease_id, runner_id=runner_id, allow_expired=True
-    )
-    if run.status in TERMINAL_RUN_STATUSES:
-        return run_response(run)
-    expires_at = _aware(job.lease_expires_at)
-    if expires_at is None or expires_at <= utcnow():
-        raise DomainError(409, "LEASE_EXPIRED", "Runner lease has expired")
-    if run.status == RunStatus.CANCELLING.value or job.cancel_requested_at is not None:
-        status = RunStatus.CANCELLED.value
-    run.status = status
-    failure_kind = normalize_terminal_failure_kind(failure_kind, status=status)
-    run.error = (
-        terminal_failure_message(failure_kind) if failure_kind is not None else None
-    )
-    run.completed_at = utcnow()
-    if run.started_at is None:
-        run.started_at = run.completed_at
+    requested_status = status
+    while True:
+        job, run = await _leased_job(
+            db, lease_id=lease_id, runner_id=runner_id, allow_expired=True
+        )
+        if run.status in TERMINAL_RUN_STATUSES:
+            return run_response(run)
+        expires_at = _aware(job.lease_expires_at)
+        if expires_at is None or expires_at <= utcnow():
+            raise DomainError(409, "LEASE_EXPIRED", "Runner lease has expired")
 
-    await _record_terminal_effects(db, run, status, metrics)
-    if status == RunStatus.FAILED.value:
+        observed_status = run.status
+        effective_status = (
+            RunStatus.CANCELLED.value
+            if observed_status == RunStatus.CANCELLING.value
+            or job.cancel_requested_at is not None
+            else requested_status
+        )
+        normalized_failure_kind = normalize_terminal_failure_kind(
+            failure_kind, status=effective_status
+        )
+        initial_error = (
+            terminal_failure_message(normalized_failure_kind)
+            if normalized_failure_kind is not None
+            else None
+        )
+        completed_at = utcnow()
+        claimed = await db.execute(
+            update(Run)
+            .where(Run.id == run.id, Run.status == observed_status)
+            .values(
+                status=effective_status,
+                error=initial_error,
+                completed_at=completed_at,
+                started_at=func.coalesce(Run.started_at, completed_at),
+            )
+        )
+        if claimed.rowcount != 1:
+            await db.rollback()
+            continue
+
+        await db.refresh(run)
+        break
+
+    await _record_terminal_effects(db, run, effective_status, metrics)
+    if effective_status == RunStatus.FAILED.value:
         provider_error = _provider_error(run.metrics.get("provider_error"))
         if provider_error is not None:
             run.error = _provider_terminal_error(run.metrics) or terminal_failure_message(
@@ -1226,11 +1297,7 @@ def _failure_type_rates(evidence: list[dict]) -> dict[str, float]:
 
 async def replay_policy(db: AsyncSession, policy_id: str) -> PolicyResponse:
     policy = await require_policy(db, policy_id)
-    if policy.status in {
-        PolicyStatus.REJECTED.value,
-        PolicyStatus.ACTIVE.value,
-        PolicyStatus.SUPERSEDED.value,
-    }:
+    if policy.status in NON_REPLAYABLE_POLICY_STATUSES:
         raise DomainError(409, "POLICY_NOT_REPLAYABLE", "Policy cannot be replayed in its current state")
     if policy.replay_run_id is not None:
         return policy_response(policy)
@@ -1259,8 +1326,32 @@ async def replay_policy(db: AsyncSession, policy_id: str) -> PolicyResponse:
     )
     db.add_all([run, RunnerJob(run_id=run.id, attempt=1)])
     await db.flush()
-    policy.status = PolicyStatus.REPLAYING.value
-    policy.replay_run_id = run.id
+
+    claimed = await db.execute(
+        update(Policy)
+        .where(
+            Policy.id == policy_id,
+            Policy.replay_run_id.is_(None),
+            Policy.status.notin_(NON_REPLAYABLE_POLICY_STATUSES),
+        )
+        .values(
+            status=PolicyStatus.REPLAYING.value,
+            replay_run_id=run.id,
+        )
+    )
+    if claimed.rowcount != 1:
+        await db.rollback()
+        current = await require_policy(db, policy_id)
+        if (
+            current.status in NON_REPLAYABLE_POLICY_STATUSES
+            or current.replay_run_id is None
+        ):
+            raise DomainError(
+                409,
+                "POLICY_NOT_REPLAYABLE",
+                "Policy cannot be replayed in its current state",
+            )
+        return policy_response(current)
     await db.commit()
     await db.refresh(policy)
     return policy_response(policy)
