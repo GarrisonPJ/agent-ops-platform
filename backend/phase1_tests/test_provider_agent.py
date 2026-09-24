@@ -719,6 +719,31 @@ async def test_provider_agent_reports_invalid_response_without_raw_provider_data
     assert "raw-invalid-request-id" not in serialized
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "body",
+    [
+        completion(content=None),
+        {"choices": [{"message": {"content": "   "}}]},
+        {"choices": [{"message": {"content": None, "tool_calls": "invalid"}}]},
+    ],
+)
+async def test_provider_agent_rejects_empty_or_structurally_invalid_messages(
+    monkeypatch: pytest.MonkeyPatch, fake_provider_server, body: dict[str, object]
+) -> None:
+    server = fake_provider_server([FakeReply(200, body)])
+    configure_provider(monkeypatch, server)
+    events: list[tuple[str, dict[str, object]]] = []
+
+    status = await run_provider_agent(
+        provider_spec(), lambda kind, payload: events.append((kind, payload))
+    )
+
+    assert status == 1
+    error = next(payload["provider_error"] for _kind, payload in events if "provider_error" in payload)
+    assert error["code"] == "PROVIDER_INVALID_RESPONSE"
+
+
 def test_provider_error_producer_normalizes_unknown_codes_and_fingerprints_ids() -> None:
     events: list[tuple[str, dict[str, object]]] = []
     _emit_provider_error(

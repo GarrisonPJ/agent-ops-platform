@@ -103,7 +103,7 @@ jobs:
         run: uv run python ../scripts/backup_restore_e2e.py
       - name: Test PostgreSQL retention
         working-directory: backend
-        run: uv run pytest phase1_tests/test_data_retention_postgres.py -q --tb=short
+        run: uv run pytest phase1_tests/test_data_retention_postgres.py phase1_tests/test_state_invariants_postgres.py -q --tb=short
 
   frontend:
     runs-on: ubuntu-latest
@@ -120,6 +120,8 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - name: Install locked dependencies
         run: npm ci
+      - name: Check formatting
+        run: npm run format:check
       - name: Type check
         run: npm run typecheck
       - name: Test live and recorded adapters
@@ -159,7 +161,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Validate focused Compose stack
-        run: docker compose -f infra/docker/docker-compose.phase1.yml config --quiet
+        run: RUNNER_TOKEN="$(openssl rand -hex 32)" docker compose -f infra/docker/docker-compose.phase1.yml config --quiet
 
   golden-e2e:
     needs: [backend, database-recovery, frontend, rust, compose]
@@ -167,6 +169,11 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+      - name: Generate temporary Runner token
+        run: |
+          token="$(openssl rand -hex 32)"
+          echo "::add-mask::$token"
+          echo "RUNNER_TOKEN=$token" >> "$GITHUB_ENV"
       - name: Start real stack
         run: docker compose -f infra/docker/docker-compose.phase1.yml up -d --build
       - name: Run Golden closed loop

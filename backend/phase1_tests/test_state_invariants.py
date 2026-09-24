@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 
 import httpx
 import pytest
@@ -11,8 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 import app.phase1_service as phase1_service
 from app.phase1_main import create_app
-from app.phase1_models import Base, Experiment, Policy, Run, RunnerJob, new_id, utcnow
-from app.phase1_schemas import EvaluationSpec
+from app.phase1_models import Base, Experiment, Policy, Run, RunEvent, RunnerJob, new_id, utcnow
+from app.phase1_schemas import EvaluationSpec, EventEnvelope
 
 
 AUTH = {"Authorization": "Bearer test-runner-token"}
@@ -124,6 +124,96 @@ async def test_complete_and_replay_requests_are_idempotent(api) -> None:
     second_replay = await client.post(f"/api/policies/{policy['id']}/replay")
     assert first_replay.status_code == second_replay.status_code == 201
     assert first_replay.json()["replay_run_id"] == second_replay.json()["replay_run_id"]
+
+
+@pytest.mark.asyncio
+async def test_activation_supersedes_existing_active_policy_before_claim(api) -> None:
+    _client, factory = api
+    experiment_id, baseline_id = new_id(), new_id()
+    first_policy_id, first_replay_id = new_id(), new_id()
+    second_policy_id, second_replay_id = new_id(), new_id()
+    experiment = Experiment(
+        id=experiment_id,
+        name="Policy replacement",
+        task="Investigate checkout API latency",
+        scenario_id="checkout-api-latency.v1",
+        scenario_params={},
+        execution_mode="fixture",
+    )
+    baseline_spec = EvaluationSpec(
+        run_id=baseline_id,
+        experiment_id=experiment_id,
+        scenario_id=experiment.scenario_id,
+        task=experiment.task,
+    )
+    baseline = Run(
+        id=baseline_id,
+        experiment_id=experiment_id,
+        kind="baseline",
+        status="failed",
+        evaluation_spec=baseline_spec.model_dump(mode="json"),
+        metrics={},
+    )
+    patch = {"instruction_patch": [], "tool_priority": {}, "max_steps": 6}
+    first_policy = Policy(
+        id=first_policy_id,
+        experiment_id=experiment_id,
+        source_run_id=baseline_id,
+        replay_run_id=first_replay_id,
+        status="active",
+        patch=patch,
+        rationale="Existing active policy",
+        score_delta=1.0,
+    )
+    second_policy = Policy(
+        id=second_policy_id,
+        experiment_id=experiment_id,
+        source_run_id=baseline_id,
+        replay_run_id=second_replay_id,
+        status="validated",
+        patch=patch,
+        rationale="Replacement policy",
+        score_delta=1.0,
+    )
+    first_replay = Run(
+        id=first_replay_id,
+        experiment_id=experiment_id,
+        kind="replay",
+        source_run_id=baseline_id,
+        policy_id=first_policy_id,
+        status="succeeded",
+        evaluation_spec=baseline_spec.model_copy(update={"run_id": first_replay_id}).model_dump(mode="json"),
+        metrics={},
+    )
+    second_replay = Run(
+        id=second_replay_id,
+        experiment_id=experiment_id,
+        kind="replay",
+        source_run_id=baseline_id,
+        policy_id=second_policy_id,
+        status="succeeded",
+        evaluation_spec=baseline_spec.model_copy(update={"run_id": second_replay_id}).model_dump(mode="json"),
+        metrics={},
+    )
+    async with factory() as db:
+        first_policy.replay_run_id = None
+        second_policy.replay_run_id = None
+        db.add(experiment)
+        await db.commit()
+        db.add(baseline)
+        await db.commit()
+        db.add_all([first_policy, second_policy])
+        await db.commit()
+        db.add_all([first_replay, second_replay])
+        await db.commit()
+        first_policy.replay_run_id = first_replay_id
+        second_policy.replay_run_id = second_replay_id
+        await db.commit()
+        response = await phase1_service.activate_policy(db, second_policy_id)
+        stored_first = await db.get(Policy, first_policy_id)
+    assert response.status == "active"
+    assert stored_first is not None
+    assert stored_first.status == "superseded"
 
 
 @pytest.mark.asyncio
@@ -347,6 +437,165 @@ async def test_running_cancel_is_acknowledged_by_heartbeat(api) -> None:
     )
     assert completed.status_code == 200
     assert completed.json()["status"] == "cancelled"
+
+
+@pytest.mark.asyncio
+async def test_cancel_cannot_overwrite_terminal_status_from_stale_session(api) -> None:
+    client, factory = api
+    run = await create_baseline(client)
+    claimed = (await claim(client)).json()
+
+    async with factory() as stale_db:
+        stale_run = await phase1_service.require_run(stale_db, run["id"])
+        assert stale_run.status == "claimed"
+        async with factory() as winner_db:
+            completed = await phase1_service.complete_job(
+                winner_db,
+                lease_id=claimed["lease_id"],
+                runner_id="runner-1",
+                status="failed",
+                failure_kind=None,
+                metrics=None,
+            )
+            assert completed.status.value == "failed"
+        cancelled = await phase1_service.cancel_run(stale_db, run["id"])
+
+    assert cancelled.status.value == "failed"
+
+
+@pytest.mark.asyncio
+async def test_heartbeat_cannot_restore_running_after_terminal_completion(api) -> None:
+    client, factory = api
+    run = await create_baseline(client)
+    claimed = (await claim(client)).json()
+
+    async with factory() as stale_db:
+        await phase1_service._leased_job(
+            stale_db, lease_id=claimed["lease_id"], runner_id="runner-1"
+        )
+        async with factory() as winner_db:
+            completed = await phase1_service.complete_job(
+                winner_db,
+                lease_id=claimed["lease_id"],
+                runner_id="runner-1",
+                status="failed",
+                failure_kind=None,
+                metrics=None,
+            )
+            assert completed.status.value == "failed"
+        with pytest.raises(phase1_service.DomainError) as error:
+            await phase1_service.heartbeat(stale_db, claimed["lease_id"], "runner-1")
+
+    assert error.value.code == "RUN_TERMINAL"
+
+
+@pytest.mark.asyncio
+async def test_heartbeat_reads_committed_cancellation_from_stale_session(api) -> None:
+    client, factory = api
+    run = await create_baseline(client)
+    claimed = (await claim(client)).json()
+    running = await client.post(
+        f"/api/internal/runner/jobs/{claimed['lease_id']}/heartbeat",
+        headers=AUTH,
+        json={"runner_id": "runner-1"},
+    )
+    assert running.status_code == 200
+
+    async with factory() as stale_db:
+        await phase1_service._leased_job(
+            stale_db, lease_id=claimed["lease_id"], runner_id="runner-1"
+        )
+        async with factory() as winner_db:
+            cancelled = await phase1_service.cancel_run(winner_db, run["id"])
+            assert cancelled.status.value == "cancelling"
+        command, _ = await phase1_service.heartbeat(
+            stale_db, claimed["lease_id"], "runner-1"
+        )
+
+    assert command == "cancel"
+
+
+@pytest.mark.asyncio
+async def test_concurrent_event_retry_converges_on_normalized_payload(api, monkeypatch) -> None:
+    client, factory = api
+    run = await create_baseline(client)
+    claimed = (await claim(client)).json()
+    event = EventEnvelope(
+        run_id=run["id"],
+        sequence=1,
+        occurred_at=datetime.now(timezone.utc),
+        type="process_output",
+        payload={"content": "same", "unexpected": "ignored"},
+    )
+    original_leased_job = phase1_service._leased_job
+    reads = 0
+    both_read = asyncio.Barrier(2)
+
+    async def pause_after_read(*args, **kwargs):
+        nonlocal reads
+        result = await original_leased_job(*args, **kwargs)
+        if reads < 2:
+            reads += 1
+            await asyncio.wait_for(both_read.wait(), timeout=5)
+        return result
+
+    monkeypatch.setattr(phase1_service, "_leased_job", pause_after_read)
+    async with factory() as first_db, factory() as second_db:
+        results = await asyncio.wait_for(
+            asyncio.gather(
+                phase1_service.persist_events(
+                    first_db,
+                    run_id=run["id"],
+                    lease_id=claimed["lease_id"],
+                    runner_id="runner-1",
+                    events=[event],
+                ),
+                phase1_service.persist_events(
+                    second_db,
+                    run_id=run["id"],
+                    lease_id=claimed["lease_id"],
+                    runner_id="runner-1",
+                    events=[event],
+                ),
+            ),
+            timeout=10,
+        )
+
+    assert [result[0] for result in results] == [1, 1]
+    assert sum(bool(result[1]) for result in results) == 1
+    async with factory() as db:
+        rows = (
+            await db.execute(select(RunEvent).where(RunEvent.run_id == run["id"]))
+        ).scalars().all()
+    assert len(rows) == 1
+
+
+@pytest.mark.asyncio
+async def test_activation_case_claim_retry_is_idempotent_after_winner_activates(api) -> None:
+    client, factory = api
+    run = await create_baseline(client)
+    claimed = (await claim(client)).json()
+    completed = await client.post(
+        f"/api/internal/runner/jobs/{claimed['lease_id']}/complete",
+        headers=AUTH,
+        json={"runner_id": "runner-1", "status": "failed"},
+    )
+    assert completed.status_code == 200
+    policy_data = (await client.get(f"/api/experiments/{run['experiment_id']}")).json()[
+        "candidate_policy"
+    ]
+    assert policy_data is not None
+
+    async with factory() as db:
+        policy = await db.get(Policy, policy_data["id"])
+        assert policy is not None
+        policy.status = "active"
+        await db.commit()
+        result = await phase1_service._retry_activation_after_case_claim_loss(
+            db, policy.id
+        )
+
+    assert result.status.value == "active"
 
 
 @pytest.mark.asyncio

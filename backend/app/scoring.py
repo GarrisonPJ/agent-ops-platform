@@ -7,6 +7,7 @@ weights, and an optional Scenario assertion suite, then returns a score between
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from app.scenario_assertions import AssertionSuite, evaluate_assertion_suite
@@ -17,6 +18,8 @@ DEFAULT_WEIGHTS: dict[str, float] = {
     "latency": 0.01,
     "tool_failure": 0.5,
 }
+
+_HTTP_FAILURE_PATTERN = re.compile(r"\bHTTP\s+([45]\d{2})\b", re.IGNORECASE)
 
 
 def compute_score(
@@ -91,9 +94,14 @@ def compute_score(
                     word in obs
                     for word in ("error", "exception", "timeout", "failed")
                 )
+                obs_has_http_failure = _HTTP_FAILURE_PATTERN.search(obs) is not None
                 # Also check a status field on the step, if present
                 step_status = s.get("status", "")
-                if obs_has_failure or (step_status and step_status != "success"):
+                if (
+                    obs_has_failure
+                    or obs_has_http_failure
+                    or (step_status and step_status != "success")
+                ):
                     failures += 1
         tool_failure_penalty = (failures / total_calls) * w["tool_failure"]
 

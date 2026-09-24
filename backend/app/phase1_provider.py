@@ -309,6 +309,20 @@ async def run_provider_agent(
                 provider=provider_payload,
             )
             if not response.tool_calls:
+                if response.content is None or not response.content.strip():
+                    _emit_provider_error(
+                        emit,
+                        ProviderError(
+                            "PROVIDER_INVALID_RESPONSE",
+                            "Provider returned an empty chat completion message",
+                            retryable=False,
+                            attempts=response.request_count,
+                            latency_ms=response.latency_ms,
+                            request_id=response.request_id,
+                        ),
+                        model=settings.model,
+                    )
+                    return 1
                 return 0
             if len(response.tool_calls) != 1:
                 _emit_provider_error(

@@ -7,6 +7,7 @@ planning, execution, context, and budget.  The main entry point is
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field, asdict
 from enum import StrEnum
 from typing import Any
@@ -53,6 +54,7 @@ class FailureReport:
 # ── Error-keyword sets (case-insensitive) ──────────────────────────────────────
 
 _ERROR_KEYWORDS = ("error", "exception", "timeout", "failed", "traceback")
+_HTTP_FAILURE_PATTERN = re.compile(r"\bHTTP\s+([45]\d{2})\b", re.IGNORECASE)
 _TIMEOUT_LATENCY_MS = 60_000
 _CONTEXT_KEYWORDS = ("truncated", "context")
 
@@ -122,15 +124,22 @@ def _detect_execution(steps: list[dict]) -> list[FailureEvidence]:
         latency = step.get("latency_ms", 0) or 0
 
         matched_keywords = [kw for kw in _ERROR_KEYWORDS if kw in obs]
+        matched_http_statuses = _HTTP_FAILURE_PATTERN.findall(obs)
         is_timeout = latency > _TIMEOUT_LATENCY_MS
 
-        if matched_keywords or is_timeout:
+        if matched_keywords or matched_http_statuses or is_timeout:
             reasons: list[str] = []
             details: dict[str, Any] = {}
 
             if matched_keywords:
                 reasons.append(f"Observation contains error keywords: {', '.join(matched_keywords)}")
                 details["keywords"] = matched_keywords
+            if matched_http_statuses:
+                reasons.append(
+                    "Observation contains HTTP failure status: "
+                    + ", ".join(matched_http_statuses)
+                )
+                details["http_statuses"] = matched_http_statuses
             if is_timeout:
                 reasons.append(f"Step latency {latency}ms exceeds {_TIMEOUT_LATENCY_MS}ms timeout")
                 details["latency_ms"] = latency

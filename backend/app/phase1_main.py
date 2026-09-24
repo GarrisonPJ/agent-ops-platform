@@ -102,9 +102,18 @@ def create_app(
     selected_factory = session_factory or async_session
     selected_engine = database_engine or engine
     owns_engine = database_engine is None
+    configured_runner_token = os.getenv("RUNNER_TOKEN", "").strip()
+    development_mode = _is_explicit_development_mode()
+    runner_token = configured_runner_token or (
+        "development-runner-token" if development_mode else ""
+    )
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncGenerator[None, None]:
+        if not runner_token:
+            raise RuntimeError(
+                "RUNNER_TOKEN must be set unless AGENTOPS_ENV is explicitly development"
+            )
         if initialize_database:
             await init_db(selected_engine)
         yield
@@ -118,7 +127,7 @@ def create_app(
         lifespan=lifespan,
     )
     application.state.session_factory = selected_factory
-    application.state.runner_token = os.getenv("RUNNER_TOKEN", "development-runner-token")
+    application.state.runner_token = runner_token
 
     origins = [item.strip() for item in os.getenv("CORS_ORIGINS", "*").split(",") if item.strip()]
     application.add_middleware(
@@ -488,6 +497,12 @@ def create_app(
 
     application.include_router(router)
     return application
+
+
+def _is_explicit_development_mode() -> bool:
+    """Allow the predictable local token only when development is explicit."""
+
+    return os.getenv("AGENTOPS_ENV", "").strip().lower() == "development"
 
 
 app = create_app()

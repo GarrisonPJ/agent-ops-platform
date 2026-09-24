@@ -8,7 +8,7 @@ from typing import Any
 from uuid import uuid4
 
 from pydantic import ValidationError
-from sqlalchemy import func, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -122,6 +122,7 @@ class DomainError(Exception):
 
 
 REGRESSION_CASE_SOURCE_UNIQUE_CONSTRAINT = "uq_regression_cases_source_run"
+RUN_EVENT_SEQUENCE_UNIQUE_CONSTRAINT = "uq_run_events_run_sequence"
 
 
 def _is_regression_case_source_unique_violation(exc: IntegrityError) -> bool:
@@ -142,6 +143,35 @@ def _is_regression_case_source_unique_violation(exc: IntegrityError) -> bool:
         if message == "unique constraint failed: regression_cases.source_run_id":
             return True
         if f'unique constraint "{REGRESSION_CASE_SOURCE_UNIQUE_CONSTRAINT}"' in message:
+            return True
+        for attribute in ("orig", "__cause__", "__context__"):
+            nested = getattr(current, attribute, None)
+            if isinstance(nested, BaseException):
+                pending.append(nested)
+    return False
+
+
+def _is_run_event_sequence_unique_violation(exc: IntegrityError) -> bool:
+    """Return whether the database rejected a duplicate run event sequence."""
+    pending: list[BaseException] = [exc]
+    visited: set[int] = set()
+    while pending:
+        current = pending.pop()
+        if id(current) in visited:
+            continue
+        visited.add(id(current))
+        constraint_name = getattr(current, "constraint_name", None) or getattr(
+            getattr(current, "diag", None), "constraint_name", None
+        )
+        if constraint_name == RUN_EVENT_SEQUENCE_UNIQUE_CONSTRAINT:
+            return True
+        message = str(current).lower()
+        if message in {
+            "unique constraint failed: run_events.run_id, run_events.sequence",
+            "unique constraint failed: run_events.run_id, run_events.sequence\n",
+        }:
+            return True
+        if f'unique constraint "{RUN_EVENT_SEQUENCE_UNIQUE_CONSTRAINT}"' in message:
             return True
         for attribute in ("orig", "__cause__", "__context__"):
             nested = getattr(current, attribute, None)
@@ -637,22 +667,36 @@ async def create_regression_case(
 
 
 async def cancel_run(db: AsyncSession, run_id: str) -> RunResponse:
-    run = await require_run(db, run_id)
-    if run.status in TERMINAL_RUN_STATUSES:
-        return run_response(run)
+    while True:
+        run = await require_run(db, run_id)
+        if run.status in TERMINAL_RUN_STATUSES:
+            return run_response(run)
 
-    job = await db.get(RunnerJob, run.id)
-    now = utcnow()
-    if run.status == RunStatus.QUEUED.value:
-        run.status = RunStatus.CANCELLED.value
-        run.completed_at = now
-    else:
-        run.status = RunStatus.CANCELLING.value
-    if job is not None:
-        job.cancel_requested_at = now
-    await db.commit()
-    await db.refresh(run)
-    return run_response(run)
+        observed_status = run.status
+        now = utcnow()
+        values = {
+            "status": (
+                RunStatus.CANCELLED.value
+                if observed_status == RunStatus.QUEUED.value
+                else RunStatus.CANCELLING.value
+            ),
+            "completed_at": now if observed_status == RunStatus.QUEUED.value else run.completed_at,
+        }
+        claimed = await db.execute(
+            update(Run)
+            .where(Run.id == run_id, Run.status == observed_status)
+            .values(**values)
+        )
+        if claimed.rowcount != 1:
+            await db.rollback()
+            continue
+
+        job = await db.get(RunnerJob, run_id)
+        if job is not None:
+            job.cancel_requested_at = now
+        await db.commit()
+        await db.refresh(run)
+        return run_response(run)
 
 
 async def _recover_expired_jobs(db: AsyncSession) -> int:
@@ -819,10 +863,12 @@ async def _leased_job(
     runner_id: str,
     run_id: str | None = None,
     allow_expired: bool = False,
+    for_update: bool = False,
 ) -> tuple[RunnerJob, Run]:
-    job = (
-        await db.execute(select(RunnerJob).where(RunnerJob.lease_id == lease_id))
-    ).scalar_one_or_none()
+    statement = select(RunnerJob).where(RunnerJob.lease_id == lease_id)
+    if for_update:
+        statement = statement.with_for_update()
+    job = (await db.execute(statement)).scalar_one_or_none()
     if job is None or job.runner_id != runner_id or (run_id and job.run_id != run_id):
         raise DomainError(403, "INVALID_LEASE", "Lease does not belong to this runner or run")
     run = await require_run(db, job.run_id)
@@ -835,22 +881,35 @@ async def _leased_job(
 async def heartbeat(
     db: AsyncSession, lease_id: str, runner_id: str
 ) -> tuple[str, datetime]:
-    job, run = await _leased_job(db, lease_id=lease_id, runner_id=runner_id)
-    if run.status in TERMINAL_RUN_STATUSES:
-        raise DomainError(409, "RUN_TERMINAL", "Run is already terminal")
-    now = utcnow()
-    await _record_runner_presence(db, runner_id, now)
-    if run.status == RunStatus.CLAIMED.value:
-        run.status = RunStatus.RUNNING.value
-        run.started_at = now
-    job.lease_expires_at = now + timedelta(seconds=LEASE_SECONDS)
-    command = (
-        "cancel"
-        if run.status == RunStatus.CANCELLING.value or job.cancel_requested_at is not None
-        else "continue"
-    )
-    await db.commit()
-    return command, job.lease_expires_at
+    while True:
+        job, run = await _leased_job(
+            db, lease_id=lease_id, runner_id=runner_id, for_update=True
+        )
+        await db.refresh(job)
+        await db.refresh(run)
+        if run.status in TERMINAL_RUN_STATUSES:
+            raise DomainError(409, "RUN_TERMINAL", "Run is already terminal")
+        now = utcnow()
+        await _record_runner_presence(db, runner_id, now)
+        if run.status == RunStatus.CLAIMED.value:
+            claimed = await db.execute(
+                update(Run)
+                .where(Run.id == run.id, Run.status == RunStatus.CLAIMED.value)
+                .values(status=RunStatus.RUNNING.value, started_at=now)
+            )
+            if claimed.rowcount != 1:
+                await db.rollback()
+                continue
+            await db.refresh(run)
+        refreshed_until = now + timedelta(seconds=LEASE_SECONDS)
+        job.lease_expires_at = refreshed_until
+        command = (
+            "cancel"
+            if run.status == RunStatus.CANCELLING.value or job.cancel_requested_at is not None
+            else "continue"
+        )
+        await db.commit()
+        return command, refreshed_until
 
 
 async def persist_events(
@@ -861,90 +920,131 @@ async def persist_events(
     runner_id: str,
     events: list[EventEnvelope],
 ) -> tuple[int, list[dict[str, Any]]]:
-    _, run = await _leased_job(
-        db, lease_id=lease_id, runner_id=runner_id, run_id=run_id
-    )
-    if run.status in TERMINAL_RUN_STATUSES:
-        raise DomainError(409, "RUN_TERMINAL", "Cannot append events to a terminal run")
-    if any(item.run_id != run_id for item in events):
-        raise DomainError(422, "EVENT_RUN_MISMATCH", "Every event must target the URL run")
-
     supplied_sequences = [item.sequence for item in events]
     if supplied_sequences != sorted(set(supplied_sequences)):
         raise DomainError(422, "INVALID_EVENT_ORDER", "Events must have unique increasing sequences")
-
-    maximum = (
-        await db.execute(select(func.max(RunEvent.sequence)).where(RunEvent.run_id == run_id))
-    ).scalar_one()
-    accepted_through = int(maximum or 0)
-    existing = list(
-        (
-            await db.execute(
-                select(RunEvent).where(
-                    RunEvent.run_id == run_id,
-                    RunEvent.sequence.in_(supplied_sequences),
-                )
-            )
-        )
-        .scalars()
-        .all()
-    )
-    existing_by_sequence = {item.sequence: item for item in existing}
     sanitized_payloads = {
         event.sequence: _sanitize_event_payload(event.type, event.payload)
         for event in events
     }
-    for event in events:
-        previous = existing_by_sequence.get(event.sequence)
-        if previous is None:
-            continue
-        previous_payload = _sanitize_event_payload(previous.event_type, previous.payload)
-        if (
-            previous.event_type != event.type
-            or previous_payload != sanitized_payloads[event.sequence]
-        ):
-            raise DomainError(
-                409,
-                "EVENT_CONFLICT",
-                "A different event already uses this sequence",
-                {"sequence": event.sequence},
-            )
-        if previous.payload != previous_payload:
-            previous.payload = previous_payload
 
-    pending = [item for item in events if item.sequence > accepted_through]
-    expected = accepted_through + 1
-    for event in pending:
-        if event.sequence != expected:
-            raise DomainError(
-                409,
-                "EVENT_SEQUENCE_GAP",
-                "Event sequence must be contiguous",
-                {"expected": expected, "received": event.sequence},
-            )
-        expected += 1
-
-    now = utcnow()
-    if run.status == RunStatus.CLAIMED.value:
-        run.status = RunStatus.RUNNING.value
-        run.started_at = now
-    new_payloads: list[dict[str, Any]] = []
-    for event in pending:
-        payload = sanitized_payloads[event.sequence]
-        row = RunEvent(
-            run_id=run_id,
-            sequence=event.sequence,
-            event_type=event.type,
-            payload=payload,
-            occurred_at=event.occurred_at,
+    while True:
+        # Keep the initial read non-locking so concurrent duplicate uploads can
+        # observe the same sequence state. Immediately reacquire the Job row
+        # with a lock before inserting; recovery cannot clear this lease while
+        # the event transaction is committing.
+        _, run = await _leased_job(
+            db, lease_id=lease_id, runner_id=runner_id, run_id=run_id
         )
-        db.add(row)
-        published = event.model_dump(mode="json")
-        published["payload"] = payload
-        new_payloads.append(published)
-        accepted_through = event.sequence
-    await db.commit()
-    return accepted_through, new_payloads
+        _, run = await _leased_job(
+            db,
+            lease_id=lease_id,
+            runner_id=runner_id,
+            run_id=run_id,
+            for_update=True,
+        )
+        await db.refresh(run)
+        if any(item.run_id != run_id for item in events):
+            raise DomainError(422, "EVENT_RUN_MISMATCH", "Every event must target the URL run")
+
+        maximum = (
+            await db.execute(select(func.max(RunEvent.sequence)).where(RunEvent.run_id == run_id))
+        ).scalar_one()
+        accepted_through = int(maximum or 0)
+        existing = list(
+            (
+                await db.execute(
+                    select(RunEvent).where(
+                        RunEvent.run_id == run_id,
+                        RunEvent.sequence.in_(supplied_sequences),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        existing_by_sequence = {item.sequence: item for item in existing}
+        for event in events:
+            previous = existing_by_sequence.get(event.sequence)
+            if previous is None:
+                continue
+            previous_payload = _sanitize_event_payload(previous.event_type, previous.payload)
+            if (
+                previous.event_type != event.type
+                or previous_payload != sanitized_payloads[event.sequence]
+            ):
+                raise DomainError(
+                    409,
+                    "EVENT_CONFLICT",
+                    "A different event already uses this sequence",
+                    {"sequence": event.sequence},
+                )
+            if previous.payload != previous_payload:
+                previous.payload = previous_payload
+
+        pending = [item for item in events if item.sequence > accepted_through]
+        if not pending:
+            await db.commit()
+            return accepted_through, []
+        if run.status in TERMINAL_RUN_STATUSES:
+            raise DomainError(409, "RUN_TERMINAL", "Cannot append events to a terminal run")
+
+        expected = accepted_through + 1
+        for event in pending:
+            if event.sequence != expected:
+                raise DomainError(
+                    409,
+                    "EVENT_SEQUENCE_GAP",
+                    "Event sequence must be contiguous",
+                    {"expected": expected, "received": event.sequence},
+                )
+            expected += 1
+
+        now = utcnow()
+        if run.status == RunStatus.CLAIMED.value:
+            claimed = await db.execute(
+                update(Run)
+                .where(Run.id == run.id, Run.status == RunStatus.CLAIMED.value)
+                .values(status=RunStatus.RUNNING.value, started_at=now)
+            )
+            if claimed.rowcount != 1:
+                await db.rollback()
+                continue
+            await db.refresh(run)
+        else:
+            guarded = await db.execute(
+                update(Run)
+                .where(Run.id == run.id, Run.status == run.status)
+                .values(status=run.status)
+            )
+            if guarded.rowcount != 1:
+                await db.rollback()
+                continue
+
+        new_payloads: list[dict[str, Any]] = []
+        for event in pending:
+            payload = sanitized_payloads[event.sequence]
+            db.add(
+                RunEvent(
+                    run_id=run_id,
+                    sequence=event.sequence,
+                    event_type=event.type,
+                    payload=payload,
+                    occurred_at=event.occurred_at,
+                )
+            )
+            published = event.model_dump(mode="json")
+            published["payload"] = payload
+            new_payloads.append(published)
+            accepted_through = event.sequence
+        try:
+            await db.commit()
+        except IntegrityError as exc:
+            await db.rollback()
+            if not _is_run_event_sequence_unique_violation(exc):
+                raise
+            continue
+        return accepted_through, new_payloads
 
 
 async def _trajectory_from_events(db: AsyncSession, run: Run) -> tuple[dict, dict]:
@@ -1217,7 +1317,11 @@ async def complete_job(
     requested_status = status
     while True:
         job, run = await _leased_job(
-            db, lease_id=lease_id, runner_id=runner_id, allow_expired=True
+            db,
+            lease_id=lease_id,
+            runner_id=runner_id,
+            allow_expired=True,
+            for_update=True,
         )
         if run.status in TERMINAL_RUN_STATUSES:
             return run_response(run)
@@ -1385,6 +1489,7 @@ async def activate_policy(db: AsyncSession, policy_id: str) -> PolicyResponse:
     pending_run_ids: list[str] = []
     for case in cases:
         case_run = None
+        replace_existing_claim = False
         if case.replay_policy_id == policy.id and case.replay_run_id:
             case_run = await require_run(db, case.replay_run_id)
             if case_run.status == RunStatus.SUCCEEDED.value:
@@ -1398,7 +1503,27 @@ async def activate_policy(db: AsyncSession, policy_id: str) -> PolicyResponse:
                 pending_case_ids.append(case.id)
                 pending_run_ids.append(case_run.id)
                 continue
-
+            replace_existing_claim = True
+        elif case.replay_run_id or case.replay_policy_id:
+            # A case can only have one in-flight replay pointer, but a terminal
+            # replay belongs to the policy that created it. A later candidate
+            # must run the case against its own patch instead of treating the
+            # previous policy's result as reusable.
+            if case.replay_run_id:
+                case_run = await require_run(db, case.replay_run_id)
+                if case_run.status in {
+                    RunStatus.QUEUED.value,
+                    RunStatus.CLAIMED.value,
+                    RunStatus.RUNNING.value,
+                    RunStatus.CANCELLING.value,
+                }:
+                    pending_case_ids.append(case.id)
+                    pending_run_ids.append(case_run.id)
+                    continue
+                replace_existing_claim = True
+            else:
+                pending_case_ids.append(case.id)
+                continue
         source = await require_run(db, case.source_run_id)
         source_spec = EvaluationSpec.model_validate(source.evaluation_spec)
         run_id = new_id()
@@ -1426,18 +1551,75 @@ async def activate_policy(db: AsyncSession, policy_id: str) -> PolicyResponse:
         )
         db.add_all([regression_run, RunnerJob(run_id=run_id, attempt=1)])
         await db.flush()
-        case.replay_run_id = run_id
-        case.replay_policy_id = policy.id
+        claim_scope = [RegressionCase.replay_run_id.is_(None)]
+        if replace_existing_claim and case_run is not None:
+            claim_scope.append(
+                (RegressionCase.replay_run_id == case_run.id)
+                & (
+                    RegressionCase.replay_policy_id == case.replay_policy_id
+                    if case.replay_policy_id is not None
+                    else RegressionCase.replay_policy_id.is_(None)
+                )
+            )
+        claimed = await db.execute(
+            update(RegressionCase)
+            .where(
+                RegressionCase.id == case.id,
+                or_(*claim_scope),
+            )
+            .values(replay_run_id=run_id, replay_policy_id=policy.id)
+        )
+        if claimed.rowcount != 1:
+            # The run and job were created in this transaction. Rolling back the
+            # losing claim removes both, preventing orphaned queued work.
+            await db.rollback()
+            return await _retry_activation_after_case_claim_loss(db, policy_id)
         pending_case_ids.append(case.id)
         pending_run_ids.append(run_id)
 
     if pending_case_ids:
+        still_validated = await db.execute(
+            update(Policy)
+            .where(
+                Policy.id == policy_id,
+                Policy.status == PolicyStatus.VALIDATED.value,
+            )
+            .values(status=PolicyStatus.VALIDATED.value)
+        )
+        if still_validated.rowcount != 1:
+            await db.rollback()
+            current = await require_policy(db, policy_id)
+            raise DomainError(
+                409,
+                "POLICY_NOT_VALIDATED",
+                "Only a validated policy can be activated",
+                {"status": current.status},
+            )
         await db.commit()
         raise DomainError(
             409,
             "REGRESSION_REPLAY_PENDING",
             "Regression cases must replay successfully before policy activation",
             {"case_ids": pending_case_ids, "run_ids": pending_run_ids},
+        )
+    # Serialize activation across policies in one experiment. The partial
+    # unique index protects the invariant, while this lock turns a concurrent
+    # pair of supersede/activate transitions into an ordered handoff that can
+    # be reread instead of surfacing an IntegrityError.
+    await db.execute(
+        select(Experiment)
+        .where(Experiment.id == policy.experiment_id)
+        .with_for_update()
+    )
+    await db.refresh(policy)
+    if policy.status != PolicyStatus.VALIDATED.value:
+        if policy.status == PolicyStatus.ACTIVE.value:
+            return policy_response(policy)
+        raise DomainError(
+            409,
+            "POLICY_NOT_VALIDATED",
+            "Only a validated policy can be activated",
+            {"status": policy.status},
         )
     await db.execute(
         update(Policy)
@@ -1448,10 +1630,66 @@ async def activate_policy(db: AsyncSession, policy_id: str) -> PolicyResponse:
         )
         .values(status=PolicyStatus.SUPERSEDED.value)
     )
-    policy.status = PolicyStatus.ACTIVE.value
+    activated = await db.execute(
+        update(Policy)
+        .where(Policy.id == policy.id, Policy.status == PolicyStatus.VALIDATED.value)
+        .values(status=PolicyStatus.ACTIVE.value)
+    )
+    if activated.rowcount != 1:
+        await db.rollback()
+        current = await require_policy(db, policy_id)
+        if current.status == PolicyStatus.ACTIVE.value:
+            return policy_response(current)
+        raise DomainError(409, "POLICY_NOT_VALIDATED", "Only a validated policy can be activated")
     await db.commit()
     await db.refresh(policy)
     return policy_response(policy)
+
+
+async def _retry_activation_after_case_claim_loss(
+    db: AsyncSession, policy_id: str
+) -> PolicyResponse:
+    """Re-read a losing activation race after its uncommitted work was rolled back."""
+
+    policy = await require_policy(db, policy_id)
+    if policy.status == PolicyStatus.ACTIVE.value:
+        return policy_response(policy)
+    cases = list(
+        (
+            await db.execute(
+                select(RegressionCase)
+                .where(
+                    RegressionCase.experiment_id == policy.experiment_id,
+                    RegressionCase.eligible_for_replay.is_(True),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    pending_case_ids: list[str] = []
+    pending_run_ids: list[str] = []
+    for case in cases:
+        if not case.replay_run_id:
+            pending_case_ids.append(case.id)
+            continue
+        replay = await require_run(db, case.replay_run_id)
+        if case.replay_policy_id == policy.id:
+            if replay.status != RunStatus.SUCCEEDED.value:
+                pending_case_ids.append(case.id)
+                pending_run_ids.append(replay.id)
+            continue
+        if replay.status not in TERMINAL_RUN_STATUSES:
+            pending_case_ids.append(case.id)
+            pending_run_ids.append(replay.id)
+    if pending_case_ids:
+        raise DomainError(
+            409,
+            "REGRESSION_REPLAY_PENDING",
+            "Regression cases must replay successfully before policy activation",
+            {"case_ids": pending_case_ids, "run_ids": pending_run_ids},
+        )
+    return await activate_policy(db, policy_id)
 
 
 async def reject_policy(
@@ -1463,8 +1701,20 @@ async def reject_policy(
         PolicyStatus.VALIDATED.value,
     }:
         raise DomainError(409, "POLICY_NOT_REJECTABLE", "Policy cannot be rejected in its current state")
-    policy.status = PolicyStatus.REJECTED.value
-    policy.reject_reason = reason
+    rejected = await db.execute(
+        update(Policy)
+        .where(
+            Policy.id == policy_id,
+            Policy.status.in_((PolicyStatus.CANDIDATE.value, PolicyStatus.VALIDATED.value)),
+        )
+        .values(status=PolicyStatus.REJECTED.value, reject_reason=reason)
+    )
+    if rejected.rowcount != 1:
+        await db.rollback()
+        current = await require_policy(db, policy_id)
+        if current.status == PolicyStatus.REJECTED.value:
+            return policy_response(current)
+        raise DomainError(409, "POLICY_NOT_REJECTABLE", "Policy cannot be rejected in its current state")
     await db.commit()
     await db.refresh(policy)
     return policy_response(policy)

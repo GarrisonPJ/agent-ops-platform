@@ -5,12 +5,17 @@ import sqlite3
 from datetime import datetime, timezone
 
 import pytest
+from httpx import ASGITransport
 from httpx import AsyncClient
+from sqlalchemy import event, select, text
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+import app.phase1_service as phase1_service
+from app.migrations import application_alembic_head
+from app.phase1_main import create_app
 from app.phase1_service import _is_regression_case_source_unique_violation
-from app.phase1_models import RegressionCase
+from app.phase1_models import Base, Policy, RegressionCase, Run, RunnerJob, new_id
 
 
 AUTH = {"Authorization": "Bearer test-runner-token"}
@@ -286,3 +291,268 @@ async def test_activation_gates_on_regression_replay_without_overwriting_policy(
     assert activated.status_code == 200
     assert activated.json()["status"] == "active"
     assert activated.json()["score_delta"] == pytest.approx(updated_policy["score_delta"])
+
+
+@pytest.mark.asyncio
+async def test_each_policy_gets_its_own_regression_case_replay(api) -> None:
+    client, factory = api
+    experiment, baseline = await create_run(client)
+    await complete(client, await claim(client), "failed")
+    case = (
+        await client.post(f"/api/runs/{baseline['id']}/regression-case")
+    ).json()
+    policy_a = (await client.get(f"/api/experiments/{experiment['id']}")).json()[
+        "candidate_policy"
+    ]
+
+    main_replay = (await client.post(f"/api/policies/{policy_a['id']}/replay")).json()
+    main_claim = await claim(client)
+    replay_id = main_claim["run"]["run_id"]
+    await upload(
+        client,
+        main_claim,
+        [
+            envelope(replay_id, 1, "run_started"),
+            step(replay_id, 2, 0, "check_service_health", {"service": "checkout-api"}),
+            step(
+                replay_id,
+                3,
+                1,
+                "query_service_metrics",
+                {"service": "checkout-api", "metric": "dependency_latency"},
+            ),
+            step(
+                replay_id,
+                4,
+                2,
+                "fetch_service_logs",
+                {"service": "checkout-api", "query": "payment dependency timeout"},
+            ),
+            envelope(replay_id, 5, "run_completed", {"exit_code": 0}),
+        ],
+    )
+    await complete(client, main_claim, "succeeded")
+    policy_a = (await client.get(f"/api/experiments/{experiment['id']}")).json()[
+        "candidate_policy"
+    ]
+
+    pending_a = await client.post(f"/api/policies/{policy_a['id']}/activate")
+    assert pending_a.status_code == 409
+    assert pending_a.json()["code"] == "REGRESSION_REPLAY_PENDING"
+    async with factory() as db:
+        case_row = await db.get(RegressionCase, case["id"])
+        assert case_row is not None and case_row.replay_run_id is not None
+        first_case_replay_id = case_row.replay_run_id
+        first_case_replay = await db.get(Run, first_case_replay_id)
+        assert first_case_replay is not None
+        first_case_replay.status = "succeeded"
+        await db.commit()
+
+    activated_a = await client.post(f"/api/policies/{policy_a['id']}/activate")
+    assert activated_a.status_code == 200
+
+    policy_b_id = new_id()
+    replay_b_id = new_id()
+    async with factory() as db:
+        policy_b = Policy(
+            id=policy_b_id,
+            experiment_id=experiment["id"],
+            source_run_id=baseline["id"],
+            status="validated",
+            patch=policy_a["patch"],
+            rationale="Second candidate policy",
+            score_delta=1.0,
+        )
+        replay_b = Run(
+            id=replay_b_id,
+            experiment_id=experiment["id"],
+            kind="replay",
+            source_run_id=baseline["id"],
+            policy_id=policy_b_id,
+            status="succeeded",
+            evaluation_spec={"run_id": replay_b_id},
+            metrics={},
+        )
+        db.add(policy_b)
+        await db.flush()
+        db.add(replay_b)
+        await db.commit()
+        policy_b.replay_run_id = replay_b_id
+        await db.commit()
+
+    pending_b = await client.post(f"/api/policies/{policy_b_id}/activate")
+    assert pending_b.status_code == 409
+    assert pending_b.json()["code"] == "REGRESSION_REPLAY_PENDING"
+    async with factory() as db:
+        case_row = await db.get(RegressionCase, case["id"])
+        assert case_row is not None
+        assert case_row.replay_policy_id == policy_b_id
+        assert case_row.replay_run_id != first_case_replay_id
+
+
+@pytest.mark.asyncio
+async def test_concurrent_activation_claims_one_regression_replay(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("RUNNER_TOKEN", "test-runner-token")
+    engine = create_async_engine(
+        f"sqlite+aiosqlite:///{tmp_path / 'activation-race.db'}",
+        connect_args={"timeout": 10},
+    )
+
+    @event.listens_for(engine.sync_engine, "connect")
+    def enable_sqlite_foreign_keys(dbapi_connection, _connection_record) -> None:
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
+    factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    async with engine.begin() as connection:
+        await connection.execute(text("PRAGMA journal_mode=WAL"))
+        await connection.run_sync(Base.metadata.create_all)
+        await connection.execute(
+            text("CREATE TABLE alembic_version (version_num VARCHAR(32) NOT NULL)")
+        )
+        await connection.execute(
+            text("INSERT INTO alembic_version (version_num) VALUES (:revision)"),
+            {"revision": application_alembic_head()},
+        )
+    application = create_app(
+        session_factory=factory,
+        database_engine=engine,
+        initialize_database=False,
+    )
+    client = AsyncClient(transport=ASGITransport(app=application), base_url="http://test")
+    experiment, baseline = await create_run(client)
+    baseline_claim = await claim(client)
+    await complete(client, baseline_claim, "failed")
+    case = (await client.post(f"/api/runs/{baseline['id']}/regression-case")).json()
+    policy = (await client.get(f"/api/experiments/{experiment['id']}")).json()["candidate_policy"]
+
+    main_replay = (await client.post(f"/api/policies/{policy['id']}/replay")).json()
+    replay_claim = await claim(client)
+    replay_id = replay_claim["run"]["run_id"]
+    await upload(
+        client,
+        replay_claim,
+        [
+            envelope(replay_id, 1, "run_started"),
+            step(replay_id, 2, 0, "check_service_health", {"service": "checkout-api"}),
+            step(replay_id, 3, 1, "query_service_metrics", {"service": "checkout-api", "metric": "dependency_latency"}),
+            step(replay_id, 4, 2, "fetch_service_logs", {"service": "checkout-api", "query": "payment dependency timeout"}),
+            envelope(replay_id, 5, "run_completed", {"exit_code": 0}),
+        ],
+    )
+    await complete(client, replay_claim, "succeeded")
+
+    original_require_policy = phase1_service.require_policy
+    barrier = asyncio.Barrier(2)
+    reads = 0
+
+    async def synchronize_initial_reads(db: AsyncSession, requested_id: str):
+        nonlocal reads
+        result = await original_require_policy(db, requested_id)
+        if requested_id == policy["id"] and reads < 2:
+            reads += 1
+            await asyncio.wait_for(barrier.wait(), timeout=5)
+        return result
+
+    monkeypatch.setattr(phase1_service, "require_policy", synchronize_initial_reads)
+    responses = await asyncio.wait_for(
+        asyncio.gather(
+            client.post(f"/api/policies/{policy['id']}/activate"),
+            client.post(f"/api/policies/{policy['id']}/activate"),
+        ),
+        timeout=10,
+    )
+
+    assert [response.status_code for response in responses] == [409, 409]
+    assert all(response.json()["code"] == "REGRESSION_REPLAY_PENDING" for response in responses)
+    async with factory() as db:
+        replay_runs = list(
+            (
+                await db.execute(
+                    select(Run).where(
+                        Run.policy_id == policy["id"],
+                        Run.regression_case_id == case["id"],
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        runner_jobs = list(
+            (
+                await db.execute(
+                    select(RunnerJob).where(
+                        RunnerJob.run_id.in_([run.id for run in replay_runs])
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+    assert len(replay_runs) == len(runner_jobs) == 1
+    assert replay_runs[0].id != main_replay["replay_run_id"]
+    await client.aclose()
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_activation_reject_race_rolls_back_regression_replay(api, monkeypatch) -> None:
+    client, factory = api
+    experiment, baseline = await create_run(client)
+    baseline_claim = await claim(client)
+    await complete(client, baseline_claim, "failed")
+    case = (await client.post(f"/api/runs/{baseline['id']}/regression-case")).json()
+    policy = (await client.get(f"/api/experiments/{experiment['id']}")).json()["candidate_policy"]
+
+    main_replay = (await client.post(f"/api/policies/{policy['id']}/replay")).json()
+    replay_claim = await claim(client)
+    replay_id = replay_claim["run"]["run_id"]
+    await upload(
+        client,
+        replay_claim,
+        [
+            envelope(replay_id, 1, "run_started"),
+            step(replay_id, 2, 0, "check_service_health", {"service": "checkout-api"}),
+            step(replay_id, 3, 1, "query_service_metrics", {"service": "checkout-api", "metric": "dependency_latency"}),
+            step(replay_id, 4, 2, "fetch_service_logs", {"service": "checkout-api", "query": "payment dependency timeout"}),
+            envelope(replay_id, 5, "run_completed", {"exit_code": 0}),
+        ],
+    )
+    await complete(client, replay_claim, "succeeded")
+
+    original_require_policy = phase1_service.require_policy
+    rejected = False
+
+    async def reject_after_activation_read(db: AsyncSession, requested_id: str):
+        nonlocal rejected
+        result = await original_require_policy(db, requested_id)
+        if requested_id == policy["id"] and not rejected:
+            rejected = True
+            async with factory() as competing_db:
+                await phase1_service.reject_policy(competing_db, requested_id, "operator rejected")
+        return result
+
+    monkeypatch.setattr(phase1_service, "require_policy", reject_after_activation_read)
+    response = await client.post(f"/api/policies/{policy['id']}/activate")
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "POLICY_NOT_VALIDATED"
+    async with factory() as db:
+        replay_runs = list(
+            (
+                await db.execute(
+                    select(Run).where(
+                        Run.policy_id == policy["id"],
+                        Run.regression_case_id == case["id"],
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        stored_policy = await db.get(Policy, policy["id"])
+    assert replay_runs == []
+    assert stored_policy is not None
+    assert stored_policy.status == "rejected"
+    assert stored_policy.replay_run_id == main_replay["replay_run_id"]

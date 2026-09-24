@@ -460,9 +460,16 @@ impl Worker {
         })?;
         let mut stdin = child.stdin.take().context("agent stdin is unavailable")?;
         let payload = serde_json::to_vec(spec)?;
-        stdin.write_all(&payload).await?;
-        stdin.write_all(b"\n").await?;
-        stdin.shutdown().await?;
+        if let Err(error) = async {
+            stdin.write_all(&payload).await?;
+            stdin.write_all(b"\n").await?;
+            stdin.shutdown().await
+        }
+        .await
+        {
+            terminate_child(&mut child).await;
+            return Err(error.into());
+        }
         Ok(child)
     }
 

@@ -268,6 +268,36 @@ async fn invalid_jsonl_fails_run_and_terminates_process_group() {
 }
 
 #[tokio::test]
+async fn broken_pipe_while_writing_agent_input_terminates_process_group() {
+    let path = pid_file("broken-pipe");
+    let _ = std::fs::remove_file(&path);
+    let code = format!(
+        "import os, pathlib, time\nchild = os.fork()\nif child == 0:\n    os.close(0)\n    time.sleep(30)\n    os._exit(0)\npathlib.Path({path:?}).write_text(str(child))\nos.close(0)\ntime.sleep(30)",
+    );
+    let runner = Worker::new(RunnerConfig {
+        server_url: "http://127.0.0.1:1".into(),
+        runner_token: "test-token".into(),
+        runner_id: "test-runner".into(),
+        agent_program: "/usr/bin/python3".into(),
+        agent_args: vec!["-c".into(), code],
+        agent_workdir: None,
+        poll_interval: Duration::from_millis(10),
+    })
+    .unwrap();
+    let mut spec = claim(10_000).run.evaluation_spec;
+    spec.task = "x".repeat(1_000_000);
+
+    let result = tokio::time::timeout(Duration::from_secs(5), runner.spawn_agent(&spec))
+        .await
+        .expect("spawn_agent did not return after the broken pipe");
+    assert!(result.is_err(), "agent input unexpectedly succeeded");
+
+    let pid = wait_for_pid(&path).await;
+    assert_process_gone(pid).await;
+    let _ = std::fs::remove_file(path);
+}
+
+#[tokio::test]
 async fn nonzero_exit_maps_to_agent_exit_without_free_text() {
     let server = TestServer::start("continue", 0).await;
     let runner = worker(&server, "import sys; sys.exit(7)".to_string());

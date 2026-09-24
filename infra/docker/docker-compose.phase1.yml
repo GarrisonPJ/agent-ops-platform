@@ -21,7 +21,7 @@ services:
       dockerfile: Dockerfile
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-agentops}:${POSTGRES_PASSWORD:-agentops}@db:5432/${POSTGRES_DB:-agentops}
-      RUNNER_TOKEN: ${RUNNER_TOKEN:-local-runner-token}
+      RUNNER_TOKEN: ${RUNNER_TOKEN:?RUNNER_TOKEN must be set}
       CORS_ORIGINS: http://localhost:${WEB_PORT:-5173}
     ports:
       - "${API_PORT:-8000}:8000"
@@ -41,7 +41,7 @@ services:
     environment:
       AGENTOPS_SERVER_URL: http://api:8000
       AGENTOPS_RUNNER_ID: compose-runner
-      RUNNER_TOKEN: ${RUNNER_TOKEN:-local-runner-token}
+      RUNNER_TOKEN: ${RUNNER_TOKEN:?RUNNER_TOKEN must be set}
       AGENTOPS_PROVIDER_BASE_URL: ${AGENTOPS_PROVIDER_BASE_URL:-}
       AGENTOPS_PROVIDER_API_KEY: ${AGENTOPS_PROVIDER_API_KEY:-}
       AGENTOPS_PROVIDER_MODEL: ${AGENTOPS_PROVIDER_MODEL:-}
