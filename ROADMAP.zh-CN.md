@@ -8,6 +8,8 @@ AgentOps 将持续打磨为可靠的工具型 Agent 闭环评测系统。优先�
 
 Recorded Preview 继续用于离线 UI 开发和确定性回归测试。它不是独立产品里程碑或托管部署目标。
 
+目标部署范围是单机或可信团队内网。这是工程项目，不是面向公网的 SaaS 产品。因此 Provider 执行继续限定为只读、场景白名单和显式 opt-in；有副作用工具、不可信 Endpoint 与多租户不进入下一里程碑。
+
 ## 当前状态
 
 Phase 1 已完成并通过验收：
@@ -170,6 +172,103 @@ PRD：`.scratch/closed-loop-depth/PRD.md`（本地跟踪器）。
 - Fixture 失败可将 Scenario、Seed 与参数保存为确定性回归资产。Provider 失败会记录明确的不可完全复现边界，不进入自动回放门禁。
 - Regression Replay 复用正常 Run 流程、进入 Improve 报告，且不会自动激活 Policy；操作者审查结果后必须再次显式激活。
 - 本地收口通过 backend `141 passed, 1 skipped`（PostgreSQL Retention 集成需要 `RETENTION_POSTGRES_URL`）、frontend `27 passed`、TypeScript、生产构建、协议检查、Rust 格式检查，以及 Windows Chromium Recorded E2E `2 passed`。
+
+并发加固跟进（2026-08-31）：
+
+- **状态：已完成。** 当前 backend 全量测试为 `149 passed, 1 skipped`，并发幂等聚焦覆盖通过 `18` 项测试。
+- 变更已进入 `main` 的 `2cd081f`：RegressionCase 创建、Policy Replay 抢占和终态完成副作用在竞争下保持数据库级安全与幂等。
+
+## 下一里程碑：运行可靠性与评估准确率
+
+目标是单机或可信内网使用。优先级为先保证运行可靠性，再提高评估准确率；吞吐量和多用户协作明确后置。
+
+### P0：收口状态机正确性
+
+- 让取消、心跳、事件持久化等所有 Run 状态写入都使用 CAS 或行锁。
+- 在并发数据库连接下保证重复事件真正幂等；同一序号携带不同 payload 时返回明确冲突。
+- 让 Policy 激活、拒绝和 RegressionCase Replay 抢占原子化，证明竞争请求不会留下孤儿 Run/RunnerJob。
+- Runner 写入 Agent stdin 或关闭失败时清理整个进程组，并增加 broken-pipe 回归测试。
+- 除显式 development 模式外，缺少 `RUNNER_TOKEN` 必须拒绝启动。
+
+验收：PostgreSQL 多连接竞争测试通过；终态 Run 不可被覆盖；重复上传请求汇聚；没有孤儿 Replay 记录；Runner 所有失败路径都回收子进程。
+
+验证更新（2026-09-18）：
+
+- 已为取消、心跳和事件持久化增加 Run 状态 CAS/重读；规范化后的并发重复事件会汇聚，序列冲突仍返回明确错误。
+- 已为 RegressionCase Replay 抢占及 Policy 激活/拒绝增加条件 CAS；激活竞争失败的事务会先回滚其 Run 和 RunnerJob，再重读胜者状态。
+- Runner stdin 写入或关闭失败时现在会终止 Agent 进程组；broken-pipe 回归测试已通过。
+- 缺少 `RUNNER_TOKEN` 时，除 `AGENTOPS_ENV=development` 外均会启动失败；空或结构非法的 Provider 消息会产生 `PROVIDER_INVALID_RESPONSE`。
+- 后端验证通过 `161 passed, 1 skipped`；Rust workspace 验证通过，Runner 含 15 个测试。PostgreSQL 多连接专用证据和 frontend 格式化仍受环境限制，作为后续验收项保留。
+
+验证更新（2026-09-19）：
+
+- 后端全量验证通过 `177 passed, 2 skipped`；评估校准与标注 fixture 聚焦测试通过 `27` 项，并包含激活 claim 重试幂等及按 Policy 隔离 RegressionCase Replay 的回归覆盖。
+- 临时 PostgreSQL 16 容器中的 4 个状态转换竞争测试通过；包含 Retention 的 PostgreSQL 专项运行合计 `10 passed`。另一次未提供 `RETENTION_POSTGRES_URL` 的本地运行是显式 skip，不应记为本地 Retention 已通过。
+- Rust workspace 全部通过，包含 15 个 Runner 测试；Rust 格式检查（`cargo fmt --all -- --check`）和 `git diff --check` 通过。
+- 已新增[运行可靠性与本地验证 runbook](docs/operations/reliability-and-local-validation.md)，覆盖 Token 轮换、竞争诊断、Provider 故障解释以及 WSL/代理边界。
+- 带 Lease 的 heartbeat、事件持久化和完成操作现在会锁定 RunnerJob 行来隔离旧 Lease；事件上传保留非锁定初读以实现重复汇聚，再在插入前加锁。不同 Policy 的激活会锁定 Experiment 串行化，某个 Policy 的终态 Replay 不会被另一个 Policy 当作回归结果复用。
+- Compose 现在要求显式提供 `RUNNER_TOKEN`，API 启动检查和认证使用同一份配置快照；已删除可预测的 `local-runner-token` fallback。
+- 当前 WSL 缺少可用的 Linux Node/npm 工具链，frontend 本地验证仍受阻；不宣称本地 frontend 或 frontend 格式化已通过，CI 仍是 frontend 验证基线。
+- 当前已为覆盖到的状态转换补齐 PostgreSQL 证据。现有合成 calibration fixture 只能作为回归保护，不能证明评估准确率；独立标注和 precision/recall 报告仍未完成，本地 frontend 可复现性也仍未闭合。
+
+验证更新（2026-09-24）：
+
+- 三个内置 fixture 场景的 baseline/replay 均已通过 Runner API 完成持久化 `RunEvent` 往返测试，覆盖事件顺序、重建后的观测、已保存的分析维度与分数。
+- 后端全量验证通过 `180 passed, 2 skipped`，校准聚焦测试通过 `16` 项。新增往返测试使用测试 SQLite 数据库；上方 PostgreSQL 并发证据仍属于 2026-09-19 的验证。
+- fixture 标签仍是合成数据。发布评估准确率结论之前，还需独立标注样本及 precision/recall/F1、混淆矩阵报告。
+
+### P1：提高评估质量和运维信心
+
+- Provider 返回空响应或结构非法时必须失败，不能当作成功。
+- 持久化 `RunEvent` 往返测试：三个内置 fixture 场景的 baseline 和 replay 已覆盖。
+- 将合成校准 smoke set 替换为独立标注样本，报告 precision/recall/F1 与混淆矩阵。
+- 稳定 WSL 与代理环境下的本地验证，明确受支持的 Node 工具链。
+- 增加 Token 轮换、竞争故障诊断和 Provider 故障解释 runbook。
+
+前端验证更新（2026-09-24）：
+
+- 在 WSL 中使用已核对 SHA256 的 Linux Node `v22.23.3`，`npm ci`、类型检查、27 个单测和生产构建均通过；[本地验证 runbook](docs/operations/reliability-and-local-validation.md) 已记录复现步骤。
+- `npm run format:check` 在 24 个此前未修改的前端文件上失败，当前 frontend CI Job 也未执行这项检查。本地前端运行检查已可复现，但格式检查和完整的本地 Golden/Compose 矩阵仍未闭合。
+
+校准报告更新（2026-09-24）：
+
+- 已增加面向单独标注的终态 Run 的只读[评估校准报告工具](docs/evaluation-calibration.md)。工具从持久化 `RunEvent` 重建轨迹，输出逐维及总体的混淆矩阵计数、precision、recall、F1 和分歧 Run。
+- 后端全量验证为 `184 passed, 2 skipped`；4 项聚焦测试覆盖计数、标签校验、持久化事件和无效 Run 状态。独立标注集尚未建立，因此仍没有可发布的评估准确率结果。
+
+本地 Compose 验证更新（2026-09-24）：
+
+- 隔离的 PostgreSQL 16、API 与当前源码 Rust Runner 栈通过两个注册 Golden 场景：均持久化失败基线轨迹、完成成功 Replay 并激活通过验证的 Policy。`scripts/recovery_e2e.py` 终止运行中的 Runner 后，验证 Lease 恢复使 Attempt 2 成功完成。
+- 标准四服务 Compose 构建因 Docker Hub 超时，无法获取 Web 的 `node:22-alpine` 镜像元数据。三服务验证使用在 `rust:1.96-slim` 中离线编译的 Runner 二进制及当前 Python Agent 源码构建镜像。隔离项目及其卷已清理；Web 容器与 Recorded 浏览器 E2E 仍未完成本地验证。
+
+P1 后续验证（2026-09-24）：
+
+- CI 的 Compose 校验及 Golden/Recovery Job 现在使用临时随机 `RUNNER_TOKEN`；本地配置校验在提供 Token 时通过，缺少 Token 时仍会拒绝。使用 `make fmt` 整理 24 个前端文件后，frontend CI Job 已加入格式检查。
+- Linux Node 22 下，前端格式、类型检查、27 个单测、构建及 2 个 Recorded 浏览器 E2E 均通过。临时本地 Node Web 覆盖启动了隔离的四服务 Compose 栈，Web 及其 API 代理可用，两个 Golden 场景和 Runner 恢复演练再次通过。Docker 守护进程仍无法拉取标准 Web Dockerfile 所需的 `node:22-alpine`；覆盖仅用于本地验证。
+- 新增分析盲审[校准样本导出工具](docs/evaluation-calibration.md)，按场景、模式、Run 类型及终态选取当前已注册的终态 Run，且不输出分数或已保存的分析。四条 Golden fixture 样本只验证流程，不能证明准确率。现有 Phase 1 数据卷的只读副本仅有四条旧版未注册场景的 fixture Run，因此尚无独立标注集或可发布的 precision/recall/F1。后端全量验证为 `186 passed, 2 skipped`。
+
+Review 更新（2026-09-25）：
+
+- 独立复核通过后端全量测试（`186 passed, 2 skipped`）、PostgreSQL 16 并发与 retention 专项（`10 passed`）、Rust workspace（Runner 15 项测试）、前端格式/类型检查/27 项单测/构建，以及 2 项 Recorded 浏览器 E2E。Compose 在缺少 `RUNNER_TOKEN` 时拒绝，在提供临时 Token 时通过。前端检查在隔离副本中运行，因为工作树现有 `node_modules/.vite` 文件由 `root` 拥有；依赖安装没有改动源码树。
+- 校准导出工具属于“分析盲审”，不是“结果盲审”：packet 仍包含 Scenario、执行模式、Run 类型、终态、Provider 错误存在性、限制、耗时和 Token 数等线索。独立标注、分歧仲裁、样本快照与评审者一致性记录完成前，不得发布准确率；baseline/replay 相关性和没有置信区间仍是方法学限制。
+- `npm audit --omit=dev` 报告生产依赖 `react-router-dom`/`react-router` 7.18.0 存在两个 high 漏洞。任何可信内网部署前必须升级到已修复的兼容版本、重生成 lockfile 并重跑前端检查；这项工作列为 P1。
+- 标准 Web Dockerfile 仍没有本地构建证据，因为 Docker 守护进程无法获取 `node:22-alpine`；临时 Web override 只能作为冒烟验证证据。
+
+后续顺序：
+
+1. 升级 React Router 生产依赖，重新执行 `npm ci`、audit、格式、类型、单测、构建和 Recorded E2E。
+2. 为当前注册 Scenario 收集带数据库快照的样本，完成独立标注和分歧仲裁，再运行校准报告；在此门槛前不发布 precision/recall/F1。
+3. Docker Hub 可用后构建标准 Web 镜像，并在不使用 override 的情况下重跑隔离四服务 Golden 与 Runner 恢复演练。
+4. 重新 triage `.scratch/` 规划和工单，记录每个文件的替代路径与标签后，只删除确认已被 ROADMAP/CONTEXT 取代的文件；保留带日期 handoff、`.codegraph/` 和 `.cursor/`。
+
+验收：每个终态都有确定性证据；分析器结果使用独立标注并发布指标；后端、前端、Rust 与 Golden 检查在本地和 CI 可复现。
+
+### P2：明确清理项与延后项
+
+- 过时的规划/分析文档移出 `docs/`，下一次仓库清理前仅保留在 `.scratch/archive/`；清理时只删除已确认被 ROADMAP/CONTEXT 取代的文档，保留带日期 handoff 以及本地 `.codegraph/`、`.cursor/` 工具目录。
+- 重新 triage 过期 `.scratch/` 工单，将已取代内容标记为 `wontfix` 或 `ready-for-human`；只有记录标签和替代路径后才删除旧 issue 文件。
+- 首批清理候选是旧版 `.scratch/agentops-platform-v0.1/`、`.scratch/agentops-platform-v0.3/`、`baseline-hardening/`、`closed-loop-architecture/`、`demo-packaging/` 和 `frontend-polish/` 跟踪目录。先检查引用和历史证据，再按单个文件完成 triage 后删除；不得整目录盲删。
+- 在任何可信内网部署前，将 Compose 中用于演示的 PostgreSQL 凭据替换为显式 Secret 来源；演示默认值只能留在明确标注的本地 profile 中。
+- MCP、向量记忆、有副作用工具、多租户和吞吐量优化，只有在出现可度量需求并通过新 ADR 后才提升优先级。
 
 ## 条件安全门
 

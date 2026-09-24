@@ -1,7 +1,7 @@
 # AgentOps Closed-Loop Architecture
 
 Status: current for Phase 1
-Last reviewed: 2026-08-23
+Last reviewed: 2026-09-25
 
 ## System goal
 
@@ -26,7 +26,8 @@ The current system is a focused evaluation control plane, not a generic orchestr
 | Python agent | Registered Scenario handlers with deterministic fixture and narrow Provider paths | `backend/app/scenarios/`, `backend/app/phase1_provider.py` |
 | Product workflow | Experiments, Trace, deterministic Analysis, persisted comparisons, regression replay, activate/reject | `frontend/src/Phase1App.tsx` |
 | Offline regression adapter | Recorded persisted facts validated through the frontend contract | `frontend/src/services/recorded/` |
-| End-to-end verification | Real Compose stack and Golden closed-loop script | `infra/docker/docker-compose.phase1.yml`, `scripts/golden_e2e.py` |
+| Evaluation calibration | Read-only analysis-blind review export and labeled accuracy report over persisted terminal RunEvents | `backend/app/calibration_review.py`, `backend/app/calibration_report.py` |
+| End-to-end verification | Real Compose stack, Golden loop, and Runner recovery fault test | `infra/docker/docker-compose.phase1.yml`, `scripts/golden_e2e.py`, `scripts/recovery_e2e.py` |
 
 ## Component ownership
 
@@ -62,6 +63,12 @@ flowchart LR
 
 - `run_id + sequence` is unique and duplicate event uploads are idempotent.
 - Repeated replay requests and repeated terminal completion return the existing result.
+- RegressionCase creation is unique per source Run; concurrent creators converge on one persisted case.
+- Policy replay atomically claims `replay_run_id`; concurrent requests converge on one Replay Run and RunnerJob.
+- Terminal completion compares and sets the observed Run status; only the winner executes terminal scoring, analysis, and candidate-policy side effects.
+- Lease-bearing RunnerJob writes lock the lease row; recovery cannot interleave an old heartbeat, event upload, or completion with a new Attempt.
+- Each Policy must pass eligible RegressionCases against its own patch; a terminal replay owned by another Policy is replaced before activation.
+- Competing Policy activations lock the Experiment row before superseding and activating, preserving one active Policy without an IntegrityError response.
 - Runner endpoints authenticate the Runner and validate lease ownership.
 - Expired leases cannot append events or mutate non-terminal Runs.
 - Commands and arguments remain separate; API clients cannot submit an executable or shell command.
@@ -71,14 +78,17 @@ flowchart LR
 - Provider metadata is projected from latest-attempt events into Run metrics; credentials, endpoint values, and hidden reasoning are not persisted.
 - Regression replays use normal Runs and RunnerJobs but cannot overwrite the Policy's primary replay score delta or validation status.
 - Retention treats RegressionCases as part of the Experiment aggregate and blocks cross-aggregate references before deletion.
+- Calibration review packets are analysis-blind: they omit scores, stored analysis, and raw Provider output, while retaining enough execution metadata that they must not be presented as outcome-blind or double-blind evidence.
 - Recorded Preview replays persisted facts for offline development and regression testing; it does not reproduce backend business logic or provider calls.
 
 ## Known boundary
 
 Runner recovery, registered Scenarios, and the narrow Provider boundary are implemented. Provider mode remains deliberately constrained: endpoint, model, and credential are Runner-only operator configuration; the model can choose only the selected Scenario's explicit tool definitions; live calls are opt-in; and CI uses deterministic fixtures plus local fake compatible servers.
 
-No Phase 1.5 milestone is currently defined. See [ROADMAP.md](../ROADMAP.md) for the promotion gates.
+The next milestone targets a single machine or trusted team network. It prioritizes state-machine reliability and evaluation accuracy; throughput and multi-user collaboration remain deferred. See [ROADMAP.md](../ROADMAP.md) for the promotion gates.
+
+As of 2026-09-25, backend verification reports `186 passed, 2 skipped`; Linux Node 22 passes frontend formatting, typecheck, `27` unit tests, build, and `2` Recorded browser E2E tests. An isolated four-service Compose stack passed both Golden scenarios and Runner recovery using a temporary local-Node Web override. The standard Web Dockerfile build remains unverified locally because Docker Hub timed out. Calibration fixtures and an analysis-blind export smoke test verify the workflow, but independent labels and publishable precision/recall/F1 results are still pending. See the [local validation runbook](operations/reliability-and-local-validation.md) and [calibration procedure](evaluation-calibration.md) for the exact boundaries.
 
 ## Deliberately deferred
 
-Kubernetes execution, Docker socket access, MCP transport, vector memory, training export, framework adapters, arbitrary code execution, accounts, multi-tenancy, billing, and automatic policy activation are not part of the active architecture. Promotion requires a measured need, a roadmap update, and an ADR when trust boundaries change.
+Kubernetes execution, Docker socket access, MCP transport, vector memory, training export, framework adapters, arbitrary code execution, accounts, multi-tenancy, billing, side-effecting tools, and automatic policy activation are not part of the active architecture. Promotion requires a measured need, a roadmap update, and an ADR when trust boundaries change.

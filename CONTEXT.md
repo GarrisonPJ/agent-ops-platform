@@ -81,6 +81,11 @@ claimed/running/cancelling -- exhausted attempts --> failed or cancelled
 15. Product events expose a concise `decision_summary`, not hidden chain-of-thought.
 16. A RegressionCase preserves the source Run's execution facts; fixture cases are deterministic and replay-eligible, while provider cases retain an explicit non-reproducibility boundary and do not gate activation.
 17. Policy activation remains a human action and is blocked until every replay-eligible RegressionCase succeeds against the candidate Policy.
+18. RegressionCase creation is database-unique per source Run; concurrent creators converge on the same persisted case and unrelated integrity errors remain visible.
+19. Policy replay uses an atomic database claim for `replay_run_id`; concurrent requests converge on one Replay Run and do not duplicate the associated RunnerJob.
+20. Terminal completion uses compare-and-set against the observed Run status; only the winner performs terminal scoring, analysis, and candidate-policy side effects.
+21. Heartbeat, event persistence, and completion fence the RunnerJob lease with a row lock; an expired or recovered lease cannot write a later Attempt's state. A terminal RegressionCase replay is never reused as another Policy's replay gate.
+22. Activation serializes Policies for one Experiment while preserving the one-active-Policy invariant; startup and authentication resolve one Runner token snapshot, and Compose requires an explicit token.
 
 ## Built-in scenarios
 
@@ -143,7 +148,7 @@ Kubernetes, Docker socket execution, MCP, vector memory, training export, framew
 
 ## Current evolution boundary
 
-Runner recovery, Phase 1.3 operational hardening, Phase 1.4 Scenario onboarding, and the closed-loop depth follow-up are complete. The current system includes three registered Scenario fixture/Provider paths, deterministic failure classification, persisted Before/After comparison, RegressionCase replay gating, durable diagnostics, migration-aware health signals, immutable expired-Attempt correlation, safe Provider fingerprints, executable backup/restore rehearsal, retention/redaction enforcement, and machine-readable alert classification via `/api/operations/state`. Recorded Preview remains a testing adapter, not a separate delivery track. Kubernetes, MCP, vector memory, arbitrary execution, multi-tenancy, and automatic policy activation stay deferred until a measured requirement promotes them.
+Runner recovery, Phase 1.3 operational hardening, Phase 1.4 Scenario onboarding, the closed-loop depth follow-up, and database-level concurrent state-transition hardening are complete. The current system includes three registered Scenario fixture/Provider paths, deterministic failure classification, persisted Before/After comparison, Policy-specific RegressionCase replay gating, durable diagnostics, migration-aware health signals, immutable expired-Attempt correlation, safe Provider fingerprints, executable backup/restore rehearsal, retention/redaction enforcement, machine-readable alert classification via `/api/operations/state`, and concurrency-safe lease fencing, RegressionCase creation, Policy replay claiming, Policy activation, and terminal completion side effects. Recorded Preview remains a testing adapter, not a separate delivery track. The intended deployment scope is a single machine or trusted team network; Provider execution remains read-only, Scenario-scoped, and opt-in. Kubernetes, MCP, vector memory, arbitrary execution, multi-tenancy, and automatic policy activation stay deferred until a measured requirement promotes them.
 
 Roadmap changes do not alter these domain invariants by themselves. Update this file and add an ADR before a milestone changes state ownership, recovery semantics, trust boundaries, or activation rules. See [ROADMAP.md](ROADMAP.md).
 

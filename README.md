@@ -5,7 +5,7 @@
 
 # AgentOps Workbench
 
-**A portfolio-grade closed-loop evaluation workbench for tool-using agents** — run an Experiment, inspect the durable Trace, diagnose failure, replay a candidate Policy, and decide whether to activate it. The repo name is `agent-ops-platform`; **AgentOps Workbench** is the product qualifier so this project is not confused with the unrelated [AgentOps-AI](https://github.com/AgentOps-AI/agentops) SDK or generic “agent ops” tooling.
+**An engineering-focused closed-loop evaluation workbench for tool-using agents** — run an Experiment, inspect the durable Trace, diagnose failure, replay a candidate Policy, and decide whether to activate it. The intended deployment is a single machine or trusted team network. The repo name is `agent-ops-platform`; **AgentOps Workbench** is the product qualifier so this project is not confused with the unrelated [AgentOps-AI](https://github.com/AgentOps-AI/agentops) SDK or generic “agent ops” tooling.
 
 Unlike Langfuse or Phoenix, which focus on tracing and eval datasets, this workbench ships the full **policy replay + human activation gate** loop — candidates never auto-apply.
 
@@ -24,12 +24,14 @@ flowchart LR
 
 **Why this repo is different:** (1) **Lease recovery with attempt fencing** — a crashed Runner cannot strand a Run; a replacement claims with a new Attempt and resumes from the next event sequence. (2) **Cross-language contract v1** — Python Pydantic, TypeScript Zod, and Rust Serde validate the same golden fixtures in CI.
 
-**Try it in 30 seconds:**
+**Local quick start:**
 
 ```bash
 cp .env.example .env
 make demo
 ```
+
+The example `.env` contains a local-demo `RUNNER_TOKEN`; replace it before running outside local development. Compose requires an explicit token for both API and Runner.
 
 Open [http://localhost:5173](http://localhost:5173) and walk the Golden loop: create an Experiment, watch the baseline fail, review Analysis, replay the candidate Policy, then Activate or Reject.
 
@@ -125,6 +127,11 @@ Python Pydantic models own protocol v1. Versioned JSON Schemas and Golden fixtur
 - Reconnects use `after=<sequence>`; `run_id + sequence` is unique and uploads are idempotent.
 - Runner APIs require a bearer token and validate the runner identity, lease, and run.
 - Expired leases cannot append events or complete a non-terminal run; repeated terminal completion remains idempotent.
+- RegressionCase creation is unique per source Run; concurrent requests converge on the same case.
+- Policy replay uses an atomic `replay_run_id` claim; concurrent requests converge on one Replay Run and RunnerJob.
+- Eligible RegressionCases are replayed against each candidate Policy; a terminal replay owned by another Policy is not reused.
+- Heartbeat, event upload, and completion fence the RunnerJob lease; recovery cannot let an old lease write a later Attempt.
+- Terminal completion uses a status compare-and-set; only the winner performs terminal scoring, analysis, and candidate-policy side effects.
 - When a lease expires, the next authenticated claim increments the Attempt, fences the old lease, and resumes from the next event sequence.
 - Jobs select an allowlisted `scenario_id`; API clients can select only `fixture` or `provider` execution and cannot provide an executable, shell command, provider URL, model, or credential.
 - The Runner alone receives provider configuration. Provider calls are bounded, cancelable `/chat/completions` requests and can select only the registered tool definitions for the chosen Scenario.
@@ -168,12 +175,21 @@ make check-contracts
 make test-backend
 make test-frontend
 make test-rust
+make fmt-check
 
 # Against a running real stack
 python3 scripts/golden_e2e.py
+
+# Only against an isolated, disposable Compose stack; this kills and recreates its Runner
+python3 scripts/recovery_e2e.py
+
+# With Linux Node 22, npm dependencies, and Playwright Chromium installed
+cd frontend && npm run e2e:recorded
 ```
 
-CI covers Python, migrations, TypeScript, recorded-preview contracts, Rust protocol/process supervision, Compose validation, and the real Golden loop.
+CI covers Python, migrations, TypeScript, frontend formatting and Recorded browser E2E, Rust protocol/process supervision, Compose validation, Golden loops, and Runner recovery. See the [local validation runbook](docs/operations/reliability-and-local-validation.md) for the WSL toolchain and proxy setup.
+
+Read-only [calibration review and reporting tools](docs/evaluation-calibration.md) export analysis-blind review packets from terminal Runs and compare separate labels with predictions reconstructed from persisted RunEvents. The 2026-09-25 checks recorded `186 passed, 2 skipped` for backend, `27` frontend unit tests, and `2` Recorded browser E2E tests. An isolated four-service Compose stack passed both Golden scenarios and Runner recovery with a temporary local-Node Web override. The standard Web Dockerfile build was blocked locally by a Docker Hub timeout; no independently labeled sample or publishable evaluation-accuracy metrics exist yet.
 
 ## Deliberate non-goals
 

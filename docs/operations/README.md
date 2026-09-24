@@ -5,6 +5,7 @@ Repeatable control-plane procedures for AgentOps Phase 1.
 | Topic | Document |
 |---|---|
 | Fault classification and probes | [fault-matrix.md](fault-matrix.md) |
+| Reliability, token rotation, and local validation | [reliability-and-local-validation.md](reliability-and-local-validation.md) |
 | Backup and disposable restore rehearsal | [backup-restore.md](backup-restore.md) |
 | Experiment retention and redaction | [data-retention.md](data-retention.md) |
 

@@ -5,7 +5,7 @@
 
 # AgentOps Workbench
 
-**面向工具型 Agent 的作品集级闭环评估工作台** — 创建 Experiment、审查持久化 Trace、诊断失败、回放候选 Policy，并决定是否激活。仓库名为 `agent-ops-platform`；对外使用 **AgentOps Workbench** 作为产品限定名，避免与无关的 [AgentOps-AI](https://github.com/AgentOps-AI/agentops) SDK 或泛称 “agent ops” 混淆。
+**面向工具型 Agent 的工程化闭环评估工作台** — 创建 Experiment、审查持久化 Trace、诊断失败、回放候选 Policy，并决定是否激活。目标部署范围是单机或可信团队内网。仓库名为 `agent-ops-platform`；对外使用 **AgentOps Workbench** 作为产品限定名，避免与无关的 [AgentOps-AI](https://github.com/AgentOps-AI/agentops) SDK 或泛称 “agent ops” 混淆。
 
 与 Langfuse、Phoenix 等不同，本工作台强调完整的 **策略回放 + 人工激活门禁** 闭环——候选策略不会自动生效。
 
@@ -24,12 +24,14 @@ flowchart LR
 
 **本仓库的两个差异点：** (1) **带 Attempt 隔离的租约恢复** — Runner 崩溃不会让 Run 永久卡住；替换 Runner 以新 Attempt 领取并从下一事件序列继续。(2) **跨语言 contract v1** — Python Pydantic、TypeScript Zod 与 Rust Serde 在 CI 中校验同一套 golden fixtures。
 
-**30 秒上手：**
+**本地快速启动：**
 
 ```bash
 cp .env.example .env
 make demo
 ```
+
+示例 `.env` 中的 `RUNNER_TOKEN` 仅供本地演示；在本地开发之外运行前须替换。Compose 要求为 API 和 Runner 显式提供同一个 Token。
 
 打开 [http://localhost:5173](http://localhost:5173)，走完 Golden 闭环：创建 Experiment、观察 baseline 失败、查看 Analysis、回放候选 Policy，然后 Activate 或 Reject。
 
@@ -125,6 +127,11 @@ Python Pydantic 类型是协议 v1 的事实来源。版本化 JSON Schema 与 G
 - 重连使用 `after=<sequence>`；`run_id + sequence` 唯一，重复上传幂等。
 - Runner API 使用 Bearer Token，并校验 runner identity、lease 与 run。
 - 过期 Lease 不能继续上报或完成非终态任务；终态重复完成仍保持幂等。
+- RegressionCase 按源 Run 在数据库中唯一约束；并发创建请求会汇聚到同一条用例。
+- Policy Replay 通过原子 `replay_run_id` 抢占；并发请求只会保留一个 Replay Run 与 RunnerJob。
+- 每个候选 Policy 都必须针对符合条件的 RegressionCase 重新 Replay；其他 Policy 已完成的 Replay 不会被复用。
+- Heartbeat、事件上传和完成操作会隔离 RunnerJob Lease；恢复流程不会让旧 Lease 写入后续 Attempt。
+- 终态完成使用基于已观察 Run 状态的 CAS；只有获胜请求执行终态评分、分析和候选 Policy 副作用。
 - Lease 过期后，下一次认证 claim 会递增 Attempt、隔离旧 Lease，并从下一个事件 Sequence 继续。
 - Job 只包含白名单 `scenario_id`；API 用户只可选择 `fixture` 或 `provider`，不能提交 executable、shell 命令、Provider URL、模型或凭证。
 - Provider 配置只传入 Runner。Provider 调用是有界、可取消的 `/chat/completions` 请求，并且只能选择所选 Scenario 注册的工具定义。
@@ -168,12 +175,21 @@ make check-contracts
 make test-backend
 make test-frontend
 make test-rust
+make fmt-check
 
 # 面向已启动的真实环境
 python3 scripts/golden_e2e.py
+
+# 仅面向隔离、可丢弃的 Compose 环境；脚本会终止并重建其中的 Runner
+python3 scripts/recovery_e2e.py
+
+# 需安装 Linux Node 22、npm 依赖和 Playwright Chromium
+cd frontend && npm run e2e:recorded
 ```
 
-CI 覆盖 Python、数据库迁移、TypeScript、Recorded Preview 契约、Rust 协议与进程监督、Compose 配置，以及真实 Golden 闭环。
+CI 覆盖 Python、数据库迁移、TypeScript、前端格式与 Recorded 浏览器 E2E、Rust 协议与进程监督、Compose 配置、Golden 闭环及 Runner 恢复。WSL 工具链与代理设置见[本地验证 runbook](docs/operations/reliability-and-local-validation.md)。
+
+只读[校准分析盲审导出与报告工具](docs/evaluation-calibration.md)从终态 Run 导出盲审样本，并将单独标注的标签与根据持久化 RunEvent 重建的预测进行比较。2026-09-25 的检查记录为后端 `186 passed, 2 skipped`、前端 `27` 项单测和 `2` 项 Recorded 浏览器 E2E。隔离的四服务 Compose 栈通过两个 Golden 场景及 Runner 恢复，但使用了临时本地 Node Web 覆盖；标准 Web Dockerfile 构建在本地因 Docker Hub 超时受阻。独立标注样本与可发布的评估准确率指标尚未完成。
 
 ## 明确不做
 

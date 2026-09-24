@@ -8,6 +8,8 @@ AgentOps is being developed as a reliable closed-loop evaluation system for tool
 
 The recorded preview remains useful for offline UI development and deterministic regression testing. It is not a separate product milestone or hosted deployment target.
 
+The intended deployment scope is a single machine or a trusted team network. This is an engineering project, not a public SaaS product. Provider execution therefore remains read-only, Scenario-scoped, and explicitly opt-in. Side-effecting tools, untrusted endpoints, and multi-tenant access are outside the next milestone.
+
 ## Current state
 
 Phase 1 is complete and verified:
@@ -170,6 +172,103 @@ Closeout (2026-08-23):
 - Fixture failures can be saved with scenario, seed, and parameters as deterministic regression assets. Provider failures retain an explicit non-reproducible boundary and do not enter automatic replay gating.
 - Regression replays reuse the normal Run pipeline, appear in the Improve report, and never auto-activate a Policy. A person reviews the result and explicitly activates again.
 - Local closeout passed backend `141 passed, 1 skipped` (the PostgreSQL retention integration requires `RETENTION_POSTGRES_URL`), frontend `27 passed`, TypeScript, production build, protocol checks, Rust formatting, and Windows Chromium recorded E2E `2 passed`.
+
+Concurrency hardening follow-up (2026-08-31):
+
+- **Status: Complete.** The full backend suite now passes `149 passed, 1 skipped`; focused concurrency/idempotency coverage passes `18` tests.
+- The change is on `main` in `2cd081f`: RegressionCase creation, Policy replay claiming, and terminal completion side effects are database-safe and idempotent under contention.
+
+## Next milestone — reliability and evaluation quality
+
+Target: single-machine or trusted-intranet use. Priority is execution reliability first, then evaluation accuracy. Throughput and multi-user collaboration are deliberately deferred.
+
+### P0 — close state-machine correctness gaps
+
+- Make every Run status writer use compare-and-set or a row lock, including cancellation, heartbeat, and event persistence.
+- Make duplicate event uploads truly idempotent under concurrent database connections; return a conflict when the same sequence carries a different payload.
+- Make Policy activation, rejection, and RegressionCase replay claims atomic; prove that concurrent requests create no orphan Run or RunnerJob.
+- Terminate the Agent process group when Runner stdin write or shutdown fails; add a broken-pipe regression test.
+- Reject missing `RUNNER_TOKEN` outside an explicit development mode.
+
+Acceptance: PostgreSQL multi-connection contention tests pass; terminal Runs cannot be overwritten; duplicate uploads converge; no orphan replay records remain; all Runner failure paths clean up child processes.
+
+Verification update (2026-09-18):
+
+- Implemented Run status CAS/re-read handling for cancellation, heartbeat, and event persistence; concurrent normalized duplicate events converge, while sequence conflicts remain explicit.
+- Implemented conditional RegressionCase replay claims and Policy activation/rejection CAS. Losing activation transactions roll back their Run and RunnerJob before re-reading the winning claim.
+- Runner stdin write/shutdown failures now terminate the Agent process group; the broken-pipe regression passes.
+- Missing `RUNNER_TOKEN` fails startup unless `AGENTOPS_ENV=development`; empty or structurally invalid Provider messages emit `PROVIDER_INVALID_RESPONSE`.
+- Backend verification passes `161 passed, 1 skipped`; Rust workspace verification passes, including the 15 Runner tests. PostgreSQL multi-connection evidence and frontend formatting remain environment-gated follow-ups.
+
+Verification update (2026-09-19):
+
+- Backend verification now passes `177 passed, 2 skipped`; the focused evaluation calibration and labeled-fixture checks pass `27` tests. Activation-claim retry idempotency and per-Policy RegressionCase replay coverage are included.
+- A temporary PostgreSQL 16 container passes four state-transition contention tests. The PostgreSQL-focused run including retention reports `10 passed`; a separate local invocation without `RETENTION_POSTGRES_URL` is an explicit skip, not a passing local retention run.
+- The Rust workspace passes, including all 15 Runner tests. Rust formatting (`cargo fmt --all -- --check`) and `git diff --check` pass.
+- Added [the reliability and local validation runbook](docs/operations/reliability-and-local-validation.md) for token rotation, contention diagnosis, Provider failure interpretation, and WSL/proxy boundaries.
+- Lease-bearing heartbeat, event persistence, and completion now fence the RunnerJob row with a database lock; event uploads keep a non-locking read for duplicate convergence, then lock before insert. Activation serializes competing Policies on the Experiment row, and a terminal replay from one Policy is never reused as another Policy's regression result.
+- Compose now requires an explicit `RUNNER_TOKEN`, and API startup/authentication use one configuration snapshot. The predictable `local-runner-token` fallback was removed.
+- Frontend validation remains blocked in this WSL environment because a Linux Node/npm toolchain is unavailable; no local frontend or frontend-formatting success is claimed. CI remains the frontend verification baseline.
+- The reliability acceptance has PostgreSQL evidence for the covered state transitions. The synthetic calibration fixtures are regression guards, not an accuracy claim; independent labels and precision/recall reporting remain open. Local frontend reproducibility also remains open.
+
+Verification update (2026-09-24):
+
+- Persisted `RunEvent` calibration round trips now cover baseline and replay for all three built-in fixture Scenarios through the Runner API. The tests check ordered stored events, reconstructed observations, persisted analysis dimensions, and scores.
+- Backend verification passes `180 passed, 2 skipped`; focused calibration verification passes `16` tests. These new round trips use the test SQLite database; the PostgreSQL contention evidence above remains dated 2026-09-19.
+- The fixture labels remain synthetic. Independent labels and precision/recall/F1 with a confusion matrix are still required before making an evaluation-accuracy claim.
+
+### P1 — improve evaluation quality and operator confidence
+
+- Reject empty or structurally invalid Provider responses instead of treating them as success.
+- Persisted `RunEvent` round trip: complete for the three built-in fixture Scenarios' baseline and replay runs.
+- Replace the synthetic calibration smoke set with an independently labeled sample and report precision/recall/F1 plus a confusion matrix.
+- Stabilize local verification across WSL and proxy environments; document a supported Node toolchain.
+- Add runbooks for token rotation, contention diagnosis, and Provider failure interpretation.
+
+Frontend verification update (2026-09-24):
+
+- A SHA256-verified Linux Node `v22.23.3` toolchain runs `npm ci`, typecheck, 27 unit tests, and the production build successfully in WSL. The [local validation runbook](docs/operations/reliability-and-local-validation.md) records the reproducible setup.
+- `npm run format:check` fails on 24 previously unchanged frontend files; the frontend CI job currently omits this check. Local frontend execution is reproducible, but formatting and the full local Golden/Compose matrix are not yet closed.
+
+Calibration reporting update (2026-09-24):
+
+- Added a read-only [evaluation calibration report](docs/evaluation-calibration.md) for separately labeled terminal Runs. It reconstructs persisted `RunEvent` trajectories and reports per-dimension and micro confusion counts, precision, recall, F1, and disagreements.
+- The backend suite passes `184 passed, 2 skipped`; four focused reporting tests cover counting, label validation, persisted events, and invalid Run state. No independent label set has been collected, so there is still no evaluation-accuracy result to publish.
+
+Local Compose verification update (2026-09-24):
+
+- An isolated PostgreSQL 16 + API + current-source Rust Runner stack passed both registered `scripts/golden_e2e.py` scenarios: each persisted a failed baseline trace, completed a successful Replay, and activated its validated Policy. `scripts/recovery_e2e.py` killed the running Runner and verified Attempt 2 succeeded after lease recovery.
+- The standard four-service Compose build could not fetch the Web `node:22-alpine` image metadata because Docker Hub timed out. The three-service verification used an offline Rust build in `rust:1.96-slim` and a Runner image containing that binary and the current Python Agent source. The isolated project and its volume were removed afterward; the Web container and recorded browser E2E remain unverified locally.
+
+P1 follow-up verification (2026-09-24):
+
+- CI now supplies an ephemeral `RUNNER_TOKEN` to Compose validation and Golden/Recovery Jobs; local Compose interpolation passes with the token and still rejects a missing token. The frontend CI Job now checks formatting after the 24-file Prettier baseline was normalized with `make fmt`.
+- Linux Node 22 passes frontend formatting, typecheck, 27 unit tests, build, and both Recorded browser E2E tests. An isolated four-service Compose stack with a temporary local-Node Web override served Web and its API proxy, then passed both Golden scenarios and Runner recovery. The standard Web Dockerfile build remains blocked locally by Docker daemon timeouts fetching `node:22-alpine`; the override is verification-only.
+- Added an analysis-blind [calibration review exporter](docs/evaluation-calibration.md) that samples current registered terminal Runs across scenario, mode, kind, and outcome without exposing scores or stored analysis. Its four-case Golden fixture smoke output verifies the workflow, not accuracy. A read-only clone of the existing Phase 1 volume contained only four legacy fixture Runs with an unregistered Scenario, so no independent label set or publishable precision/recall/F1 result exists yet. Backend verification passes `186 passed, 2 skipped`.
+
+Review update (2026-09-25):
+
+- Independent verification now passes the backend suite (`186 passed, 2 skipped`), PostgreSQL 16 contention and retention coverage (`10 passed`), the Rust workspace (15 Runner tests), frontend formatting/typecheck/27 unit tests/build, and two Recorded browser E2E tests. Compose rejects a missing `RUNNER_TOKEN` and accepts an explicit temporary token. The frontend checks ran in an isolated copy because the worktree's existing `node_modules/.vite` files are owned by `root`; the source tree was not changed by dependency installation.
+- The calibration exporter is analysis-blind rather than outcome-blind: its packet still exposes Scenario and execution metadata plus terminal status, provider-error presence, limits, timing, and token counts. Keep the current wording and do not publish an accuracy result until independent labels, adjudication, selection provenance, and reviewer-agreement limits are recorded. Baseline/replay correlation and the absence of confidence intervals remain methodology limitations.
+- `npm audit --omit=dev` reports two high production vulnerabilities through `react-router-dom`/`react-router` 7.18.0. Upgrade to a patched compatible release, regenerate the lockfile, and rerun frontend checks before any trusted-intranet deployment. This is a P1 fix even though the current target is a trusted network.
+- The standard Web Dockerfile image still has no local build evidence because the Docker daemon cannot fetch `node:22-alpine`; the temporary Web override remains smoke-test evidence only.
+
+Next actions, in order:
+
+1. Upgrade the vulnerable React Router dependency and rerun `npm ci`, audit, format, typecheck, unit, build, and Recorded E2E checks.
+2. Generate a current registered-Scenario sample with a recorded database snapshot, obtain independently completed labels, adjudicate disagreements, and run the calibration report. Publish no precision/recall/F1 until this gate is met.
+3. When Docker Hub access is available, build the standard Web image and repeat the isolated four-service Golden and Runner recovery checks without an override.
+4. Re-triage `.scratch/` planning and issue files, record each replacement path and label, then delete only files confirmed superseded by ROADMAP/CONTEXT. Preserve the dated handoff, `.codegraph/`, and `.cursor/`.
+
+Acceptance: every terminal outcome has deterministic evidence; analyzer decisions are measured against independent labels with published metrics; backend, frontend, Rust, and Golden checks are reproducible locally and in CI.
+
+### P2 — explicit cleanup and deferred work
+
+- Keep obsolete planning/analysis documents out of `docs/`; retain them only under `.scratch/archive/` until the next repository cleanup. At that cleanup, delete only documents confirmed superseded by ROADMAP/CONTEXT and leave the dated handoff plus local `.codegraph/` and `.cursor/` tooling untouched.
+- Re-triage stale `.scratch/` issues and mark superseded work `wontfix` or `ready-for-human`; delete obsolete issue files only after the label and replacement path are recorded.
+- The first cleanup candidates are the legacy `.scratch/agentops-platform-v0.1/`, `.scratch/agentops-platform-v0.3/`, `baseline-hardening/`, `closed-loop-architecture/`, `demo-packaging/`, and `frontend-polish/` trackers. Inspect references and historical evidence first; delete only individual superseded files after triage.
+- Before any trusted-intranet deployment, replace the Compose demo PostgreSQL credentials with an explicit secret source; keep demo defaults confined to an explicitly documented local-only profile.
+- Do not start MCP, vector memory, side-effecting tools, multi-tenancy, or throughput work until a measured requirement promotes them and a new ADR defines the boundary.
 
 ## Conditional safety gate
 
