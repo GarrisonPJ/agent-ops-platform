@@ -41,11 +41,12 @@
 
   /* ── Shadows (Inner Glow vs Drop) ──────────────────── */
   --shadow-inner-glow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
-  --shadow-inner-glow-accent: inset 0 1px 0 rgba(255, 255, 255, 0.2), 0 0 0 1px rgba(75, 140, 247, 0.5);
+  --shadow-inner-glow-accent:
+    inset 0 1px 0 rgba(255, 255, 255, 0.2), 0 0 0 1px rgba(75, 140, 247, 0.5);
   --shadow-card: 0 1px 2px rgb(0 0 0 / 0.5), 0 4px 12px rgb(0 0 0 / 0.4);
   --shadow-card-raised: 0 2px 4px rgb(0 0 0 / 0.6), 0 8px 24px rgb(0 0 0 / 0.5);
   --shadow-glow-accent: 0 0 24px rgb(75 140 247 / 0.12);
-  --shadow-glow-info: 0 0 20px rgb(122 184 247 / 0.10);
+  --shadow-glow-info: 0 0 20px rgb(122 184 247 / 0.1);
 
   /* ── Easing ─────────────────────────────────────────── */
   --ease-spring: cubic-bezier(0.32, 0.72, 0, 1);
@@ -88,22 +89,53 @@ body.is-executing .ambient-glow {
 }
 
 /* ── Scrollbar ───────────────────────────────────────── */
-::-webkit-scrollbar { width: 5px; height: 5px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgb(255 255 255 / 0.06); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: rgb(255 255 255 / 0.12); }
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgb(255 255 255 / 0.06);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgb(255 255 255 / 0.12);
+}
 
 /* Schema inline scrollbar — zero white border, dark-only, cross-browser */
 .schema-scroll {
   scrollbar-width: thin;
   scrollbar-color: rgb(255 255 255 / 0.22) transparent;
 }
-.schema-scroll::-webkit-scrollbar { height: 4px; border: none; background: transparent; }
-.schema-scroll::-webkit-scrollbar-track { background: transparent; border: none; box-shadow: none; }
-.schema-scroll::-webkit-scrollbar-thumb { background: rgb(255 255 255 / 0.22); border-radius: 2px; border: none; }
-.schema-scroll::-webkit-scrollbar-thumb:hover { background: rgb(255 255 255 / 0.35); border: none; }
-.schema-scroll::-webkit-scrollbar-thumb:active { background: rgb(255 255 255 / 0.45); border: none; }
-.schema-scroll::-webkit-scrollbar-corner { background: transparent; border: none; }
+.schema-scroll::-webkit-scrollbar {
+  height: 4px;
+  border: none;
+  background: transparent;
+}
+.schema-scroll::-webkit-scrollbar-track {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+.schema-scroll::-webkit-scrollbar-thumb {
+  background: rgb(255 255 255 / 0.22);
+  border-radius: 2px;
+  border: none;
+}
+.schema-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgb(255 255 255 / 0.35);
+  border: none;
+}
+.schema-scroll::-webkit-scrollbar-thumb:active {
+  background: rgb(255 255 255 / 0.45);
+  border: none;
+}
+.schema-scroll::-webkit-scrollbar-corner {
+  background: transparent;
+  border: none;
+}
 
 /* ── Focus ───────────────────────────────────────────── */
 *:focus-visible {
@@ -120,8 +152,12 @@ body.is-executing .ambient-glow {
 
 /* ── Skeleton ────────────────────────────────────────── */
 @keyframes shimmer {
-  0%   { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
 }
 .skeleton {
   background: linear-gradient(
@@ -137,22 +173,30 @@ body.is-executing .ambient-glow {
 
 /* ── Perf ────────────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
+  *,
+  *::before,
+  *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
-  .skeleton { animation: none; }
+  .skeleton {
+    animation: none;
+  }
 }
 
 /* ── Playback: timeline flow animation ─────────────── */
 @keyframes timeline-flow {
-  0%   { background-position: 0 0; }
-  100% { background-position: 0 200%; }
+  0% {
+    background-position: 0 0;
+  }
+  100% {
+    background-position: 0 200%;
+  }
 }
 
 .step-card-timeline::before {
-  content: '';
+  content: "";
   position: absolute;
   left: 0;
   top: 0;
@@ -193,11 +237,14 @@ body.is-executing .ambient-glow {
 
 /* ── Playback: mini overview dot pulse ─────────────── */
 @keyframes mini-dot-pulse {
-  0%, 100% {
+  0%,
+  100% {
     box-shadow: 0 0 0 0 rgb(75 140 247 / 0.4);
   }
   50% {
-    box-shadow: 0 0 0 4px rgb(75 140 247 / 0.3), 0 0 8px rgb(75 140 247 / 0.5);
+    box-shadow:
+      0 0 0 4px rgb(75 140 247 / 0.3),
+      0 0 8px rgb(75 140 247 / 0.5);
   }
 }
 
@@ -238,4 +285,3 @@ body.is-executing .ambient-glow {
 .json-view-container [role="button"] {
   color: var(--color-fg-muted);
 }
-

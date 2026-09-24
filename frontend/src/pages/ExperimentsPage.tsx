@@ -31,7 +31,8 @@ export default function ExperimentsPage() {
           </p>
           <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">Experiments</h1>
           <p className="mt-3 max-w-xl text-sm leading-6 text-fg-muted sm:text-base">
-            Run an agent, diagnose the failure, validate a policy change, and adopt only what improves the evidence.
+            Run an agent, diagnose the failure, validate a policy change, and adopt only what
+            improves the evidence.
           </p>
         </div>
         <Link
@@ -109,15 +110,29 @@ export default function ExperimentsPage() {
                     </p>
                   </div>
                   <div className="flex items-center justify-between gap-8 md:block md:min-w-24">
-                    <span className="font-mono text-[10px] uppercase tracking-wider text-fg-subtle">Latest run</span>
-                    <div className="mt-1">{latestRun ? <LifecycleBadge status={latestRun.status} /> : <span className="text-sm text-fg-muted">Not run</span>}</div>
+                    <span className="font-mono text-[10px] uppercase tracking-wider text-fg-subtle">
+                      Latest run
+                    </span>
+                    <div className="mt-1">
+                      {latestRun ? (
+                        <LifecycleBadge status={latestRun.status} />
+                      ) : (
+                        <span className="text-sm text-fg-muted">Not run</span>
+                      )}
+                    </div>
                   </div>
                   <div className="flex items-center justify-between gap-8 md:block md:min-w-16">
-                    <span className="font-mono text-[10px] uppercase tracking-wider text-fg-subtle">Score</span>
-                    <p className="mt-1 font-mono text-sm text-fg-primary">{formatScore(latestRun?.score ?? null)}</p>
+                    <span className="font-mono text-[10px] uppercase tracking-wider text-fg-subtle">
+                      Score
+                    </span>
+                    <p className="mt-1 font-mono text-sm text-fg-primary">
+                      {formatScore(latestRun?.score ?? null)}
+                    </p>
                   </div>
                   <div className="flex items-center justify-between gap-4 md:min-w-32">
-                    <span className="text-xs text-fg-muted">{formatDate(latestRun?.queued_at ?? experiment.created_at)}</span>
+                    <span className="text-xs text-fg-muted">
+                      {formatDate(latestRun?.queued_at ?? experiment.created_at)}
+                    </span>
                     <ArrowRight className="h-4 w-4 text-fg-subtle transition-transform group-hover:translate-x-1 group-hover:text-accent" />
                   </div>
                 </Link>

@@ -3,10 +3,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import ErrorBanner from "../components/ErrorBanner";
 import { getApiErrorMessage } from "../lib/phase1Format";
-import {
-  useCreateExperimentMutation,
-  useGetScenariosQuery,
-} from "../services/experimentsApi";
+import { useCreateExperimentMutation, useGetScenariosQuery } from "../services/experimentsApi";
 import type { ExecutionMode, Scenario } from "../types/phase1";
 
 const FALLBACK_SCENARIO: Scenario = {
@@ -14,13 +11,8 @@ const FALLBACK_SCENARIO: Scenario = {
   name: "Checkout API Latency",
   description:
     "Investigate elevated checkout latency using health checks, dependency metrics, and evidence-backed logs.",
-  default_task:
-    "Investigate why the checkout API latency increased after the latest deployment.",
-  allowed_tools: [
-    "check_service_health",
-    "query_service_metrics",
-    "fetch_service_logs",
-  ],
+  default_task: "Investigate why the checkout API latency increased after the latest deployment.",
+  allowed_tools: ["check_service_health", "query_service_metrics", "fetch_service_logs"],
   params: [],
 };
 
@@ -30,8 +22,11 @@ function emptyScenarioParams(scenario: Scenario): Record<string, string> {
 
 export default function NewExperimentPage() {
   const navigate = useNavigate();
-  const { data: scenarios = [], isLoading: scenariosLoading, error: scenariosError } =
-    useGetScenariosQuery();
+  const {
+    data: scenarios = [],
+    isLoading: scenariosLoading,
+    error: scenariosError,
+  } = useGetScenariosQuery();
   const availableScenarios = scenarios.length > 0 ? scenarios : [FALLBACK_SCENARIO];
   const [selectedScenarioId, setSelectedScenarioId] = useState(
     availableScenarios[0]?.id ?? FALLBACK_SCENARIO.id,
@@ -93,8 +88,7 @@ export default function NewExperimentPage() {
         task: task.trim(),
         scenario_id: selectedScenario.id,
         execution_mode: executionMode,
-        scenario_params:
-          Object.keys(normalizedParams).length > 0 ? normalizedParams : undefined,
+        scenario_params: Object.keys(normalizedParams).length > 0 ? normalizedParams : undefined,
       }).unwrap();
       navigate(`/experiments/${experiment.id}`);
     } catch (error) {
@@ -115,9 +109,12 @@ export default function NewExperimentPage() {
       <p className="font-mono text-xs font-semibold uppercase tracking-[0.16em] text-accent">
         Registered scenario
       </p>
-      <h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">Create an experiment</h1>
+      <h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">
+        Create an experiment
+      </h1>
       <p className="mt-3 max-w-2xl text-sm leading-6 text-fg-muted sm:text-base">
-        Choose an allowlisted built-in scenario, then start the baseline-to-policy loop with fixture or provider execution.
+        Choose an allowlisted built-in scenario, then start the baseline-to-policy loop with fixture
+        or provider execution.
       </p>
 
       <form onSubmit={submit} className="mt-10 space-y-6" noValidate>
@@ -220,7 +217,8 @@ export default function NewExperimentPage() {
             Execution mode
           </legend>
           <p className="text-sm leading-6 text-fg-muted">
-            Fixture is the default deterministic path. Provider mode uses the Runner's server-side OpenAI-compatible configuration; this form never collects a URL, model, or credential.
+            Fixture is the default deterministic path. Provider mode uses the Runner's server-side
+            OpenAI-compatible configuration; this form never collects a URL, model, or credential.
           </p>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <label className="cursor-pointer rounded-md border border-border bg-bg-root/40 p-4 transition-colors has-[:checked]:border-accent/60 has-[:checked]:bg-accent/[0.08]">

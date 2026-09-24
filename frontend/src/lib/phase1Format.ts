@@ -18,9 +18,7 @@ export function formatScore(score: number | null) {
 
 export function formatDuration(milliseconds: number | null | undefined) {
   if (milliseconds == null) return "—";
-  return milliseconds >= 1000
-    ? `${(milliseconds / 1000).toFixed(1)}s`
-    : `${milliseconds}ms`;
+  return milliseconds >= 1000 ? `${(milliseconds / 1000).toFixed(1)}s` : `${milliseconds}ms`;
 }
 
 export function totalTokens(run: Run) {

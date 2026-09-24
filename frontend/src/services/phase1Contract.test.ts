@@ -1,12 +1,7 @@
 import { describe, expect, it } from "vitest";
-import {
-  eventEnvelopeSchema,
-  experimentSchema,
-  recordedJourneySchema,
-} from "../schemas/phase1";
+import { eventEnvelopeSchema, experimentSchema, recordedJourneySchema } from "../schemas/phase1";
 import { goldenJourney } from "./recorded/fixtures";
 import { parseRunEvent } from "./runStream";
-
 
 describe("Phase 1 frontend contract", () => {
   it("validates the complete recorded journey at the module boundary", () => {

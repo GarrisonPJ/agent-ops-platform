@@ -7,11 +7,7 @@ interface RecordedCallbacks {
   onDisconnect: (message: string) => void;
 }
 
-export function subscribeToRecordedRun(
-  runId: string,
-  after: number,
-  callbacks: RecordedCallbacks,
-) {
+export function subscribeToRecordedRun(runId: string, after: number, callbacks: RecordedCallbacks) {
   const events = (recordedEvents[runId] ?? []).filter((event) => event.sequence > after);
   let stopped = false;
   let timer: ReturnType<typeof setTimeout> | undefined;

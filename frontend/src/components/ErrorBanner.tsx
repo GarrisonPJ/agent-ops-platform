@@ -7,11 +7,7 @@ interface ErrorBannerProps {
   onRetry?: () => void;
 }
 
-export default function ErrorBanner({
-  title = "Error",
-  message,
-  onRetry,
-}: ErrorBannerProps) {
+export default function ErrorBanner({ title = "Error", message, onRetry }: ErrorBannerProps) {
   return (
     <motion.div
       initial={{ opacity: 0, y: -6 }}
@@ -22,14 +18,18 @@ export default function ErrorBanner({
         bg-gradient-to-b from-destructive/15 to-destructive/5
       "
     >
-      <div className="
+      <div
+        className="
         bg-destructive/[0.06] rounded-lg p-4
         flex items-start gap-3
-      ">
-        <span className="
+      "
+      >
+        <span
+          className="
           flex items-center justify-center w-8 h-8 rounded-xl
           bg-destructive/10 ring-1 ring-destructive/20 flex-shrink-0
-        ">
+        "
+        >
           <WarningCircle className="w-4 h-4 text-destructive" weight="fill" />
         </span>
         <div className="flex-1 min-w-0">

@@ -37,13 +37,7 @@ const STYLES: Record<LifecycleStatus, string> = {
   superseded: "border-white/10 bg-white/[0.04] text-fg-muted",
 };
 
-const PENDING: LifecycleStatus[] = [
-  "queued",
-  "claimed",
-  "running",
-  "cancelling",
-  "replaying",
-];
+const PENDING: LifecycleStatus[] = ["queued", "claimed", "running", "cancelling", "replaying"];
 
 export default function LifecycleBadge({ status }: { status: LifecycleStatus }) {
   return (

@@ -18,6 +18,8 @@ describe("appendUniqueEvent", () => {
   });
 
   it("keeps events ordered when replay starts after the last sequence", () => {
-    expect(appendUniqueEvent([event(1), event(3)], event(2)).map((item) => item.sequence)).toEqual([1, 2, 3]);
+    expect(appendUniqueEvent([event(1), event(3)], event(2)).map((item) => item.sequence)).toEqual([
+      1, 2, 3,
+    ]);
   });
 });

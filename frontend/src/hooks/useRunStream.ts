@@ -2,23 +2,11 @@ import { useEffect, useRef, useState } from "react";
 import { subscribeToRunStream } from "../services/runStream";
 import type { EventEnvelope } from "../types/phase1";
 
-export type StreamConnection =
-  | "connecting"
-  | "connected"
-  | "reconnecting"
-  | "closed"
-  | "error";
+export type StreamConnection = "connecting" | "connected" | "reconnecting" | "closed" | "error";
 
-const TERMINAL_EVENTS = new Set([
-  "run_completed",
-  "run_failed",
-  "run_cancelled",
-]);
+const TERMINAL_EVENTS = new Set(["run_completed", "run_failed", "run_cancelled"]);
 
-export function appendUniqueEvent(
-  events: EventEnvelope[],
-  incoming: EventEnvelope,
-) {
+export function appendUniqueEvent(events: EventEnvelope[], incoming: EventEnvelope) {
   if (events.some((event) => event.sequence === incoming.sequence)) return events;
   return [...events, incoming].sort((a, b) => a.sequence - b.sequence);
 }

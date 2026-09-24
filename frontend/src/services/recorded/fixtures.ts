@@ -1,7 +1,6 @@
 import { recordedJourneySchema } from "../../schemas/phase1";
 import rawJourney from "./goldenJourney.json";
 
-
 export const goldenJourney = recordedJourneySchema.parse(rawJourney);
 export const goldenExperiment = goldenJourney.experiment;
 export const secondaryExperiment = goldenJourney.secondary_experiment;
@@ -24,10 +23,7 @@ export const replayRun = required(
   goldenExperiment.runs.find((run) => run.kind === "replay"),
   "replay run",
 );
-export const candidatePolicy = required(
-  goldenExperiment.candidate_policy,
-  "candidate policy",
-);
+export const candidatePolicy = required(goldenExperiment.candidate_policy, "candidate policy");
 
 export const BASELINE_RUN_ID = baselineRun.id;
 export const REPLAY_RUN_ID = replayRun.id;

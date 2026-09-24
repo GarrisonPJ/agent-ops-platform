@@ -1,11 +1,4 @@
-import {
-  ArrowLeft,
-  ArrowRight,
-  Flask,
-  Play,
-  ShieldCheck,
-  Sparkle,
-} from "@phosphor-icons/react";
+import { ArrowLeft, ArrowRight, Flask, Play, ShieldCheck, Sparkle } from "@phosphor-icons/react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import EmptyState from "../components/EmptyState";
 import ErrorBanner from "../components/ErrorBanner";
@@ -19,15 +12,17 @@ import {
   getApiErrorMessage,
   totalTokens,
 } from "../lib/phase1Format";
-import {
-  useCreateBaselineRunMutation,
-  useGetExperimentQuery,
-} from "../services/experimentsApi";
+import { useCreateBaselineRunMutation, useGetExperimentQuery } from "../services/experimentsApi";
 
 export default function ExperimentDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { data: experiment, error, isLoading, refetch } = useGetExperimentQuery(id ?? "", {
+  const {
+    data: experiment,
+    error,
+    isLoading,
+    refetch,
+  } = useGetExperimentQuery(id ?? "", {
     skip: !id,
   });
   const [createBaseline, { isLoading: isStarting }] = useCreateBaselineRunMutation();
@@ -86,7 +81,9 @@ export default function ExperimentDetailPage() {
             </span>
             {experiment.active_policy ? <LifecycleBadge status="active" /> : null}
           </div>
-          <h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">{experiment.name}</h1>
+          <h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">
+            {experiment.name}
+          </h1>
           <p className="mt-3 text-sm leading-6 text-fg-muted sm:text-base">{experiment.task}</p>
         </div>
         <button
@@ -103,8 +100,12 @@ export default function ExperimentDetailPage() {
       <section aria-labelledby="policy-heading" className="mt-8">
         <div className="mb-4 flex items-center justify-between">
           <div>
-            <h2 id="policy-heading" className="text-lg font-semibold">Policy state</h2>
-            <p className="mt-1 text-sm text-fg-muted">Human-reviewed changes for this experiment only.</p>
+            <h2 id="policy-heading" className="text-lg font-semibold">
+              Policy state
+            </h2>
+            <p className="mt-1 text-sm text-fg-muted">
+              Human-reviewed changes for this experiment only.
+            </p>
           </div>
         </div>
 
@@ -116,12 +117,16 @@ export default function ExperimentDetailPage() {
                   <ShieldCheck className="h-5 w-5 text-success" weight="fill" />
                   <div>
                     <p className="text-sm font-semibold">Active policy</p>
-                    <p className="mt-0.5 font-mono text-xs text-fg-muted">{experiment.active_policy.id}</p>
+                    <p className="mt-0.5 font-mono text-xs text-fg-muted">
+                      {experiment.active_policy.id}
+                    </p>
                   </div>
                 </div>
                 <LifecycleBadge status={experiment.active_policy.status} />
               </div>
-              <p className="mt-4 text-sm leading-6 text-fg-muted">{experiment.active_policy.rationale}</p>
+              <p className="mt-4 text-sm leading-6 text-fg-muted">
+                {experiment.active_policy.rationale}
+              </p>
             </article>
           ) : (
             <article className="rounded-md border border-border bg-bg-card p-5 shadow-inner-glow">
@@ -129,7 +134,9 @@ export default function ExperimentDetailPage() {
                 <ShieldCheck className="h-5 w-5 text-fg-subtle" />
                 <div>
                   <p className="text-sm font-semibold">No active policy</p>
-                  <p className="mt-1 text-sm text-fg-muted">Validate a candidate replay before activation.</p>
+                  <p className="mt-1 text-sm text-fg-muted">
+                    Validate a candidate replay before activation.
+                  </p>
                 </div>
               </div>
             </article>
@@ -145,7 +152,9 @@ export default function ExperimentDetailPage() {
                   <Sparkle className="h-5 w-5 text-accent-amber" weight="fill" />
                   <div>
                     <p className="text-sm font-semibold">Candidate improvement</p>
-                    <p className="mt-0.5 text-xs text-fg-muted">Review evidence, replay, then decide.</p>
+                    <p className="mt-0.5 text-xs text-fg-muted">
+                      Review evidence, replay, then decide.
+                    </p>
                   </div>
                 </div>
                 <LifecycleBadge status={experiment.candidate_policy.status} />
@@ -157,7 +166,8 @@ export default function ExperimentDetailPage() {
                     : `${experiment.candidate_policy.score_delta > 0 ? "+" : ""}${experiment.candidate_policy.score_delta.toFixed(2)} score delta`}
                 </span>
                 <span className="inline-flex items-center gap-1 text-accent-amber">
-                  Review <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+                  Review{" "}
+                  <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
                 </span>
               </div>
             </Link>
@@ -167,7 +177,9 @@ export default function ExperimentDetailPage() {
                 <Sparkle className="h-5 w-5 text-fg-subtle" />
                 <div>
                   <p className="text-sm font-semibold">No candidate policy</p>
-                  <p className="mt-1 text-sm text-fg-muted">A failed baseline with actionable evidence will create one.</p>
+                  <p className="mt-1 text-sm text-fg-muted">
+                    A failed baseline with actionable evidence will create one.
+                  </p>
                 </div>
               </div>
             </article>
@@ -178,8 +190,12 @@ export default function ExperimentDetailPage() {
       <section aria-labelledby="runs-heading" className="mt-10">
         <div className="mb-4 flex items-end justify-between gap-4">
           <div>
-            <h2 id="runs-heading" className="text-lg font-semibold">Runs</h2>
-            <p className="mt-1 text-sm text-fg-muted">Baseline and policy replays share the same evaluation spec.</p>
+            <h2 id="runs-heading" className="text-lg font-semibold">
+              Runs
+            </h2>
+            <p className="mt-1 text-sm text-fg-muted">
+              Baseline and policy replays share the same evaluation spec.
+            </p>
           </div>
           <span className="font-mono text-xs text-fg-subtle">{runs.length} total</span>
         </div>
@@ -203,25 +219,46 @@ export default function ExperimentDetailPage() {
                   <th className="px-5 py-3 font-semibold">Duration</th>
                   <th className="px-5 py-3 font-semibold">Tokens</th>
                   <th className="px-5 py-3 font-semibold">Started</th>
-                  <th className="px-5 py-3"><span className="sr-only">Open</span></th>
+                  <th className="px-5 py-3">
+                    <span className="sr-only">Open</span>
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {runs.map((run) => (
-                  <tr key={run.id} className="border-b border-border last:border-0 hover:bg-white/[0.025]">
+                  <tr
+                    key={run.id}
+                    className="border-b border-border last:border-0 hover:bg-white/[0.025]"
+                  >
                     <td className="px-5 py-4">
                       <Link to={`/runs/${run.id}`} className="block rounded-sm">
-                        <span className="font-semibold capitalize text-fg-primary hover:text-accent">{run.kind}</span>
-                        <span className="mt-1 block font-mono text-[11px] text-fg-subtle">{run.id}</span>
+                        <span className="font-semibold capitalize text-fg-primary hover:text-accent">
+                          {run.kind}
+                        </span>
+                        <span className="mt-1 block font-mono text-[11px] text-fg-subtle">
+                          {run.id}
+                        </span>
                       </Link>
                     </td>
-                    <td className="px-5 py-4"><LifecycleBadge status={run.status} /></td>
+                    <td className="px-5 py-4">
+                      <LifecycleBadge status={run.status} />
+                    </td>
                     <td className="px-5 py-4 font-mono text-sm">{formatScore(run.score)}</td>
-                    <td className="px-5 py-4 font-mono text-sm text-fg-muted">{formatDuration(run.metrics?.latency_ms as number | undefined)}</td>
-                    <td className="px-5 py-4 font-mono text-sm text-fg-muted">{totalTokens(run)?.toLocaleString() ?? "—"}</td>
-                    <td className="px-5 py-4 text-sm text-fg-muted">{formatDate(run.started_at ?? run.queued_at)}</td>
+                    <td className="px-5 py-4 font-mono text-sm text-fg-muted">
+                      {formatDuration(run.metrics?.latency_ms as number | undefined)}
+                    </td>
+                    <td className="px-5 py-4 font-mono text-sm text-fg-muted">
+                      {totalTokens(run)?.toLocaleString() ?? "—"}
+                    </td>
+                    <td className="px-5 py-4 text-sm text-fg-muted">
+                      {formatDate(run.started_at ?? run.queued_at)}
+                    </td>
                     <td className="px-5 py-4 text-right">
-                      <Link to={`/runs/${run.id}`} aria-label={`Open ${run.kind} run`} className="inline-flex rounded-md p-2 text-fg-subtle hover:bg-white/[0.04] hover:text-accent">
+                      <Link
+                        to={`/runs/${run.id}`}
+                        aria-label={`Open ${run.kind} run`}
+                        className="inline-flex rounded-md p-2 text-fg-subtle hover:bg-white/[0.04] hover:text-accent"
+                      >
                         <ArrowRight className="h-4 w-4" />
                       </Link>
                     </td>

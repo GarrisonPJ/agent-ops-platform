@@ -15,7 +15,6 @@ import type {
   Scenario,
 } from "../schemas/phase1";
 
-
 export type {
   EvaluationSpec,
   EventEnvelope,

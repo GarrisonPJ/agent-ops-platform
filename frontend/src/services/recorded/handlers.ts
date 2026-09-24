@@ -15,16 +15,12 @@ import {
   secondaryExperiment,
 } from "./fixtures";
 
-
 type RecordedError = {
   status: number;
   data: { code: string; message: string };
 };
 
-let experiments: Experiment[] = [
-  cloneFixture(goldenExperiment),
-  cloneFixture(secondaryExperiment),
-];
+let experiments: Experiment[] = [cloneFixture(goldenExperiment), cloneFixture(secondaryExperiment)];
 
 const delay = () => new Promise((resolve) => setTimeout(resolve, 120));
 const ok = (data: unknown) => ({ data });
@@ -49,11 +45,7 @@ function replaceCandidate(policy: Policy) {
   );
 }
 
-export async function recordedHandler(
-  method: string,
-  url: string,
-  body?: unknown,
-) {
+export async function recordedHandler(method: string, url: string, body?: unknown) {
   await delay();
   const path = normalizedPath(url);
 
@@ -66,11 +58,7 @@ export async function recordedHandler(
           description:
             "Investigate elevated checkout latency using health checks, dependency metrics, and evidence-backed logs.",
           default_task: goldenExperiment.task,
-          allowed_tools: [
-            "check_service_health",
-            "query_service_metrics",
-            "fetch_service_logs",
-          ],
+          allowed_tools: ["check_service_health", "query_service_metrics", "fetch_service_logs"],
           params: [],
         },
         {
@@ -93,8 +81,7 @@ export async function recordedHandler(
           name: "API Fault Orchestration",
           description:
             "Recover from injected upstream failures using bounded retries and a degraded fallback route.",
-          default_task:
-            "Stabilize a failing API dependency without exhausting the step budget",
+          default_task: "Stabilize a failing API dependency without exhausting the step budget",
           allowed_tools: ["invoke_service", "retry_call", "degrade_route"],
           params: [
             {
@@ -256,9 +243,7 @@ export async function recordedHandler(
 
   const cancelMatch = path.match(/^\/runs\/([^/]+)\/cancel$/);
   if (method === "POST" && cancelMatch) {
-    const run = experiments
-      .flatMap((item) => item.runs)
-      .find((item) => item.id === cancelMatch[1]);
+    const run = experiments.flatMap((item) => item.runs).find((item) => item.id === cancelMatch[1]);
     if (!run) return fail(404, "RUN_NOT_FOUND", "Run not found.");
     const cancelled: Run = {
       ...cloneFixture(run),
@@ -267,9 +252,7 @@ export async function recordedHandler(
     };
     experiments = experiments.map((experiment) => ({
       ...experiment,
-      runs: experiment.runs.map((item) =>
-        item.id === cancelled.id ? cancelled : item,
-      ),
+      runs: experiment.runs.map((item) => (item.id === cancelled.id ? cancelled : item)),
     }));
     return ok(cloneFixture(cancelled));
   }
@@ -277,9 +260,7 @@ export async function recordedHandler(
   const runMatch = path.match(/^\/runs\/([^/]+)$/);
   if (method === "GET" && runMatch) {
     const id = runMatch[1];
-    const run = experiments
-      .flatMap((item) => item.runs)
-      .find((item) => item.id === id);
+    const run = experiments.flatMap((item) => item.runs).find((item) => item.id === id);
     if (run) return ok(cloneFixture(run));
     if (id === BASELINE_RUN_ID) return ok(cloneFixture(baselineRun));
     if (id === REPLAY_RUN_ID) return ok(cloneFixture(replayRun));
@@ -322,8 +303,7 @@ export async function recordedHandler(
     };
     replaceCandidate(policy);
     experiments = experiments.map((item) =>
-      item.id === policy.experiment_id &&
-      !item.runs.some((run) => run.id === recordedReplay.id)
+      item.id === policy.experiment_id && !item.runs.some((run) => run.id === recordedReplay.id)
         ? { ...item, runs: [recordedReplay, ...item.runs] }
         : item,
     );
@@ -332,9 +312,7 @@ export async function recordedHandler(
 
   const activateMatch = path.match(/^\/policies\/([^/]+)\/activate$/);
   if (method === "POST" && activateMatch) {
-    const experiment = experiments.find(
-      (item) => item.candidate_policy?.id === activateMatch[1],
-    );
+    const experiment = experiments.find((item) => item.candidate_policy?.id === activateMatch[1]);
     if (!experiment?.candidate_policy) {
       return fail(404, "POLICY_NOT_FOUND", "Policy not found.");
     }
@@ -394,18 +372,14 @@ export async function recordedHandler(
       status: "active",
     };
     experiments = experiments.map((item) =>
-      item.id === experiment.id
-        ? { ...item, active_policy: active, candidate_policy: null }
-        : item,
+      item.id === experiment.id ? { ...item, active_policy: active, candidate_policy: null } : item,
     );
     return ok(cloneFixture(active));
   }
 
   const rejectMatch = path.match(/^\/policies\/([^/]+)\/reject$/);
   if (method === "POST" && rejectMatch) {
-    const experiment = experiments.find(
-      (item) => item.candidate_policy?.id === rejectMatch[1],
-    );
+    const experiment = experiments.find((item) => item.candidate_policy?.id === rejectMatch[1]);
     if (!experiment?.candidate_policy) {
       return fail(404, "POLICY_NOT_FOUND", "Policy not found.");
     }
@@ -420,18 +394,12 @@ export async function recordedHandler(
     return ok(cloneFixture(rejected));
   }
 
-  return fail(
-    404,
-    "RECORDED_ROUTE_NOT_FOUND",
-    `No recorded response for ${method} ${path}.`,
-  );
+  return fail(404, "RECORDED_ROUTE_NOT_FOUND", `No recorded response for ${method} ${path}.`);
 }
 
-export const recordedBaseQuery: BaseQueryFn<
-  string | FetchArgs,
-  unknown,
-  RecordedError
-> = async (args) => {
+export const recordedBaseQuery: BaseQueryFn<string | FetchArgs, unknown, RecordedError> = async (
+  args,
+) => {
   const url = typeof args === "string" ? args : args.url;
   const method = typeof args === "string" ? "GET" : (args.method ?? "GET");
   const body = typeof args === "string" ? undefined : args.body;
@@ -439,8 +407,5 @@ export const recordedBaseQuery: BaseQueryFn<
 };
 
 export function resetRecordedDemo() {
-  experiments = [
-    cloneFixture(goldenExperiment),
-    cloneFixture(secondaryExperiment),
-  ];
+  experiments = [cloneFixture(goldenExperiment), cloneFixture(secondaryExperiment)];
 }

@@ -3,7 +3,6 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import NewExperimentPage from "./NewExperimentPage";
 
-
 const mocks = vi.hoisted(() => ({
   createExperiment: vi.fn(),
   navigate: vi.fn(),
@@ -14,11 +13,7 @@ const mocks = vi.hoisted(() => ({
       description: "Investigate elevated checkout latency.",
       default_task:
         "Investigate why the checkout API latency increased after the latest deployment.",
-      allowed_tools: [
-        "check_service_health",
-        "query_service_metrics",
-        "fetch_service_logs",
-      ],
+      allowed_tools: ["check_service_health", "query_service_metrics", "fetch_service_logs"],
       params: [],
     },
     {
@@ -52,12 +47,10 @@ vi.mock("react-router-dom", async () => {
   return { ...actual, useNavigate: () => mocks.navigate };
 });
 
-
 afterEach(() => {
   mocks.createExperiment.mockReset();
   mocks.navigate.mockReset();
 });
-
 
 describe("NewExperimentPage", () => {
   it("submits provider mode without exposing provider configuration fields", async () => {

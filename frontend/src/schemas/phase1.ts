@@ -1,6 +1,5 @@
 import { z } from "zod";
 
-
 export const runStatusSchema = z.enum([
   "queued",
   "claimed",
@@ -44,10 +43,7 @@ export const scenarioParamKeySchema = z
   .regex(/^[a-z0-9][a-z0-9-]{0,62}$/);
 
 export const scenarioParamsSchema = z
-  .record(
-    scenarioParamKeySchema,
-    z.string().min(1).max(200),
-  )
+  .record(scenarioParamKeySchema, z.string().min(1).max(200))
   .refine((value) => Object.keys(value).length <= 20, {
     message: "scenario_params may contain at most 20 keys",
   });
@@ -191,9 +187,7 @@ export const runAnalysisSchema = z
     dominant_type: z.string().nullable(),
     failure_rate: z.number().min(0).max(1),
     failure_types: z.record(z.string(), z.number().min(0).max(1)).default({}),
-    metric_directions: z
-      .record(z.string(), z.enum(["maximize", "minimize"]))
-      .default({}),
+    metric_directions: z.record(z.string(), z.enum(["maximize", "minimize"])).default({}),
   })
   .strict();
 

@@ -17,12 +17,7 @@ import ErrorBanner from "../components/ErrorBanner";
 import LifecycleBadge from "../components/LifecycleBadge";
 import LoadingSkeleton from "../components/LoadingSkeleton";
 import { useRunStream } from "../hooks/useRunStream";
-import {
-  formatDuration,
-  formatScore,
-  getApiErrorMessage,
-  totalTokens,
-} from "../lib/phase1Format";
+import { formatDuration, formatScore, getApiErrorMessage, totalTokens } from "../lib/phase1Format";
 import {
   compareAnalysis,
   compareMetric,
@@ -83,9 +78,7 @@ function stepPayload(event: EventEnvelope): StepCompletedPayload {
         ? payload.decision_summary
         : "No decision summary was recorded.",
     tool_call:
-      payload.tool_call && typeof payload.tool_call === "object"
-        ? payload.tool_call
-        : null,
+      payload.tool_call && typeof payload.tool_call === "object" ? payload.tool_call : null,
     observation: typeof payload.observation === "string" ? payload.observation : "",
     latency_ms: typeof payload.latency_ms === "number" ? payload.latency_ms : 0,
     token_prompt: typeof payload.token_prompt === "number" ? payload.token_prompt : null,
@@ -98,8 +91,17 @@ function stepPayload(event: EventEnvelope): StepCompletedPayload {
   };
 }
 
-function Metric({ label, value, tone = "default" }: { label: string; value: string; tone?: "default" | "success" | "error" }) {
-  const color = tone === "success" ? "text-success" : tone === "error" ? "text-error" : "text-fg-primary";
+function Metric({
+  label,
+  value,
+  tone = "default",
+}: {
+  label: string;
+  value: string;
+  tone?: "default" | "success" | "error";
+}) {
+  const color =
+    tone === "success" ? "text-success" : tone === "error" ? "text-error" : "text-fg-primary";
   return (
     <div className="rounded-md border border-border bg-bg-card px-4 py-3 shadow-inner-glow">
       <p className="font-mono text-[10px] uppercase tracking-wider text-fg-subtle">{label}</p>
@@ -127,7 +129,10 @@ function TracePanel({
   return (
     <div className="space-y-4">
       {connectionError && connection === "reconnecting" ? (
-        <div role="status" className="flex items-center gap-2 rounded-md border border-accent-amber/20 bg-accent-amber/[0.06] px-4 py-3 text-sm text-accent-amber">
+        <div
+          role="status"
+          className="flex items-center gap-2 rounded-md border border-accent-amber/20 bg-accent-amber/[0.06] px-4 py-3 text-sm text-accent-amber"
+        >
           <Clock className="h-4 w-4" /> Reconnecting from the last persisted event…
         </div>
       ) : null}
@@ -144,19 +149,26 @@ function TracePanel({
         {stepEvents.map((event) => {
           const step = stepPayload(event);
           return (
-            <li key={event.sequence} className="relative rounded-md border border-border bg-bg-card p-4 shadow-inner-glow sm:p-5">
+            <li
+              key={event.sequence}
+              className="relative rounded-md border border-border bg-bg-card p-4 shadow-inner-glow sm:p-5"
+            >
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div className="flex min-w-0 gap-3">
                   <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-accent/20 bg-accent/10 font-mono text-xs font-semibold text-accent">
                     {step.index + 1}
                   </span>
                   <div className="min-w-0">
-                    <p className="text-sm font-medium leading-6 text-fg-primary">{step.decision_summary}</p>
+                    <p className="text-sm font-medium leading-6 text-fg-primary">
+                      {step.decision_summary}
+                    </p>
                     {step.tool_call ? (
                       <div className="mt-3 rounded-md border border-border bg-bg-root/70 p-3">
                         <div className="flex flex-wrap items-center gap-2">
                           <Lightning className="h-4 w-4 text-accent-amber" weight="fill" />
-                          <code className="font-mono text-xs font-semibold text-accent-amber">{step.tool_call.name}</code>
+                          <code className="font-mono text-xs font-semibold text-accent-amber">
+                            {step.tool_call.name}
+                          </code>
                         </div>
                         <pre className="schema-scroll mt-2 overflow-x-auto font-mono text-[11px] leading-5 text-fg-muted">
                           {JSON.stringify(step.tool_call.arguments, null, 2)}
@@ -165,18 +177,26 @@ function TracePanel({
                     ) : null}
                   </div>
                 </div>
-                <span className="shrink-0 font-mono text-[11px] text-fg-subtle">{formatDuration(step.latency_ms)}</span>
+                <span className="shrink-0 font-mono text-[11px] text-fg-subtle">
+                  {formatDuration(step.latency_ms)}
+                </span>
               </div>
               {step.observation ? (
                 <div className="mt-4 border-t border-border pt-4">
-                  <p className="font-mono text-[10px] uppercase tracking-wider text-fg-subtle">Observation</p>
-                  <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-fg-muted">{step.observation}</p>
+                  <p className="font-mono text-[10px] uppercase tracking-wider text-fg-subtle">
+                    Observation
+                  </p>
+                  <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-fg-muted">
+                    {step.observation}
+                  </p>
                 </div>
               ) : null}
               <div className="mt-4 flex flex-wrap gap-4 font-mono text-[10px] text-fg-subtle">
                 <span>event #{event.sequence}</span>
                 {step.token_prompt != null ? <span>{step.token_prompt} prompt tokens</span> : null}
-                {step.token_completion != null ? <span>{step.token_completion} completion tokens</span> : null}
+                {step.token_completion != null ? (
+                  <span>{step.token_completion} completion tokens</span>
+                ) : null}
               </div>
             </li>
           );
@@ -187,7 +207,9 @@ function TracePanel({
         <details className="rounded-md border border-border bg-bg-card p-4">
           <summary className="cursor-pointer text-sm font-semibold">Process output</summary>
           <pre className="schema-scroll mt-3 max-h-64 overflow-auto whitespace-pre-wrap font-mono text-xs leading-5 text-fg-muted">
-            {outputEvents.map((event) => String(event.payload.line ?? event.payload.output ?? "")).join("\n")}
+            {outputEvents
+              .map((event) => String(event.payload.line ?? event.payload.output ?? ""))
+              .join("\n")}
           </pre>
         </details>
       ) : null}
@@ -206,7 +228,10 @@ function PolicyDiff({ policy, baseline }: { policy: Policy; baseline: Run }) {
         <div>
           <p className="mb-2 text-fg-subtle">instruction_patch</p>
           {policy.patch.instruction_patch.map((instruction) => (
-            <p key={instruction} className="border-l-2 border-success/50 bg-success/[0.06] px-3 py-2 leading-5 text-success">
+            <p
+              key={instruction}
+              className="border-l-2 border-success/50 bg-success/[0.06] px-3 py-2 leading-5 text-success"
+            >
               + {instruction}
             </p>
           ))}
@@ -214,14 +239,21 @@ function PolicyDiff({ policy, baseline }: { policy: Policy; baseline: Run }) {
         <div>
           <p className="mb-2 text-fg-subtle">tool_priority</p>
           {Object.entries(policy.patch.tool_priority).map(([tool, priority]) => (
-            <p key={tool} className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 border-l-2 border-success/50 bg-success/[0.06] px-3 py-2 text-success">
-              <span className="truncate">+ {tool}</span><span>{priority.toFixed(1)}</span>
+            <p
+              key={tool}
+              className="grid grid-cols-[minmax(0,1fr)_auto] gap-3 border-l-2 border-success/50 bg-success/[0.06] px-3 py-2 text-success"
+            >
+              <span className="truncate">+ {tool}</span>
+              <span>{priority.toFixed(1)}</span>
             </p>
           ))}
         </div>
         <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-3">
           <span className="text-fg-subtle">max_steps</span>
-          <span><span className="text-error line-through">{baseMaxSteps ?? "—"}</span> <span className="text-success">→ {policy.patch.max_steps}</span></span>
+          <span>
+            <span className="text-error line-through">{baseMaxSteps ?? "—"}</span>{" "}
+            <span className="text-success">→ {policy.patch.max_steps}</span>
+          </span>
         </div>
       </div>
     </div>
@@ -265,9 +297,13 @@ function ComparisonMetricRow({
       <div className="mt-3 grid grid-cols-[1fr_auto_1fr] items-baseline gap-2 font-mono">
         <span>{comparison.before == null ? "—" : formatter(comparison.before)}</span>
         <ArrowRight className="h-4 w-4 text-fg-subtle" />
-        <span className="text-right">{comparison.after == null ? "—" : formatter(comparison.after)}</span>
+        <span className="text-right">
+          {comparison.after == null ? "—" : formatter(comparison.after)}
+        </span>
       </div>
-      <p className="mt-2 text-right font-mono text-xs text-fg-muted">{formatSigned(comparison.delta, formatter)}</p>
+      <p className="mt-2 text-right font-mono text-xs text-fg-muted">
+        {formatSigned(comparison.delta, formatter)}
+      </p>
     </div>
   );
 }
@@ -293,14 +329,27 @@ function AnalysisComparisonList({
     <div className="space-y-3">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h3 className="text-sm font-semibold">{title}</h3>
-        {entries.some(([, item]) => item.status === "regressed") ? <span className="font-mono text-[10px] uppercase tracking-wider text-error">Regression first</span> : null}
+        {entries.some(([, item]) => item.status === "regressed") ? (
+          <span className="font-mono text-[10px] uppercase tracking-wider text-error">
+            Regression first
+          </span>
+        ) : null}
       </div>
       {entries.length ? (
         <div className="grid gap-3 sm:grid-cols-2">
-          {entries.map(([key, item]) => <ComparisonMetricRow key={key} label={formatFailureType(key)} comparison={item} formatter={(value) => `${Math.round(value * 100)}%`} />)}
+          {entries.map(([key, item]) => (
+            <ComparisonMetricRow
+              key={key}
+              label={formatFailureType(key)}
+              comparison={item}
+              formatter={(value) => `${Math.round(value * 100)}%`}
+            />
+          ))}
         </div>
       ) : (
-        <p className="rounded-md border border-border bg-bg-card p-4 text-sm text-fg-muted">{emptyMessage}</p>
+        <p className="rounded-md border border-border bg-bg-card p-4 text-sm text-fg-muted">
+          {emptyMessage}
+        </p>
       )}
     </div>
   );
@@ -320,15 +369,29 @@ function StepDiffRow({ step }: { step: StepComparison }) {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <span className="font-mono text-xs font-semibold">Step {step.index + 1}</span>
-          <span className="rounded-full border border-current/20 px-2 py-0.5 text-[10px] uppercase tracking-wide">{step.kind}</span>
-          {toolName ? <code className="font-mono text-[11px] text-fg-muted">{toolName}</code> : null}
+          <span className="rounded-full border border-current/20 px-2 py-0.5 text-[10px] uppercase tracking-wide">
+            {step.kind}
+          </span>
+          {toolName ? (
+            <code className="font-mono text-[11px] text-fg-muted">{toolName}</code>
+          ) : null}
         </div>
-        <span className="text-[10px] font-semibold uppercase tracking-wide">{statusLabel(step.status)}</span>
+        <span className="text-[10px] font-semibold uppercase tracking-wide">
+          {statusLabel(step.status)}
+        </span>
       </div>
       {step.kind === "changed" ? (
         <div className="mt-3 grid gap-2 text-xs text-fg-muted sm:grid-cols-2">
-          <p><span className="font-mono text-[10px] uppercase text-fg-subtle">Before</span><br />{String(step.before?.decision_summary ?? step.before?.observation ?? "No summary")}</p>
-          <p><span className="font-mono text-[10px] uppercase text-fg-subtle">After</span><br />{String(step.after?.decision_summary ?? step.after?.observation ?? "No summary")}</p>
+          <p>
+            <span className="font-mono text-[10px] uppercase text-fg-subtle">Before</span>
+            <br />
+            {String(step.before?.decision_summary ?? step.before?.observation ?? "No summary")}
+          </p>
+          <p>
+            <span className="font-mono text-[10px] uppercase text-fg-subtle">After</span>
+            <br />
+            {String(step.after?.decision_summary ?? step.after?.observation ?? "No summary")}
+          </p>
         </div>
       ) : null}
     </li>
@@ -336,20 +399,43 @@ function StepDiffRow({ step }: { step: StepComparison }) {
 }
 
 function StepComparisonList({ steps }: { steps: StepComparison[] }) {
-  const ordered = [...steps].sort((left, right) => STATUS_RANK[left.status] - STATUS_RANK[right.status] || left.index - right.index);
+  const ordered = [...steps].sort(
+    (left, right) =>
+      STATUS_RANK[left.status] - STATUS_RANK[right.status] || left.index - right.index,
+  );
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h3 id="step-diff-heading" className="text-sm font-semibold">Step diff</h3>
-        {ordered.some((step) => step.status === "regressed") ? <span className="font-mono text-[10px] uppercase tracking-wider text-error">Regressions first</span> : null}
+        <h3 id="step-diff-heading" className="text-sm font-semibold">
+          Step diff
+        </h3>
+        {ordered.some((step) => step.status === "regressed") ? (
+          <span className="font-mono text-[10px] uppercase tracking-wider text-error">
+            Regressions first
+          </span>
+        ) : null}
       </div>
-      {ordered.length ? <ol className="space-y-2">{ordered.map((step) => <StepDiffRow key={step.index} step={step} />)}</ol> : <p className="rounded-md border border-border bg-bg-card p-4 text-sm text-fg-muted">No persisted step events are available for comparison yet.</p>}
+      {ordered.length ? (
+        <ol className="space-y-2">
+          {ordered.map((step) => (
+            <StepDiffRow key={step.index} step={step} />
+          ))}
+        </ol>
+      ) : (
+        <p className="rounded-md border border-border bg-bg-card p-4 text-sm text-fg-muted">
+          No persisted step events are available for comparison yet.
+        </p>
+      )}
     </div>
   );
 }
 
 function runStepCount(run: Run, events: EventEnvelope[]) {
-  return run.metrics.step_count ?? run.metrics.steps ?? events.filter((event) => event.type === "step_completed").length;
+  return (
+    run.metrics.step_count ??
+    run.metrics.steps ??
+    events.filter((event) => event.type === "step_completed").length
+  );
 }
 
 function apiErrorCode(error: unknown): string | null {
@@ -360,38 +446,85 @@ function apiErrorCode(error: unknown): string | null {
   return typeof code === "string" ? code : null;
 }
 
-function RegressionCaseReport({ regressionCase, runs }: { regressionCase: RegressionCase; runs: Run[] }) {
+function RegressionCaseReport({
+  regressionCase,
+  runs,
+}: {
+  regressionCase: RegressionCase;
+  runs: Run[];
+}) {
   const source = runs.find((run) => run.id === regressionCase.source_run_id);
-  const replay = regressionCase.replay_run_id ? runs.find((run) => run.id === regressionCase.replay_run_id) : undefined;
-  const comparisons = source && replay ? {
-    score: compareMetric(source.score, replay.score, "maximize"),
-    steps: compareMetric(runStepCount(source, []), runStepCount(replay, []), "minimize"),
-    latency: compareMetric(source.metrics.latency_ms, replay.metrics.latency_ms, "minimize"),
-    tokens: compareMetric(totalTokens(source), totalTokens(replay), "minimize"),
-  } : null;
+  const replay = regressionCase.replay_run_id
+    ? runs.find((run) => run.id === regressionCase.replay_run_id)
+    : undefined;
+  const comparisons =
+    source && replay
+      ? {
+          score: compareMetric(source.score, replay.score, "maximize"),
+          steps: compareMetric(runStepCount(source, []), runStepCount(replay, []), "minimize"),
+          latency: compareMetric(source.metrics.latency_ms, replay.metrics.latency_ms, "minimize"),
+          tokens: compareMetric(totalTokens(source), totalTokens(replay), "minimize"),
+        }
+      : null;
 
   return (
     <article className="rounded-md border border-border bg-bg-card p-4 shadow-inner-glow">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="font-mono text-xs text-fg-muted">{regressionCase.scenario_id} · seed {regressionCase.seed}</span>
-        <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${regressionCase.reproducibility === "deterministic" ? "border-success/25 text-success" : "border-accent-amber/25 text-accent-amber"}`}>
-          {regressionCase.reproducibility === "deterministic" ? "deterministic" : "provider boundary"}
+        <span className="font-mono text-xs text-fg-muted">
+          {regressionCase.scenario_id} · seed {regressionCase.seed}
+        </span>
+        <span
+          className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${regressionCase.reproducibility === "deterministic" ? "border-success/25 text-success" : "border-accent-amber/25 text-accent-amber"}`}
+        >
+          {regressionCase.reproducibility === "deterministic"
+            ? "deterministic"
+            : "provider boundary"}
         </span>
       </div>
-      {!regressionCase.eligible_for_replay ? <p className="mt-2 text-xs leading-5 text-fg-muted">Recorded for analysis only. Provider behavior cannot be completely reproduced.</p> : null}
-      {regressionCase.eligible_for_replay && !replay ? <p className="mt-2 text-xs leading-5 text-fg-muted">Replay required before activation.</p> : null}
+      {!regressionCase.eligible_for_replay ? (
+        <p className="mt-2 text-xs leading-5 text-fg-muted">
+          Recorded for analysis only. Provider behavior cannot be completely reproduced.
+        </p>
+      ) : null}
+      {regressionCase.eligible_for_replay && !replay ? (
+        <p className="mt-2 text-xs leading-5 text-fg-muted">Replay required before activation.</p>
+      ) : null}
       {replay ? (
         <div className="mt-3 space-y-3 border-t border-border pt-3">
-          <div className="flex flex-wrap items-center justify-between gap-2 text-xs"><span className="text-fg-muted">Regression replay</span><LifecycleBadge status={replay.status} /></div>
+          <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+            <span className="text-fg-muted">Regression replay</span>
+            <LifecycleBadge status={replay.status} />
+          </div>
           {comparisons ? (
             <div className="grid gap-2 sm:grid-cols-2">
-              <ComparisonMetricRow label="Score" comparison={comparisons.score} formatter={formatScore} />
-              <ComparisonMetricRow label="Steps" comparison={comparisons.steps} formatter={(value) => String(value)} />
-              <ComparisonMetricRow label="Latency" comparison={comparisons.latency} formatter={formatDuration} />
-              <ComparisonMetricRow label="Tokens" comparison={comparisons.tokens} formatter={(value) => value.toLocaleString()} />
+              <ComparisonMetricRow
+                label="Score"
+                comparison={comparisons.score}
+                formatter={formatScore}
+              />
+              <ComparisonMetricRow
+                label="Steps"
+                comparison={comparisons.steps}
+                formatter={(value) => String(value)}
+              />
+              <ComparisonMetricRow
+                label="Latency"
+                comparison={comparisons.latency}
+                formatter={formatDuration}
+              />
+              <ComparisonMetricRow
+                label="Tokens"
+                comparison={comparisons.tokens}
+                formatter={(value) => value.toLocaleString()}
+              />
             </div>
           ) : null}
-          <Link to={`/runs/${replay.id}?view=trace`} className="inline-flex items-center gap-1 text-xs font-semibold text-accent">Open regression replay <ArrowRight className="h-3.5 w-3.5" /></Link>
+          <Link
+            to={`/runs/${replay.id}?view=trace`}
+            className="inline-flex items-center gap-1 text-xs font-semibold text-accent"
+          >
+            Open regression replay <ArrowRight className="h-3.5 w-3.5" />
+          </Link>
         </div>
       ) : null}
     </article>
@@ -406,21 +539,36 @@ export default function RunDetailPage() {
   const activeTab: Tab = isTab(requestedTab) ? requestedTab : "trace";
   const [actionError, setActionError] = useState<string | null>(null);
 
-  const { data: run, error: runError, isLoading, refetch: refetchRun } = useGetRunQuery(id ?? "", { skip: !id });
+  const {
+    data: run,
+    error: runError,
+    isLoading,
+    refetch: refetchRun,
+  } = useGetRunQuery(id ?? "", { skip: !id });
   const { events, connection, connectionError } = useRunStream(id);
   const status = run ? effectiveStatus(run, events) : null;
   const terminal = status ? !PENDING_STATUSES.includes(status) : false;
-  const { data: experiment, refetch: refetchExperiment } = useGetExperimentQuery(run?.experiment_id ?? "", { skip: !run?.experiment_id });
-  const { data: analysis, error: analysisError, isFetching: analysisLoading, refetch: refetchAnalysis } = useGetRunAnalysisQuery(id ?? "", { skip: !id || !terminal });
+  const { data: experiment, refetch: refetchExperiment } = useGetExperimentQuery(
+    run?.experiment_id ?? "",
+    { skip: !run?.experiment_id },
+  );
+  const {
+    data: analysis,
+    error: analysisError,
+    isFetching: analysisLoading,
+    refetch: refetchAnalysis,
+  } = useGetRunAnalysisQuery(id ?? "", { skip: !id || !terminal });
   const [cancelRun, { isLoading: isCancelling }] = useCancelRunMutation();
   const [replayPolicy, { isLoading: isReplaying }] = useReplayPolicyMutation();
   const [activatePolicy, { isLoading: isActivating }] = useActivatePolicyMutation();
   const [rejectPolicy, { isLoading: isRejecting }] = useRejectPolicyMutation();
-  const [saveRegressionCase, { isLoading: isSavingRegressionCase }] = useSaveRegressionCaseMutation();
+  const [saveRegressionCase, { isLoading: isSavingRegressionCase }] =
+    useSaveRegressionCaseMutation();
 
   const lastEvent = events[events.length - 1];
   useEffect(() => {
-    if (!lastEvent || !["run_completed", "run_failed", "run_cancelled"].includes(lastEvent.type)) return;
+    if (!lastEvent || !["run_completed", "run_failed", "run_cancelled"].includes(lastEvent.type))
+      return;
     void refetchRun();
     void refetchAnalysis();
     void refetchExperiment();
@@ -449,8 +597,8 @@ export default function RunDetailPage() {
   const replayEvents = comparison?.replay.id === id ? events : replayStream.events;
   const comparisonReady = Boolean(
     comparison &&
-      !PENDING_STATUSES.includes(comparison.baseline.status) &&
-      !PENDING_STATUSES.includes(comparison.replay.status),
+    !PENDING_STATUSES.includes(comparison.baseline.status) &&
+    !PENDING_STATUSES.includes(comparison.replay.status),
   );
   const {
     data: baselineAnalysis,
@@ -474,15 +622,33 @@ export default function RunDetailPage() {
     baselineAnalysis?.metric_directions[key] ?? replayAnalysis?.metric_directions[key] ?? fallback;
   const runComparisons = comparison
     ? {
-        score: compareMetric(comparison.baseline.score, comparison.replay.score, directionFor("score", "maximize")),
-        steps: compareMetric(runStepCount(comparison.baseline, baselineEvents), runStepCount(comparison.replay, replayEvents), "minimize"),
-        latency: compareMetric(comparison.baseline.metrics.latency_ms, comparison.replay.metrics.latency_ms, directionFor("latency_ms", "minimize")),
-        tokens: compareMetric(totalTokens(comparison.baseline), totalTokens(comparison.replay), directionFor("total_tokens", "minimize")),
+        score: compareMetric(
+          comparison.baseline.score,
+          comparison.replay.score,
+          directionFor("score", "maximize"),
+        ),
+        steps: compareMetric(
+          runStepCount(comparison.baseline, baselineEvents),
+          runStepCount(comparison.replay, replayEvents),
+          "minimize",
+        ),
+        latency: compareMetric(
+          comparison.baseline.metrics.latency_ms,
+          comparison.replay.metrics.latency_ms,
+          directionFor("latency_ms", "minimize"),
+        ),
+        tokens: compareMetric(
+          totalTokens(comparison.baseline),
+          totalTokens(comparison.replay),
+          directionFor("total_tokens", "minimize"),
+        ),
       }
     : null;
   const comparisonAnalysisLoading = baselineAnalysisLoading || replayAnalysisLoading;
   const comparisonAnalysisError = baselineAnalysisError || replayAnalysisError;
-  const regressionCase = experiment?.regression_cases.find((item) => item.id === run?.regression_case_id);
+  const regressionCase = experiment?.regression_cases.find(
+    (item) => item.id === run?.regression_case_id,
+  );
   const regressionCases = experiment?.regression_cases ?? [];
   const experimentRuns = experiment?.runs ?? [];
 
@@ -574,14 +740,24 @@ export default function RunDetailPage() {
   };
 
   if (isLoading) {
-    return <div className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6"><LoadingSkeleton variant="detail" /></div>;
+    return (
+      <div className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6">
+        <LoadingSkeleton variant="detail" />
+      </div>
+    );
   }
 
   if (runError || !run || !status) {
     return (
       <div className="mx-auto w-full max-w-3xl px-4 py-12 sm:px-6">
-        <ErrorBanner title="Run unavailable" message={getApiErrorMessage(runError)} onRetry={() => void refetchRun()} />
-        <Link to="/experiments" className="mt-6 inline-flex items-center gap-2 text-sm text-accent"><ArrowLeft className="h-4 w-4" /> Experiments</Link>
+        <ErrorBanner
+          title="Run unavailable"
+          message={getApiErrorMessage(runError)}
+          onRetry={() => void refetchRun()}
+        />
+        <Link to="/experiments" className="mt-6 inline-flex items-center gap-2 text-sm text-accent">
+          <ArrowLeft className="h-4 w-4" /> Experiments
+        </Link>
       </div>
     );
   }
@@ -590,7 +766,10 @@ export default function RunDetailPage() {
 
   return (
     <div className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6 sm:py-12">
-      <Link to={`/experiments/${run.experiment_id}`} className="mb-7 inline-flex items-center gap-2 rounded-md text-sm text-fg-muted hover:text-fg-primary">
+      <Link
+        to={`/experiments/${run.experiment_id}`}
+        className="mb-7 inline-flex items-center gap-2 rounded-md text-sm text-fg-muted hover:text-fg-primary"
+      >
         <ArrowLeft className="h-4 w-4" /> Experiment
       </Link>
 
@@ -598,41 +777,85 @@ export default function RunDetailPage() {
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <LifecycleBadge status={status} />
-            <span className="font-mono text-[11px] uppercase tracking-wider text-fg-subtle">{run.kind} · {run.id}</span>
-            {connection === "reconnecting" ? <span role="status" className="font-mono text-[11px] text-accent-amber">Reconnecting…</span> : null}
+            <span className="font-mono text-[11px] uppercase tracking-wider text-fg-subtle">
+              {run.kind} · {run.id}
+            </span>
+            {connection === "reconnecting" ? (
+              <span role="status" className="font-mono text-[11px] text-accent-amber">
+                Reconnecting…
+              </span>
+            ) : null}
           </div>
-          <h1 className="mt-4 max-w-3xl text-2xl font-semibold tracking-tight sm:text-3xl">{run.evaluation_spec.task}</h1>
+          <h1 className="mt-4 max-w-3xl text-2xl font-semibold tracking-tight sm:text-3xl">
+            {run.evaluation_spec.task}
+          </h1>
         </div>
         <div className="flex flex-wrap gap-2">
           {terminal && ["failed", "timed_out"].includes(status) && !run.regression_case_id ? (
-            <button type="button" onClick={() => void saveAsRegressionCase()} disabled={isSavingRegressionCase} className="inline-flex w-fit items-center gap-2 rounded-md border border-accent-amber/25 bg-accent-amber/[0.06] px-4 py-2.5 text-sm font-semibold text-accent-amber hover:bg-accent-amber/10 disabled:cursor-wait disabled:opacity-60">
-              <Flask className="h-4 w-4" weight="fill" /> {isSavingRegressionCase ? "Saving…" : "Save regression case"}
+            <button
+              type="button"
+              onClick={() => void saveAsRegressionCase()}
+              disabled={isSavingRegressionCase}
+              className="inline-flex w-fit items-center gap-2 rounded-md border border-accent-amber/25 bg-accent-amber/[0.06] px-4 py-2.5 text-sm font-semibold text-accent-amber hover:bg-accent-amber/10 disabled:cursor-wait disabled:opacity-60"
+            >
+              <Flask className="h-4 w-4" weight="fill" />{" "}
+              {isSavingRegressionCase ? "Saving…" : "Save regression case"}
             </button>
           ) : null}
           {canCancel ? (
-            <button type="button" onClick={() => void cancel()} disabled={isCancelling} className="inline-flex w-fit items-center gap-2 rounded-md border border-error/25 bg-error/[0.06] px-4 py-2.5 text-sm font-semibold text-error hover:bg-error/10 disabled:cursor-wait disabled:opacity-60">
-              <Stop className="h-4 w-4" weight="fill" /> {isCancelling ? "Requesting…" : "Cancel run"}
+            <button
+              type="button"
+              onClick={() => void cancel()}
+              disabled={isCancelling}
+              className="inline-flex w-fit items-center gap-2 rounded-md border border-error/25 bg-error/[0.06] px-4 py-2.5 text-sm font-semibold text-error hover:bg-error/10 disabled:cursor-wait disabled:opacity-60"
+            >
+              <Stop className="h-4 w-4" weight="fill" />{" "}
+              {isCancelling ? "Requesting…" : "Cancel run"}
             </button>
           ) : null}
         </div>
       </div>
 
-      {run.error ? <div className="mt-6"><ErrorBanner title={status === "timed_out" ? "Run timed out" : "Run did not complete"} message={run.error} /></div> : null}
-      {actionError ? <div className="mt-6"><ErrorBanner title="Action failed" message={actionError} /></div> : null}
+      {run.error ? (
+        <div className="mt-6">
+          <ErrorBanner
+            title={status === "timed_out" ? "Run timed out" : "Run did not complete"}
+            message={run.error}
+          />
+        </div>
+      ) : null}
+      {actionError ? (
+        <div className="mt-6">
+          <ErrorBanner title="Action failed" message={actionError} />
+        </div>
+      ) : null}
       {regressionCase ? (
         <div className="mt-6 flex items-start gap-3 rounded-md border border-accent-amber/20 bg-accent-amber/[0.05] p-4 text-sm">
           <Flask className="mt-0.5 h-5 w-5 shrink-0 text-accent-amber" weight="fill" />
-          <div><p className="font-semibold">Regression case saved</p><p className="mt-1 text-fg-muted">{regressionCase.reproducibility_note}</p></div>
+          <div>
+            <p className="font-semibold">Regression case saved</p>
+            <p className="mt-1 text-fg-muted">{regressionCase.reproducibility_note}</p>
+          </div>
         </div>
       ) : null}
 
       <div className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Metric label="Score" value={formatScore(run.score)} tone={run.score != null && run.score >= 0.8 ? "success" : status === "failed" ? "error" : "default"} />
         <Metric
-          label="Steps"
-          value={String(runStepCount(run, events))}
+          label="Score"
+          value={formatScore(run.score)}
+          tone={
+            run.score != null && run.score >= 0.8
+              ? "success"
+              : status === "failed"
+                ? "error"
+                : "default"
+          }
         />
-        <Metric label="Latency" value={formatDuration(run.metrics?.latency_ms as number | undefined)} />
+        <Metric label="Steps" value={String(runStepCount(run, events))} />
+        <Metric
+          label="Latency"
+          value={formatDuration(run.metrics?.latency_ms as number | undefined)}
+        />
         <Metric label="Tokens" value={totalTokens(run)?.toLocaleString() ?? "—"} />
       </div>
 
@@ -652,7 +875,9 @@ export default function RunDetailPage() {
               className={`relative min-w-24 rounded-t-md px-4 py-3 text-sm font-semibold capitalize transition-colors ${activeTab === tab ? "text-fg-primary" : "text-fg-muted hover:text-fg-primary"}`}
             >
               {tab}
-              {activeTab === tab ? <span className="absolute inset-x-3 bottom-0 h-0.5 bg-accent" /> : null}
+              {activeTab === tab ? (
+                <span className="absolute inset-x-3 bottom-0 h-0.5 bg-accent" />
+              ) : null}
             </button>
           ))}
         </div>
@@ -661,33 +886,65 @@ export default function RunDetailPage() {
       <div className="py-7">
         {activeTab === "trace" ? (
           <section id="run-panel-trace" role="tabpanel" aria-labelledby="run-tab-trace">
-            <TracePanel events={events} connection={connection} connectionError={connectionError} terminal={terminal} />
+            <TracePanel
+              events={events}
+              connection={connection}
+              connectionError={connectionError}
+              terminal={terminal}
+            />
           </section>
         ) : null}
 
         {activeTab === "analysis" ? (
           <section id="run-panel-analysis" role="tabpanel" aria-labelledby="run-tab-analysis">
             {!terminal || analysisLoading ? <LoadingSkeleton variant="detail" /> : null}
-            {terminal && analysisError ? <ErrorBanner title="Analysis unavailable" message={getApiErrorMessage(analysisError)} onRetry={() => void refetchAnalysis()} /> : null}
+            {terminal && analysisError ? (
+              <ErrorBanner
+                title="Analysis unavailable"
+                message={getApiErrorMessage(analysisError)}
+                onRetry={() => void refetchAnalysis()}
+              />
+            ) : null}
             {analysis ? (
               <div className="space-y-6">
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                   {Object.entries(analysis.dimensions).map(([dimension, value]) => (
-                    <div key={dimension} className="rounded-md border border-border bg-bg-card p-4 shadow-inner-glow">
-                      <p className="font-mono text-[10px] uppercase tracking-wider text-fg-subtle">{dimension}</p>
-                      <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/[0.06]"><div className="h-full rounded-full bg-accent-amber" style={{ width: `${Math.min(Math.max(value, 0), 1) * 100}%` }} /></div>
+                    <div
+                      key={dimension}
+                      className="rounded-md border border-border bg-bg-card p-4 shadow-inner-glow"
+                    >
+                      <p className="font-mono text-[10px] uppercase tracking-wider text-fg-subtle">
+                        {dimension}
+                      </p>
+                      <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/[0.06]">
+                        <div
+                          className="h-full rounded-full bg-accent-amber"
+                          style={{ width: `${Math.min(Math.max(value, 0), 1) * 100}%` }}
+                        />
+                      </div>
                       <div className="mt-2 flex items-baseline justify-between gap-2">
                         <p className="font-mono text-sm">{Math.round(value * 100)}%</p>
-                        {analysis.metric_directions[dimension] ? <span className="text-[10px] text-fg-subtle">{analysis.metric_directions[dimension] === "minimize" ? "lower is better" : "higher is better"}</span> : null}
+                        {analysis.metric_directions[dimension] ? (
+                          <span className="text-[10px] text-fg-subtle">
+                            {analysis.metric_directions[dimension] === "minimize"
+                              ? "lower is better"
+                              : "higher is better"}
+                          </span>
+                        ) : null}
                       </div>
                     </div>
                   ))}
                 </div>
                 {Object.keys(analysis.failure_types).length ? (
                   <div className="flex flex-wrap items-center gap-2 border-b border-border pb-5">
-                    <span className="font-mono text-[10px] uppercase tracking-wider text-fg-subtle">Failure classifications</span>
+                    <span className="font-mono text-[10px] uppercase tracking-wider text-fg-subtle">
+                      Failure classifications
+                    </span>
                     {Object.entries(analysis.failure_types).map(([failureType, value]) => (
-                      <span key={failureType} className="rounded-full border border-accent-amber/20 bg-accent-amber/[0.06] px-2.5 py-1 text-xs capitalize text-fg-muted">
+                      <span
+                        key={failureType}
+                        className="rounded-full border border-accent-amber/20 bg-accent-amber/[0.06] px-2.5 py-1 text-xs capitalize text-fg-muted"
+                      >
                         {formatFailureType(failureType)} {Math.round(value * 100)}%
                       </span>
                     ))}
@@ -696,25 +953,51 @@ export default function RunDetailPage() {
                 <div className="rounded-md border border-border bg-bg-card p-5 shadow-inner-glow">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
-                      <p className="font-mono text-[10px] uppercase tracking-wider text-fg-subtle">Dominant failure</p>
-                      <h2 className="mt-1 text-lg font-semibold capitalize">{analysis.dominant_type ?? "No material failure"}</h2>
+                      <p className="font-mono text-[10px] uppercase tracking-wider text-fg-subtle">
+                        Dominant failure
+                      </p>
+                      <h2 className="mt-1 text-lg font-semibold capitalize">
+                        {analysis.dominant_type ?? "No material failure"}
+                      </h2>
                     </div>
-                    <span className="font-mono text-xs text-fg-muted">Failure rate {Math.round(analysis.failure_rate * 100)}%</span>
+                    <span className="font-mono text-xs text-fg-muted">
+                      Failure rate {Math.round(analysis.failure_rate * 100)}%
+                    </span>
                   </div>
                   {analysis.evidence.length ? (
                     <ol className="mt-5 space-y-3">
                       {analysis.evidence.map((evidence, index) => (
-                        <li key={`${evidence.dimension}-${evidence.step_index}-${index}`} className="flex gap-3 rounded-md border border-accent-amber/15 bg-accent-amber/[0.04] p-4">
-                          <WarningCircle className="mt-0.5 h-5 w-5 shrink-0 text-accent-amber" weight="fill" />
+                        <li
+                          key={`${evidence.dimension}-${evidence.step_index}-${index}`}
+                          className="flex gap-3 rounded-md border border-accent-amber/15 bg-accent-amber/[0.04] p-4"
+                        >
+                          <WarningCircle
+                            className="mt-0.5 h-5 w-5 shrink-0 text-accent-amber"
+                            weight="fill"
+                          />
                           <div>
-                            <div className="flex flex-wrap items-center gap-2"><span className="text-sm font-semibold capitalize">{formatFailureType(evidence.failure_type ?? evidence.dimension)}</span>{evidence.step_index != null ? <span className="font-mono text-[10px] text-fg-subtle">Step {evidence.step_index + 1}</span> : null}</div>
-                            <p className="mt-1 text-sm leading-6 text-fg-muted">{evidence.reason}</p>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-sm font-semibold capitalize">
+                                {formatFailureType(evidence.failure_type ?? evidence.dimension)}
+                              </span>
+                              {evidence.step_index != null ? (
+                                <span className="font-mono text-[10px] text-fg-subtle">
+                                  Step {evidence.step_index + 1}
+                                </span>
+                              ) : null}
+                            </div>
+                            <p className="mt-1 text-sm leading-6 text-fg-muted">
+                              {evidence.reason}
+                            </p>
                           </div>
                         </li>
                       ))}
                     </ol>
                   ) : (
-                    <div className="mt-5 flex items-center gap-3 rounded-md border border-success/15 bg-success/[0.05] p-4 text-sm text-success"><CheckCircle className="h-5 w-5" weight="fill" /> No actionable failure evidence was found.</div>
+                    <div className="mt-5 flex items-center gap-3 rounded-md border border-success/15 bg-success/[0.05] p-4 text-sm text-success">
+                      <CheckCircle className="h-5 w-5" weight="fill" /> No actionable failure
+                      evidence was found.
+                    </div>
                   )}
                 </div>
               </div>
@@ -725,12 +1008,25 @@ export default function RunDetailPage() {
         {activeTab === "improve" ? (
           <section id="run-panel-improve" role="tabpanel" aria-labelledby="run-tab-improve">
             {!policy ? (
-              <EmptyState icon={Lightning} message="No policy candidate" description={terminal ? "This run did not produce an actionable candidate. Review the analysis evidence." : "The failure analyzer will create a candidate after this run reaches a terminal state."} />
+              <EmptyState
+                icon={Lightning}
+                message="No policy candidate"
+                description={
+                  terminal
+                    ? "This run did not produce an actionable candidate. Review the analysis evidence."
+                    : "The failure analyzer will create a candidate after this run reaches a terminal state."
+                }
+              />
             ) : (
               <div className="grid gap-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
                 <div>
                   <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-                    <div><h2 className="text-lg font-semibold">Candidate policy</h2><p className="mt-1 max-w-2xl text-sm leading-6 text-fg-muted">{policy.rationale}</p></div>
+                    <div>
+                      <h2 className="text-lg font-semibold">Candidate policy</h2>
+                      <p className="mt-1 max-w-2xl text-sm leading-6 text-fg-muted">
+                        {policy.rationale}
+                      </p>
+                    </div>
                     <LifecycleBadge status={policy.status} />
                   </div>
                   <PolicyDiff policy={policy} baseline={comparison?.baseline ?? run} />
@@ -740,11 +1036,21 @@ export default function RunDetailPage() {
                   {regressionCases.length ? (
                     <section className="space-y-3" aria-labelledby="regression-cases-heading">
                       <div className="flex items-baseline justify-between gap-2">
-                        <h2 id="regression-cases-heading" className="text-lg font-semibold">Regression cases</h2>
-                        <span className="font-mono text-[10px] text-fg-subtle">{regressionCases.length} saved</span>
+                        <h2 id="regression-cases-heading" className="text-lg font-semibold">
+                          Regression cases
+                        </h2>
+                        <span className="font-mono text-[10px] text-fg-subtle">
+                          {regressionCases.length} saved
+                        </span>
                       </div>
                       <div className="space-y-2">
-                        {regressionCases.map((item) => <RegressionCaseReport key={item.id} regressionCase={item} runs={experimentRuns} />)}
+                        {regressionCases.map((item) => (
+                          <RegressionCaseReport
+                            key={item.id}
+                            regressionCase={item}
+                            runs={experimentRuns}
+                          />
+                        ))}
                       </div>
                     </section>
                   ) : null}
@@ -753,31 +1059,78 @@ export default function RunDetailPage() {
                       <section className="space-y-4" aria-labelledby="replay-comparison-heading">
                         <div className="flex flex-wrap items-baseline justify-between gap-2">
                           <div>
-                            <p className="font-mono text-[10px] uppercase tracking-wider text-success">Replay comparison</p>
-                            <h2 id="replay-comparison-heading" className="mt-1 text-lg font-semibold">Persisted before / after facts</h2>
+                            <p className="font-mono text-[10px] uppercase tracking-wider text-success">
+                              Replay comparison
+                            </p>
+                            <h2
+                              id="replay-comparison-heading"
+                              className="mt-1 text-lg font-semibold"
+                            >
+                              Persisted before / after facts
+                            </h2>
                           </div>
-                          <span className="font-mono text-[10px] text-fg-subtle">{comparison.baseline.id.slice(0, 8)} → {comparison.replay.id.slice(0, 8)}</span>
+                          <span className="font-mono text-[10px] text-fg-subtle">
+                            {comparison.baseline.id.slice(0, 8)} →{" "}
+                            {comparison.replay.id.slice(0, 8)}
+                          </span>
                         </div>
                         <div className="grid gap-3 sm:grid-cols-2">
-                          <ComparisonMetricRow label="Score delta" comparison={runComparisons.score} formatter={formatScore} />
-                          <ComparisonMetricRow label="Steps" comparison={runComparisons.steps} formatter={(value) => String(value)} />
-                          <ComparisonMetricRow label="Latency" comparison={runComparisons.latency} formatter={formatDuration} />
-                          <ComparisonMetricRow label="Tokens" comparison={runComparisons.tokens} formatter={(value) => value.toLocaleString()} />
+                          <ComparisonMetricRow
+                            label="Score delta"
+                            comparison={runComparisons.score}
+                            formatter={formatScore}
+                          />
+                          <ComparisonMetricRow
+                            label="Steps"
+                            comparison={runComparisons.steps}
+                            formatter={(value) => String(value)}
+                          />
+                          <ComparisonMetricRow
+                            label="Latency"
+                            comparison={runComparisons.latency}
+                            formatter={formatDuration}
+                          />
+                          <ComparisonMetricRow
+                            label="Tokens"
+                            comparison={runComparisons.tokens}
+                            formatter={(value) => value.toLocaleString()}
+                          />
                         </div>
                       </section>
 
                       <section className="space-y-5" aria-labelledby="analysis-comparison-heading">
                         <div className="flex flex-wrap items-baseline justify-between gap-2">
-                          <h2 id="analysis-comparison-heading" className="text-lg font-semibold">Analysis comparison</h2>
-                          {comparisonAnalysisError ? <span className="text-xs text-error">Analysis unavailable</span> : null}
+                          <h2 id="analysis-comparison-heading" className="text-lg font-semibold">
+                            Analysis comparison
+                          </h2>
+                          {comparisonAnalysisError ? (
+                            <span className="text-xs text-error">Analysis unavailable</span>
+                          ) : null}
                         </div>
                         {comparisonAnalysisLoading ? <LoadingSkeleton variant="detail" /> : null}
-                        {comparisonAnalysisError ? <ErrorBanner title="Comparison analysis unavailable" message={getApiErrorMessage(comparisonAnalysisError)} /> : null}
+                        {comparisonAnalysisError ? (
+                          <ErrorBanner
+                            title="Comparison analysis unavailable"
+                            message={getApiErrorMessage(comparisonAnalysisError)}
+                          />
+                        ) : null}
                         {analysisComparison ? (
                           <div className="space-y-5">
-                            <ComparisonMetricRow label="Failure rate" comparison={analysisComparison.failureRate} formatter={(value) => `${Math.round(value * 100)}%`} />
-                            <AnalysisComparisonList title="Dimensions" comparisons={analysisComparison.dimensions} emptyMessage="No persisted dimension metrics changed." />
-                            <AnalysisComparisonList title="Failure classifications" comparisons={analysisComparison.failureTypes} emptyMessage="No persisted failure classifications were recorded." />
+                            <ComparisonMetricRow
+                              label="Failure rate"
+                              comparison={analysisComparison.failureRate}
+                              formatter={(value) => `${Math.round(value * 100)}%`}
+                            />
+                            <AnalysisComparisonList
+                              title="Dimensions"
+                              comparisons={analysisComparison.dimensions}
+                              emptyMessage="No persisted dimension metrics changed."
+                            />
+                            <AnalysisComparisonList
+                              title="Failure classifications"
+                              comparisons={analysisComparison.failureTypes}
+                              emptyMessage="No persisted failure classifications were recorded."
+                            />
                           </div>
                         ) : null}
                       </section>
@@ -786,18 +1139,68 @@ export default function RunDetailPage() {
                         <StepComparisonList steps={stepComparison} />
                       </section>
 
-                      <Link to={`/runs/${comparison.replay.id}?view=trace`} className="inline-flex items-center gap-2 text-sm font-semibold text-success">Open replay trace <ArrowRight className="h-4 w-4" /></Link>
+                      <Link
+                        to={`/runs/${comparison.replay.id}?view=trace`}
+                        className="inline-flex items-center gap-2 text-sm font-semibold text-success"
+                      >
+                        Open replay trace <ArrowRight className="h-4 w-4" />
+                      </Link>
                     </div>
                   ) : (
-                    <div className="rounded-md border border-border bg-bg-card p-5 shadow-inner-glow"><p className="text-sm font-semibold">Replay required</p><p className="mt-2 text-sm leading-6 text-fg-muted">Run the candidate against the same spec and seed before activation becomes available.</p></div>
+                    <div className="rounded-md border border-border bg-bg-card p-5 shadow-inner-glow">
+                      <p className="text-sm font-semibold">Replay required</p>
+                      <p className="mt-2 text-sm leading-6 text-fg-muted">
+                        Run the candidate against the same spec and seed before activation becomes
+                        available.
+                      </p>
+                    </div>
                   )}
 
                   <div className="flex flex-col gap-2">
-                    {policy.status === "candidate" ? <button type="button" onClick={() => void replay()} disabled={isReplaying} className="inline-flex items-center justify-center gap-2 rounded-md bg-accent px-4 py-2.5 text-sm font-semibold text-white hover:bg-accent/90 disabled:cursor-wait disabled:opacity-60"><Play className="h-4 w-4" weight="fill" />{isReplaying ? "Starting replay…" : "Run candidate replay"}</button> : null}
-                    {policy.status === "validated" && (policy.score_delta ?? 0) > 0 ? <button type="button" onClick={() => void activate()} disabled={isActivating} className="inline-flex items-center justify-center gap-2 rounded-md bg-success px-4 py-2.5 text-sm font-semibold text-bg-root hover:bg-success/90 disabled:cursor-wait disabled:opacity-60"><CheckCircle className="h-4 w-4" weight="fill" />{isActivating ? "Activating…" : "Activate policy"}</button> : null}
-                    {["candidate", "validated"].includes(policy.status) ? <button type="button" onClick={() => void reject()} disabled={isRejecting} className="rounded-md border border-border px-4 py-2.5 text-sm font-semibold text-fg-muted hover:bg-white/[0.04] hover:text-fg-primary disabled:cursor-wait disabled:opacity-60">{isRejecting ? "Rejecting…" : "Reject candidate"}</button> : null}
-                    {policy.status === "active" ? <div className="flex items-center gap-2 rounded-md border border-success/20 bg-success/[0.05] p-4 text-sm text-success"><CheckCircle className="h-5 w-5" weight="fill" />Active for future runs in this experiment.</div> : null}
-                    {policy.status === "rejected" ? <div className="rounded-md border border-border bg-bg-card p-4 text-sm text-fg-muted">This candidate was rejected. Run a new baseline to generate another candidate.</div> : null}
+                    {policy.status === "candidate" ? (
+                      <button
+                        type="button"
+                        onClick={() => void replay()}
+                        disabled={isReplaying}
+                        className="inline-flex items-center justify-center gap-2 rounded-md bg-accent px-4 py-2.5 text-sm font-semibold text-white hover:bg-accent/90 disabled:cursor-wait disabled:opacity-60"
+                      >
+                        <Play className="h-4 w-4" weight="fill" />
+                        {isReplaying ? "Starting replay…" : "Run candidate replay"}
+                      </button>
+                    ) : null}
+                    {policy.status === "validated" && (policy.score_delta ?? 0) > 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => void activate()}
+                        disabled={isActivating}
+                        className="inline-flex items-center justify-center gap-2 rounded-md bg-success px-4 py-2.5 text-sm font-semibold text-bg-root hover:bg-success/90 disabled:cursor-wait disabled:opacity-60"
+                      >
+                        <CheckCircle className="h-4 w-4" weight="fill" />
+                        {isActivating ? "Activating…" : "Activate policy"}
+                      </button>
+                    ) : null}
+                    {["candidate", "validated"].includes(policy.status) ? (
+                      <button
+                        type="button"
+                        onClick={() => void reject()}
+                        disabled={isRejecting}
+                        className="rounded-md border border-border px-4 py-2.5 text-sm font-semibold text-fg-muted hover:bg-white/[0.04] hover:text-fg-primary disabled:cursor-wait disabled:opacity-60"
+                      >
+                        {isRejecting ? "Rejecting…" : "Reject candidate"}
+                      </button>
+                    ) : null}
+                    {policy.status === "active" ? (
+                      <div className="flex items-center gap-2 rounded-md border border-success/20 bg-success/[0.05] p-4 text-sm text-success">
+                        <CheckCircle className="h-5 w-5" weight="fill" />
+                        Active for future runs in this experiment.
+                      </div>
+                    ) : null}
+                    {policy.status === "rejected" ? (
+                      <div className="rounded-md border border-border bg-bg-card p-4 text-sm text-fg-muted">
+                        This candidate was rejected. Run a new baseline to generate another
+                        candidate.
+                      </div>
+                    ) : null}
                   </div>
                 </aside>
               </div>

@@ -42,7 +42,8 @@ export default function Phase1Layout({ children }: { children: React.ReactNode }
                 className={cn(
                   "rounded-md px-3 py-2 text-sm font-medium transition-colors",
                   location.pathname !== "/experiments/new" &&
-                    (location.pathname.startsWith("/experiments") || location.pathname.startsWith("/runs"))
+                    (location.pathname.startsWith("/experiments") ||
+                      location.pathname.startsWith("/runs"))
                     ? "bg-white/[0.05] text-fg-primary shadow-inner-glow"
                     : "text-fg-muted hover:bg-white/[0.03] hover:text-fg-primary",
                 )}

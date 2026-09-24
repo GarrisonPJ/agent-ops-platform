@@ -1,11 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import {
-  BASELINE_RUN_ID,
-  GOLDEN_EXPERIMENT_ID,
-  candidatePolicy,
-} from "./fixtures";
+import { BASELINE_RUN_ID, GOLDEN_EXPERIMENT_ID, candidatePolicy } from "./fixtures";
 import { recordedHandler, resetRecordedDemo } from "./handlers";
-
 
 describe("recorded demo handlers", () => {
   beforeEach(() => resetRecordedDemo());
@@ -26,10 +21,7 @@ describe("recorded demo handlers", () => {
   });
 
   it("returns the fixed persisted analysis without recomputing it", async () => {
-    const response = await recordedHandler(
-      "GET",
-      `/runs/${BASELINE_RUN_ID}/analysis`,
-    );
+    const response = await recordedHandler("GET", `/runs/${BASELINE_RUN_ID}/analysis`);
     expect(response).toMatchObject({
       data: {
         run_id: BASELINE_RUN_ID,
@@ -43,24 +35,16 @@ describe("recorded demo handlers", () => {
   });
 
   it("replays the complete create, baseline, replay, and activate journey", async () => {
-    const createdResponse = await recordedHandler(
-      "POST",
-      "/experiments",
-      {
-        name: "Recorded journey",
-        task: "Investigate checkout API latency",
-        scenario_id: "checkout-api-latency.v1",
-      },
-    );
+    const createdResponse = await recordedHandler("POST", "/experiments", {
+      name: "Recorded journey",
+      task: "Investigate checkout API latency",
+      scenario_id: "checkout-api-latency.v1",
+    });
     expect("data" in createdResponse).toBe(true);
     if (!("data" in createdResponse)) return;
     const experimentId = (createdResponse.data as { id: string }).id;
 
-    const baselineResponse = await recordedHandler(
-      "POST",
-      `/experiments/${experimentId}/runs`,
-      {},
-    );
+    const baselineResponse = await recordedHandler("POST", `/experiments/${experimentId}/runs`, {});
     expect(baselineResponse).toMatchObject({
       data: {
         status: "failed",
@@ -69,10 +53,7 @@ describe("recorded demo handlers", () => {
       },
     });
 
-    const candidateDetail = await recordedHandler(
-      "GET",
-      `/experiments/${experimentId}`,
-    );
+    const candidateDetail = await recordedHandler("GET", `/experiments/${experimentId}`);
     expect(candidateDetail).toMatchObject({
       data: {
         candidate_policy: {
@@ -83,10 +64,7 @@ describe("recorded demo handlers", () => {
       },
     });
 
-    const replayResponse = await recordedHandler(
-      "POST",
-      `/policies/${candidatePolicy.id}/replay`,
-    );
+    const replayResponse = await recordedHandler("POST", `/policies/${candidatePolicy.id}/replay`);
     expect(replayResponse).toMatchObject({
       data: {
         status: "validated",
@@ -101,10 +79,7 @@ describe("recorded demo handlers", () => {
     expect(activationResponse).toMatchObject({
       data: { status: "active" },
     });
-    const activeDetail = await recordedHandler(
-      "GET",
-      `/experiments/${experimentId}`,
-    );
+    const activeDetail = await recordedHandler("GET", `/experiments/${experimentId}`);
     expect(activeDetail).toMatchObject({
       data: {
         active_policy: { status: "active" },
@@ -112,7 +87,6 @@ describe("recorded demo handlers", () => {
       },
     });
   });
-
 
   it("saves a fixture failure and gates activation on its regression replay", async () => {
     const createdResponse = await recordedHandler("POST", "/experiments", {
@@ -122,11 +96,7 @@ describe("recorded demo handlers", () => {
     });
     if (!("data" in createdResponse)) return;
     const experimentId = (createdResponse.data as { id: string }).id;
-    const baselineResponse = await recordedHandler(
-      "POST",
-      `/experiments/${experimentId}/runs`,
-      {},
-    );
+    const baselineResponse = await recordedHandler("POST", `/experiments/${experimentId}/runs`, {});
     if (!("data" in baselineResponse)) return;
     const runId = (baselineResponse.data as { id: string }).id;
 
@@ -141,10 +111,7 @@ describe("recorded demo handlers", () => {
     expect(await recordedHandler("POST", `/runs/${runId}/regression-case`)).toEqual(saved);
 
     await recordedHandler("POST", `/policies/${candidatePolicy.id}/replay`);
-    const gated = await recordedHandler(
-      "POST",
-      `/policies/${candidatePolicy.id}/activate`,
-    );
+    const gated = await recordedHandler("POST", `/policies/${candidatePolicy.id}/activate`);
     expect(gated).toMatchObject({
       error: { status: 409, data: { code: "REGRESSION_REPLAY_PENDING" } },
     });
@@ -158,33 +125,25 @@ describe("recorded demo handlers", () => {
         ],
       },
     });
-    expect(
-      await recordedHandler("POST", `/policies/${candidatePolicy.id}/activate`),
-    ).toMatchObject({ data: { status: "active" } });
+    expect(await recordedHandler("POST", `/policies/${candidatePolicy.id}/activate`)).toMatchObject(
+      { data: { status: "active" } },
+    );
   });
 
   it("keeps the selected provider mode as recorded response data", async () => {
-    const createdResponse = await recordedHandler(
-      "POST",
-      "/experiments",
-      {
-        name: "Provider recording",
-        task: "Investigate checkout API latency",
-        scenario_id: "checkout-api-latency.v1",
-        execution_mode: "provider",
-      },
-    );
+    const createdResponse = await recordedHandler("POST", "/experiments", {
+      name: "Provider recording",
+      task: "Investigate checkout API latency",
+      scenario_id: "checkout-api-latency.v1",
+      execution_mode: "provider",
+    });
     expect(createdResponse).toMatchObject({
       data: { execution_mode: "provider" },
     });
     if (!("data" in createdResponse)) return;
     const experimentId = (createdResponse.data as { id: string }).id;
 
-    const baselineResponse = await recordedHandler(
-      "POST",
-      `/experiments/${experimentId}/runs`,
-      {},
-    );
+    const baselineResponse = await recordedHandler("POST", `/experiments/${experimentId}/runs`, {});
     expect(baselineResponse).toMatchObject({
       data: { evaluation_spec: { execution_mode: "provider" } },
     });

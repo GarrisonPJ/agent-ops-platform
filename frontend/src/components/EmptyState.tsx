@@ -25,7 +25,9 @@ export default function EmptyState({
       <span className="mb-6 opacity-10 flex items-center justify-center pointer-events-none">
         <Icon className="w-32 h-32 text-fg-primary" weight="light" />
       </span>
-      <h3 className="text-fg-primary text-[15px] font-mono uppercase tracking-[0.2em] mb-2">{message}</h3>
+      <h3 className="text-fg-primary text-[15px] font-mono uppercase tracking-[0.2em] mb-2">
+        {message}
+      </h3>
       {description && (
         <p className="text-fg-muted text-[13px] mb-8 max-w-sm leading-relaxed">{description}</p>
       )}

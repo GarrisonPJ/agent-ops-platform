@@ -51,24 +51,14 @@ export default function ToastContainer() {
     <div className="fixed top-4 right-4 z-[100] flex flex-col gap-2 pointer-events-none overscroll-behavior-contain">
       <AnimatePresence mode="popLayout">
         {toasts.map((t) => (
-          <ToastItem
-            key={t.id}
-            toast={t}
-            onDismiss={() => removeToast(t.id)}
-          />
+          <ToastItem key={t.id} toast={t} onDismiss={() => removeToast(t.id)} />
         ))}
       </AnimatePresence>
     </div>
   );
 }
 
-function ToastItem({
-  toast,
-  onDismiss,
-}: {
-  toast: ToastData;
-  onDismiss: () => void;
-}) {
+function ToastItem({ toast, onDismiss }: { toast: ToastData; onDismiss: () => void }) {
   useEffect(() => {
     const timer = setTimeout(onDismiss, AUTO_DISMISS_MS);
     return () => clearTimeout(timer);
