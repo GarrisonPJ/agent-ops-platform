@@ -71,7 +71,7 @@ def _topic(spec: EvaluationSpec) -> str:
     return spec.scenario_params.get("topic", "checkout latency")
 
 
-def _provider_tool_result(spec: EvaluationSpec, name: str) -> tuple[dict[str, str], str]:
+def _provider_tool_result(spec: EvaluationSpec, name: str) -> tuple[dict[str, object], str]:
     if name == "search_documents":
         return (
             {"query": _topic(spec)},

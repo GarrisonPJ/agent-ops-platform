@@ -233,7 +233,12 @@ def provider_tool_definitions() -> list[dict[str, object]]:
             "function": {
                 "name": "check_service_health",
                 "description": "Check checkout-api health in the deterministic scenario.",
-                "parameters": {"type": "object", "properties": {}, "additionalProperties": False},
+                "parameters": {
+                    "type": "object",
+                    "properties": {"service": {"type": "string"}},
+                    "required": ["service"],
+                    "additionalProperties": False,
+                },
             },
         },
         {
@@ -241,7 +246,15 @@ def provider_tool_definitions() -> list[dict[str, object]]:
             "function": {
                 "name": "query_service_metrics",
                 "description": "Read checkout-api dependency latency metrics.",
-                "parameters": {"type": "object", "properties": {}, "additionalProperties": False},
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "service": {"type": "string"},
+                        "metric": {"type": "string"},
+                    },
+                    "required": ["service", "metric"],
+                    "additionalProperties": False,
+                },
             },
         },
         {
@@ -249,7 +262,15 @@ def provider_tool_definitions() -> list[dict[str, object]]:
             "function": {
                 "name": "fetch_service_logs",
                 "description": "Read the evidence-backed checkout-api logs.",
-                "parameters": {"type": "object", "properties": {}, "additionalProperties": False},
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "service": {"type": "string"},
+                        "query": {"type": "string"},
+                    },
+                    "required": ["service", "query"],
+                    "additionalProperties": False,
+                },
             },
         },
     ]
@@ -260,7 +281,7 @@ async def run_provider_agent(
     emit: Callable[[str, dict[str, object]], None],
     *,
     tool_definitions: Callable[[], list[dict[str, object]]] | None = None,
-    tool_result: Callable[[EvaluationSpec, str], tuple[dict[str, str], str]] | None = None,
+    tool_result: Callable[[EvaluationSpec, str], tuple[dict[str, object], str]] | None = None,
     instructions: tuple[str, ...] | None = None,
     scenario_label: str = "checkout",
 ) -> int:
@@ -341,12 +362,26 @@ async def run_provider_agent(
             tool_call = response.tool_calls[0]
             try:
                 if tool_result is None:
-                    arguments, observation = _fixture_tool_result(tool_call.name)
+                    expected_arguments, observation = _fixture_tool_result(tool_call.name)
                 else:
-                    arguments, observation = tool_result(spec, tool_call.name)
+                    expected_arguments, observation = tool_result(spec, tool_call.name)
             except ProviderError as error:
                 error.request_id = error.request_id or response.request_id
                 _emit_provider_error(emit, error)
+                return 1
+            if tool_call.arguments != expected_arguments:
+                _emit_provider_error(
+                    emit,
+                    ProviderError(
+                        "PROVIDER_INVALID_RESPONSE",
+                        "Provider tool arguments do not match the scenario contract",
+                        retryable=False,
+                        attempts=response.request_count,
+                        latency_ms=response.latency_ms,
+                        request_id=response.request_id,
+                    ),
+                    model=settings.model,
+                )
                 return 1
             emit(
                 "step_completed",
@@ -355,7 +390,7 @@ async def run_provider_agent(
                     "decision_summary": (
                         f"Provider selected {tool_call.name} for the {scenario_label} scenario."
                     ),
-                    "tool_call": {"name": tool_call.name, "arguments": arguments},
+                    "tool_call": {"name": tool_call.name, "arguments": tool_call.arguments},
                     "observation": observation,
                     "latency_ms": response.latency_ms,
                     "token_prompt": response.usage.prompt_tokens,
@@ -551,7 +586,7 @@ def _parse_tool_call(item: object, attempts: int, latency_ms: int) -> ProviderTo
     )
 
 
-def _fixture_tool_result(name: str) -> tuple[dict[str, str], str]:
+def _fixture_tool_result(name: str) -> tuple[dict[str, object], str]:
     if name == "check_service_health":
         return (
             {"service": "checkout-api"},

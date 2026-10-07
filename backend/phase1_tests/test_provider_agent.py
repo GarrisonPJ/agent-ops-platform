@@ -198,7 +198,7 @@ async def test_provider_agent_uses_local_compatible_server_without_emitting_raw_
                             "type": "function",
                             "function": {
                                 "name": "check_service_health",
-                                "arguments": "{}",
+                                "arguments": '{"service":"checkout-api"}',
                             },
                         }
                     ],
@@ -272,6 +272,47 @@ async def test_provider_agent_uses_local_compatible_server_without_emitting_raw_
     assert server.base_url not in persisted_event_data
     assert "Authorization: Bearer header-like-secret" not in persisted_event_data
     assert "hidden reasoning" not in persisted_event_data
+
+
+@pytest.mark.asyncio
+async def test_provider_agent_rejects_tool_arguments_that_do_not_match_scenario_contract(
+    monkeypatch: pytest.MonkeyPatch, fake_provider_server
+) -> None:
+    server = fake_provider_server(
+        [
+            FakeReply(
+                200,
+                completion(
+                    content=None,
+                    tool_calls=[
+                        {
+                            "id": "call-health",
+                            "type": "function",
+                            "function": {
+                                "name": "check_service_health",
+                                "arguments": '{"service":"wrong-service"}',
+                            },
+                        }
+                    ],
+                ),
+            )
+        ]
+    )
+    configure_provider(monkeypatch, server)
+    events: list[tuple[str, dict[str, object]]] = []
+
+    status = await run_provider_agent(
+        provider_spec(), lambda kind, payload: events.append((kind, payload))
+    )
+
+    assert status == 1
+    assert not any(kind == "step_completed" for kind, _payload in events)
+    error = next(
+        payload["provider_error"]
+        for kind, payload in events
+        if "provider_error" in payload
+    )
+    assert error["code"] == "PROVIDER_INVALID_RESPONSE"
 
 
 @pytest.mark.asyncio
@@ -517,7 +558,7 @@ async def test_fault_provider_uses_only_fault_tools_and_preserves_step_fields(
     ]
     assert [step["index"] for step in steps] == [0, 1, 2]
     assert [step["tool_call"]["arguments"] for step in steps] == [
-        {"service": "payments-api", "attempts": "2"},
+        {"service": "payments-api", "attempts": 2},
         {"service": "payments-api", "mode": "cached-read"},
         {"service": "payments-api"},
     ]

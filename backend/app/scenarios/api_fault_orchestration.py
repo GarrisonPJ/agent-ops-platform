@@ -73,11 +73,11 @@ def _provider_tool_definitions() -> list[dict[str, object]]:
     ]
 
 
-def _provider_tool_result(spec: EvaluationSpec, name: str) -> tuple[dict[str, str], str]:
+def _provider_tool_result(spec: EvaluationSpec, name: str) -> tuple[dict[str, object], str]:
     service = _target_service(spec)
     if name == "retry_call":
         return (
-            {"service": service, "attempts": "2"},
+            {"service": service, "attempts": 2},
             "Retry succeeded after one transient 503 response.",
         )
     if name == "degrade_route":

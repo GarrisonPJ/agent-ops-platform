@@ -97,7 +97,9 @@ class ToolCallSummary(DurableModel):
         "retry_call",
         "degrade_route",
     ]
-    arguments: dict[str, str] = Field(default_factory=dict, max_length=MAX_TOOL_ARGUMENTS)
+    arguments: dict[str, str | int] = Field(
+        default_factory=dict, max_length=MAX_TOOL_ARGUMENTS
+    )
 
 
 class ContextWindowSummary(DurableModel):
@@ -355,13 +357,19 @@ def _normalize_tool_call(value: object) -> dict[str, object] | None:
     raw_arguments = value.get("arguments", {})
     if not isinstance(raw_arguments, Mapping):
         return None
-    arguments: dict[str, str] = {}
+    arguments: dict[str, str | int] = {}
     for key, allowed_values in _ALLOWED_TOOL_ARGUMENT_VALUES.items():
         argument = raw_arguments.get(key)
         if (
             isinstance(argument, str)
             and len(argument) <= MAX_TOOL_ARGUMENT_VALUE
             and argument in allowed_values
+        ):
+            arguments[key] = argument
+        elif (
+            isinstance(argument, int)
+            and not isinstance(argument, bool)
+            and str(argument) in allowed_values
         ):
             arguments[key] = argument
     return ToolCallSummary(name=name, arguments=arguments).model_dump(
