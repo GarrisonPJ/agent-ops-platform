@@ -89,6 +89,10 @@ async def test_review_packet_balances_strata_without_exposing_analysis(api) -> N
         case["trajectory"]["steps"][0]["observation"] == "The call failed."
         for case in packet["cases"]
     )
+    assert all(
+        case["trajectory_sha256"].startswith("sha256:")
+        for case in packet["cases"]
+    )
     serialized = json.dumps(packet)
     assert "hidden prediction" not in serialized
     assert "private_metric" not in serialized

@@ -12,6 +12,7 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.calibration_report import canonical_digest
 from app.phase1_database import make_engine
 from app.phase1_models import Experiment, Run
 from app.phase1_schemas import TERMINAL_RUN_STATUSES
@@ -71,6 +72,7 @@ async def build_review_packet(
                 "kind": run.kind,
                 "task": experiment.task,
                 "trajectory": trajectory,
+                "trajectory_sha256": canonical_digest(trajectory),
             }
         )
     return {
