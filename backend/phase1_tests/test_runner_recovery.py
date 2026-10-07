@@ -1,15 +1,77 @@
 from __future__ import annotations
 
 from datetime import timedelta
+import io
+import json
+from pathlib import Path
+import runpy
 
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 
 from app.phase1_models import RunEvent, RunnerAttempt, RunnerJob, utcnow
+from app.failure_analyzer import analyze_trajectory
+from app.scenario_registry import assertion_suite_for_scenario, require_scenario
 
 
 AUTH = {"Authorization": "Bearer test-runner-token"}
+
+
+def test_recovery_script_uses_checkout_scenario_task_contract() -> None:
+    script = Path(__file__).parents[2] / "scripts" / "recovery_e2e.py"
+    values = runpy.run_path(str(script))
+    scenario_id = values["RECOVERY_SCENARIO_ID"]
+    assert scenario_id == "checkout-api-latency.v1"
+    assert values["RECOVERY_TASK"] == require_scenario(scenario_id).metadata.default_task
+
+
+def test_recovery_stream_parser_preserves_sse_event_payloads() -> None:
+    script = Path(__file__).parents[2] / "scripts" / "recovery_e2e.py"
+    values = runpy.run_path(str(script))
+    parse_stream = values["_parse_event_stream"]
+    assert parse_stream(
+        'id: 1\nevent: run_started\ndata: {"sequence":1,"type":"run_started"}\n\n'
+        ': keep-alive\n\n'
+        'id: 2\nevent: run_completed\ndata: {"sequence":2,"type":"run_completed"}\n\n'
+    ) == [
+        {"sequence": 1, "type": "run_started"},
+        {"sequence": 2, "type": "run_completed"},
+    ]
+
+
+def test_recovery_agent_trace_satisfies_checkout_assertions(tmp_path, monkeypatch, capsys) -> None:
+    from app import recovery_agent
+
+    marker = tmp_path / "recovery-marker"
+    marker.write_text("started\n", encoding="utf-8")
+    monkeypatch.setattr(recovery_agent, "MARKER", marker)
+    monkeypatch.setattr("sys.stdin", io.StringIO())
+
+    assert recovery_agent.main() == 0
+    events = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+    step_events = [event for event in events if event["type"] == "step_completed"]
+    assert [event["payload"]["tool_call"]["name"] for event in step_events] == [
+        "check_service_health",
+        "query_service_metrics",
+        "fetch_service_logs",
+    ]
+    trajectory = {
+        "status": "success",
+        "steps": [
+            {
+                "index": event["payload"]["index"],
+                "action": event["payload"]["tool_call"],
+                "observation": event["payload"]["observation"],
+            }
+            for event in step_events
+        ],
+    }
+    report = analyze_trajectory(
+        trajectory,
+        assertion_suite=assertion_suite_for_scenario("checkout-api-latency.v1"),
+    )
+    assert "planning" not in report.dimensions
 
 
 async def create_run(client: AsyncClient) -> dict:

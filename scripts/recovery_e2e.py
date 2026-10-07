@@ -17,6 +17,8 @@ BASE_COMPOSE = ROOT / "infra" / "docker" / "docker-compose.phase1.yml"
 RECOVERY_COMPOSE = ROOT / "infra" / "docker" / "docker-compose.phase1.recovery.yml"
 LEASE_SECONDS = 15
 TERMINAL_STATUSES = {"succeeded", "failed", "cancelled", "timed_out"}
+RECOVERY_SCENARIO_ID = "checkout-api-latency.v1"
+RECOVERY_TASK = "Investigate checkout API latency"
 
 
 def compose(recovery: bool, *args: str) -> None:
@@ -74,12 +76,44 @@ def wait_for_status(
     raise TimeoutError(f"run {run_id} did not reach {sorted(expected)}")
 
 
-def assert_recovered_trace(api_url: str, run_id: str) -> None:
+def _parse_event_stream(stream: str) -> list[dict[str, Any]]:
+    events: list[dict[str, Any]] = []
+    for block in stream.split("\n\n"):
+        data = next(
+            (line.removeprefix("data: ") for line in block.splitlines() if line.startswith("data: ")),
+            None,
+        )
+        if data is not None:
+            events.append(json.loads(data))
+    return events
+
+
+def _read_event_stream(api_url: str, run_id: str) -> list[dict[str, Any]]:
     req = urllib.request.Request(f"{api_url.rstrip('/')}/api/runs/{run_id}/stream?after=0")
     with urllib.request.urlopen(req, timeout=10) as response:
         stream = response.read().decode("utf-8")
-    if '"attempt":2' not in stream:
-        raise AssertionError("recovered trace does not contain an Attempt 2 marker")
+    return _parse_event_stream(stream)
+
+
+def assert_recovered_trace(api_url: str, run_id: str) -> None:
+    events = _read_event_stream(api_url, run_id)
+    sequences = [event.get("sequence") for event in events]
+    if sequences != list(range(1, len(events) + 1)):
+        raise AssertionError("recovered trace has a gap or duplicate sequence")
+
+    starts = [event for event in events if event.get("type") == "run_started"]
+    if [event.get("payload", {}).get("attempt") for event in starts] != [1, 2]:
+        raise AssertionError("recovered trace does not contain attempts 1 and 2")
+
+    steps = [event for event in events if event.get("type") == "step_completed"]
+    if len(steps) != 3 or [event.get("payload", {}).get("index") for event in steps] != [0, 1, 2]:
+        raise AssertionError("recovered trace does not contain the complete three-step trace")
+    if any(event.get("payload", {}).get("attempt") != 2 for event in steps):
+        raise AssertionError("recovered steps are not fenced to Attempt 2")
+
+    completed = [event for event in events if event.get("type") == "run_completed"]
+    if len(completed) != 1 or completed[0].get("payload", {}).get("attempt") != 2:
+        raise AssertionError("recovered trace does not contain Attempt 2 completion")
 
 
 def run_recovery_test(api_url: str) -> dict:
@@ -100,8 +134,10 @@ def run_recovery_test(api_url: str) -> dict:
         "/api/experiments",
         {
             "name": f"Runner recovery {int(time.time())}",
-            "task": "Verify Runner recovery",
-            "scenario_id": "checkout-api-latency.v1",
+            # Runner recovery is the fault injected into this checkout run;
+            # keep the task aligned with the Scenario's scoring contract.
+            "task": RECOVERY_TASK,
+            "scenario_id": RECOVERY_SCENARIO_ID,
         },
     )
     run = request(
@@ -111,7 +147,7 @@ def run_recovery_test(api_url: str) -> dict:
         {"seed": 42},
     )
     run_id = run["id"]
-    first_state = wait_for_status(api_url, run_id, {"claimed", "running"}, 20)
+    first_state = wait_for_status(api_url, run_id, {"running"}, 20)
 
     compose(True, "kill", "runner")
     time.sleep(LEASE_SECONDS + 2)
