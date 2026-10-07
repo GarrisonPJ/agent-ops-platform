@@ -178,14 +178,20 @@ browser E2E tests passed after `make fmt` normalized the prior 24-file format
 baseline. The repository worktree had root-owned Vite cache files, so dependency installation was kept out of the worktree. The frontend CI job now runs `format:check`. The Recorded E2E uses
 Playwright Chromium, which must be installed locally before running it.
 
-An isolated four-service local Compose run passed Web/API readiness, both
-Golden scenarios, and Runner recovery using a temporary Web override with
-the verified Linux Node toolchain. The standard Web Dockerfile build remains
-unverified locally because the Docker daemon times out fetching
-`node:22-alpine`; do not treat the override as a successful image build.
+An isolated four-service local Compose run first passed Web/API readiness,
+both Golden scenarios, and Runner recovery using a temporary Web override
+with the verified Linux Node toolchain. On 2026-10-05, intermittent Docker Hub
+access also allowed the standard Web Dockerfile and standard four-service stack
+to pass. A later standard build retry again timed out resolving
+`node:22-alpine`, so preserve the successful evidence but treat registry
+availability as environment-dependent. Never treat an override as a successful
+standard image build.
 
 Provider fake-server tests must not be sent through an inherited corporate
-proxy. Prefer a one-command isolated environment:
+proxy. On 2026-10-05 the isolated command below completed the full backend
+suite with `188 passed, 2 skipped`; the same suite had produced loopback
+timeouts when the proxy variables were inherited. Prefer a one-command
+isolated environment:
 
     env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY \
       -u http_proxy -u https_proxy -u all_proxy \

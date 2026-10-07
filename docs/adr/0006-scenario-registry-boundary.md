@@ -61,6 +61,7 @@ version rather than mutating an existing id.
   truth for what may execute.
 
 Phase 1.4 follow-on tickets (local tracker
-`.scratch/phase1.4-scenario-onboarding/`) will add versioned `<name>.v<N>`
+`.scratch/archive/completed-trackers-20261005/phase1.4-scenario-onboarding/`)
+will add versioned `<name>.v<N>`
 identity and a controlled assertion vocabulary to this boundary without
 opening arbitrary code execution.

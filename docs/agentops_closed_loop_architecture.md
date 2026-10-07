@@ -1,7 +1,7 @@
 # AgentOps Closed-Loop Architecture
 
 Status: current for Phase 1
-Last reviewed: 2026-09-25
+Last reviewed: 2026-10-05
 
 ## System goal
 
@@ -87,7 +87,7 @@ Runner recovery, registered Scenarios, and the narrow Provider boundary are impl
 
 The next milestone targets a single machine or trusted team network. It prioritizes state-machine reliability and evaluation accuracy; throughput and multi-user collaboration remain deferred. See [ROADMAP.md](../ROADMAP.md) for the promotion gates.
 
-As of 2026-09-25, backend verification reports `186 passed, 2 skipped`; Linux Node 22 passes frontend formatting, typecheck, `27` unit tests, build, and `2` Recorded browser E2E tests. An isolated four-service Compose stack passed both Golden scenarios and Runner recovery using a temporary local-Node Web override. The standard Web Dockerfile build remains unverified locally because Docker Hub timed out. Calibration fixtures and an analysis-blind export smoke test verify the workflow, but independent labels and publishable precision/recall/F1 results are still pending. See the [local validation runbook](operations/reliability-and-local-validation.md) and [calibration procedure](evaluation-calibration.md) for the exact boundaries.
+As of 2026-10-05, backend verification reports `188 passed, 2 skipped` when loopback fake-Provider tests run with inherited proxy variables removed. Linux Node 22 passes frontend formatting, typecheck, `27` unit tests, build, and `2` Recorded browser E2E tests. An isolated standard four-service Compose stack passed both Golden scenarios and Runner recovery; a standard Web Dockerfile build also succeeded during intermittent Docker Hub recovery, but the latest rerun failed resolving `node:22-alpine` with a registry timeout, so local reproducibility remains environment-dependent. The corrected analysis-blind packet is ready for independent labels; publishable precision/recall/F1 results remain pending. See the [local validation runbook](operations/reliability-and-local-validation.md) and [calibration procedure](evaluation-calibration.md) for the exact boundaries.
 
 ## Deliberately deferred
 

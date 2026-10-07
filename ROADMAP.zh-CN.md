@@ -138,7 +138,7 @@ Phase 1.3 收尾（2026-08-15）：
 
 ## Phase 1.4 — 场景接入
 
-PRD：`.scratch/phase1.4-scenario-onboarding/PRD.md`（本地跟踪器）。架构边界：[ADR-0006](docs/adr/0006-scenario-registry-boundary.md)。
+历史跟踪器：`.scratch/archive/completed-trackers-20261005/phase1.4-scenario-onboarding/PRD.md`。架构边界：[ADR-0006](docs/adr/0006-scenario-registry-boundary.md)。
 
 CI 收口（2026-08-23）：
 
@@ -164,7 +164,7 @@ CI 收口（2026-08-23）：
 
 ## 闭环深化后续
 
-PRD：`.scratch/closed-loop-depth/PRD.md`（本地跟踪器）。
+历史跟踪器：`.scratch/archive/completed-trackers-20261005/closed-loop-depth/PRD.md`。
 
 收口（2026-08-23）：
 
@@ -253,12 +253,53 @@ Review 更新（2026-09-25）：
 - `npm audit --omit=dev` 报告生产依赖 `react-router-dom`/`react-router` 7.18.0 存在两个 high 漏洞。任何可信内网部署前必须升级到已修复的兼容版本、重生成 lockfile 并重跑前端检查；这项工作列为 P1。
 - 标准 Web Dockerfile 仍没有本地构建证据，因为 Docker 守护进程无法获取 `node:22-alpine`；临时 Web override 只能作为冒烟验证证据。
 
+依赖与 CI 收口（2026-09-29）：
+
+- 将 `react-router-dom` 从 `^7.0.0` 升级到最小兼容修复版本 `^7.18.2`；lockfile 现在将 `react-router-dom` 及其 `react-router` 依赖都固定为 `7.18.2`。OSV 将 `7.18.2` 标为此前高危 RSC CSRF 通告（影响 `7.12.0` 至 `7.18.1`）的修复版本。
+- 在 frontend CI 的 `npm ci` 之后新增 `npm audit --omit=dev`，并保持其后已有的格式、类型检查、测试、构建和 Recorded E2E 门禁不变。
+- 当前 WSL 仍将 `npm` 解析为 Windows shim，且没有 Linux Node 运行时，因此没有宣称本地 `npm ci`、audit 或前端矩阵重跑通过。已直接核对 lock/package 元数据和 CI wiring；完整前端矩阵应在 CI 或 Linux Node 22 环境中重跑。
+- 标准构建命令 `docker build --pull -f frontend/Dockerfile -t agentops-web-standard-verify frontend` 仍在构建步骤之前解析 `docker.io/library/node:22-alpine` 时失败（`dial tcp 173.236.212.42:443: i/o timeout`）。随后 Docker Hub 间歇恢复时曾成功执行标准构建（见 2026-10-05 证据），但最新重跑再次遇到 registry 超时；因此只能确认有成功构建证据，不能称为本机可重复恢复。
+
+校准样本与 Docker 后续核查（2026-09-29）：
+
+- 以只读方式复制并检查了 `agentops_phase1-pgdata`，Alembic revision 为 `0005_runner_presence`。其中有 33 条 `RunEvent`，仅包含旧版未注册 `checkout-api-latency` Scenario 的 4 个终态 Run（3 个 failed baseline、1 个 succeeded replay）；当前注册的版本化 Scenario 样本数为 0。
+- 因没有合格的当前样本，未生成 review packet、labels、校准报告或准确率指标。这保持了独立标注门槛；校准聚焦套件通过 `22 passed`（其中 review/report 子集为 `6 passed`）。
+- 当前源码 API 镜像使用缓存依赖构建成功；当前源码 Runner 构建因 crates.io index 网络不可用而停止。临时快照容器、卷、网络及验证镜像已清理，原有数据卷和本地工具均保留。
+
+代理恢复后的验证与样本采集（2026-10-05）：
+
+- Docker Hub 访问已间歇性恢复。标准 Web 镜像从 `frontend/Dockerfile` 构建成功，基础镜像 digest 为 `sha256:0a7108bf6c7bf5de370ffb1a3ed6be93d405b43ff159f681a8d18c0e2bc2e402`；容器启动并提供页面。由于本机 buildx 引用目录只读，隔离 Compose 构建使用了 `DOCKER_BUILDKIT=0`；这是主机 builder workaround，不是源码或 Dockerfile 修改。
+- 针对标准 Web 镜像的 Node 22 隔离验证成功执行 `npm ci`、`npm audit --omit=dev`（`found 0 vulnerabilities`）、格式检查、类型检查、27 个单测、生产构建及 2 个 Recorded 浏览器 E2E。完整依赖安装仍报告 dev-only audit 项，但生产依赖 CI 门禁干净。
+- 隔离的标准四服务 Compose 构建成功构建 API、Web 和 Rust Runner，并通过两个 `scripts/golden_e2e.py` 场景（失败 baseline、成功 replay、Policy 激活）及 `scripts/recovery_e2e.py`（kill 前为 `running`，替代 Runner 后为 `succeeded`）。临时项目、卷、网络和容器已清理。
+- 已记录该栈的新数据库快照：`sha256:dbd3734309ff439e6bcee38b133774e58470bf23b3abcdf4d9db2ad391f72427`。analysis-blind packet 保留在被忽略的 `.scratch/evaluation-calibration/review-packet-20261005.json`，含 5 个合格终态 Run：checkout（2 baseline、1 replay）和 multi-step research（1 baseline、1 replay），不含分数或已保存分析。独立标注、仲裁和准确率报告仍待完成。
+- 当前已生成被忽略的 demo 临时标签草稿 `.scratch/evaluation-calibration/demo-temp-labels-20261005.json`：两个重复 6 步且失败的 baseline 暂标为 `planning` + `budget`，三个成功/恢复 Run 暂为空集。Recovery harness 现在使用 checkout Scenario 的默认 task，并在替代 Runner 后发出其成功工具序列，因此没有将基于断言的 `planning` 预测机械复制进草稿。该草稿明确是 agent 生成、analysis-blind 但暴露终态的 demo 数据，不能作为独立标注或可发布指标；人工必须修改或替换，并记录评审者、provenance 与仲裁后才能使用指标。
+- 2026-10-05 packet 早于 recovery 合约修复，继续作为历史 demo 样本保留。下方修复版 packet 是当前 demo 样本；只有采集新的标准 Compose 样本时才需重新导出。不得静默复用旧临时标签作为修复后的准确率证据。
+- 修复后的隔离标准栈产生 logical snapshot digest `sha256:2ad97aa9c22112dd55b2d55e669d605478facf260b3e138f6ea3853b0131f30c`，新 packet 为 `.scratch/evaluation-calibration/review-packet-20261005-recovery-fixed.json`。其中 5 个终态 Run 的 recovery baseline 已包含完整三步 checkout 轨迹，analyzer 维度为空。对应 demo 草稿为 `.scratch/evaluation-calibration/demo-temp-labels-20261005-recovery-fixed.json`，仍是 agent 生成，不能作为准确率证据。
+- hosted GitHub Actions run `36029244922`（`fbe51c5`）已成功完成 `backend`、`database-recovery`、`frontend`、`rust`、`compose` 和 `golden-e2e` 六个 Job，依赖/CI 批次的 hosted 验证已闭合；本地 classic-builder workaround 仍是环境特例。
+
+校准 mechanics 后续核查（2026-10-06）：
+
+- 已核对修复版 packet 与对应草稿标签，5 个 Run ID 全部匹配。在 Alembic head `0008_regression_cases` 的全新临时 PostgreSQL 数据库中重建 packet 的 `Experiment`、`Run` 和 `RunEvent` 事实后，`app.calibration_report` 成功运行，5 个 case 没有计算出的分歧。
+- mechanics 输出保存在被忽略的 `.scratch/evaluation-calibration/demo-calibration-report-20261006.json`；它显示 planning/budget 与 micro 的表面指标为 `1.0`，execution/context 因没有正例而为 `null`。这些是与 agent-generated labels 循环一致的 mechanics 结果，不是可发布准确率。
+- reviewer/provenance/仲裁信息记录在被忽略的 `.scratch/evaluation-calibration/review-record-20261006-demo.json`：评审者明确为 agent-generated provisional，独立人工复核仍待完成，尚无仲裁，`publishable_accuracy=false`。报告完成后已删除临时数据库。
+- P1 calibration binding 已在 `backend/app/calibration_report.py` 实现：绑定模式要求 packet 文件 digest、labels 文件 digest、source snapshot、完整 Run ID、scenario/mode/kind/task、终态、数据库 Experiment/Run 身份，以及由 `calibration_review.py` 导出的 canonical trajectory digest。外部 snapshot 真实性和 analyzer revision 绑定仍是未闭合限制。
+- 固定的 5-case fixture packet 已通过临时内部 mechanics gate；agent 按文档规则逐条复核标签，没有发现需要修正的 case。该 gate 允许继续开发 analyzer、trajectory、Scenario、recovery、exporter、schema 和 report mechanics，但独立人工准确率 gate 仍为 pending。旁路记录在被忽略的 `.scratch/evaluation-calibration/provisional-internal-gate-20261006.json`。
+- 校准聚焦验证（`-k calibration`）为 `30 passed, 2 skipped`；后端全套为 `198 passed, 2 skipped`。历史 v1 sidecar 继续保留，严格绑定派生 packet 已解析并与 5 个 Run ID 完全匹配。agent-generated review 仍不可发布。
+
+Provider 与 binding 加固后续（2026-10-07）：
+
+- Provider 现在会拒绝不符合注册 Scenario 合约的模型 tool arguments，并把模型实际选择的 arguments 写入 `step_completed`；checkout 工具 schema 也明确声明了必需参数，不再静默接受 `{}`。
+- durable event normalization 现在保留 fault-orchestration Scenario 使用的有界整数 `attempts`。Provider 与 durable-event 聚焦测试为 `28 passed`，后端全套保持 `198 passed, 2 skipped`。
+- 历史 packet 保留在 `.scratch/evaluation-calibration/review-packet-20261005-recovery-fixed.json`。严格绑定派生 packet 位于 `.scratch/evaluation-calibration/review-packet-20261007-recovery-fixed-bound.json`，packet SHA-256 为 `618b2ea20c769f72d54bc8fddcfd22c2ea114219edfd3c41f8d6d740b2b8e706`；临时 sidecar 为 `.scratch/evaluation-calibration/review-record-v1-20261007-provisional-bound.json`，labels SHA-256 为 `852a0e94d5de8b20dfb7473a6170000689ad69c935a84820c15aff884b8e2a2b`。绑定身份检查已通过，但不代表准确率成立。
+- recovery E2E harness 现在会等待明确的 `running` 后再注入故障，并校验连续 SSE sequence、Attempt 1/2、Attempt 2 的完整三步轨迹和 Attempt 2 完成事件。本轮只完成单元验证，没有把新的真实 Compose kill/recreate 运行写成已验证证据。
+
 后续顺序：
 
-1. 升级 React Router 生产依赖，重新执行 `npm ci`、audit、格式、类型、单测、构建和 Recorded E2E。
-2. 为当前注册 Scenario 收集带数据库快照的样本，完成独立标注和分歧仲裁，再运行校准报告；在此门槛前不发布 precision/recall/F1。
-3. Docker Hub 可用后构建标准 Web 镜像，并在不使用 override 的情况下重跑隔离四服务 Golden 与 Runner 恢复演练。
-4. 重新 triage `.scratch/` 规划和工单，记录每个文件的替代路径与标签后，只删除确认已被 ROADMAP/CONTEXT 取代的文件；保留带日期 handoff、`.codegraph/` 和 `.cursor/`。
+1. 使用临时内部 gate 继续 analyzer、trajectory、Scenario、recovery、exporter、schema 和 report mechanics 开发；不得据此发布准确率结论。
+2. 决定是否把不可变 analyzer revision 标识纳入 packet contract；canonical 重建 trajectory 已绑定，原始 event payload 的完整性仍不在 packet contract 内。
+3. 条件允许时再让至少两名独立评审者标注修复版 packet，记录逐 case 证据与不确定性，由指定仲裁者处理分歧后运行报告；人工 gate 完成前不发布 precision/recall/F1。
+4. 将 hosted CI run `36029244922` 与 2026-10-05 标准栈运行作为当前确认；最新标准 Dockerfile 重跑在 Docker Hub（`registry-1.docker.io`，`i/o timeout`）失败，待 registry 状态变化或镜像、依赖、Runner 输入变化后再重试。
+5. 继续 triage 剩余 `.scratch/` 规划和工单，记录每个文件的替代路径与标签后，只归档或删除确认已被 ROADMAP/CONTEXT 取代的文件；保留带日期 handoff、`.codegraph/` 和 `.cursor/`。
 
 验收：每个终态都有确定性证据；分析器结果使用独立标注并发布指标；后端、前端、Rust 与 Golden 检查在本地和 CI 可复现。
 
@@ -266,7 +307,7 @@ Review 更新（2026-09-25）：
 
 - 过时的规划/分析文档移出 `docs/`，下一次仓库清理前仅保留在 `.scratch/archive/`；清理时只删除已确认被 ROADMAP/CONTEXT 取代的文档，保留带日期 handoff 以及本地 `.codegraph/`、`.cursor/` 工具目录。
 - 重新 triage 过期 `.scratch/` 工单，将已取代内容标记为 `wontfix` 或 `ready-for-human`；只有记录标签和替代路径后才删除旧 issue 文件。
-- 首批清理候选是旧版 `.scratch/agentops-platform-v0.1/`、`.scratch/agentops-platform-v0.3/`、`baseline-hardening/`、`closed-loop-architecture/`、`demo-packaging/` 和 `frontend-polish/` 跟踪目录。先检查引用和历史证据，再按单个文件完成 triage 后删除；不得整目录盲删。
+- 2026-10-05 已将完成逐文件 triage 的旧 tracker 归档到 `.scratch/archive/legacy-trackers-20261005/`，将已完成里程碑 tracker 归档到 `.scratch/archive/completed-trackers-20261005/`，旧 `.bak` 副本保留在 `.scratch/archive/local-backups-20261005/`（均不是源码或回滚输入）。替代路径和证据见各目录 README。`baseline-hardening/`、`closed-loop-architecture/`、`demo-packaging/` 仍保留，待单独处理未完成或 `ready-for-agent` 条目；不得使用目录通配符删除。
 - 在任何可信内网部署前，将 Compose 中用于演示的 PostgreSQL 凭据替换为显式 Secret 来源；演示默认值只能留在明确标注的本地 profile 中。
 - MCP、向量记忆、有副作用工具、多租户和吞吐量优化，只有在出现可度量需求并通过新 ADR 后才提升优先级。
 

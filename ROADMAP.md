@@ -138,7 +138,7 @@ No Phase 1.5 milestone is defined yet. With Phase 1.4 and its closed-loop depth 
 
 ## Phase 1.4 — Scenario onboarding
 
-PRD: `.scratch/phase1.4-scenario-onboarding/PRD.md` (local tracker). Architecture boundary: [ADR-0006](docs/adr/0006-scenario-registry-boundary.md).
+Historical tracker: `.scratch/archive/completed-trackers-20261005/phase1.4-scenario-onboarding/PRD.md`. Architecture boundary: [ADR-0006](docs/adr/0006-scenario-registry-boundary.md).
 
 CI closeout (2026-08-23):
 
@@ -164,7 +164,7 @@ Acceptance:
 
 ## Closed-loop depth follow-up
 
-PRD: `.scratch/closed-loop-depth/PRD.md` (local tracker).
+Historical tracker: `.scratch/archive/completed-trackers-20261005/closed-loop-depth/PRD.md`.
 
 Closeout (2026-08-23):
 
@@ -253,12 +253,53 @@ Review update (2026-09-25):
 - `npm audit --omit=dev` reports two high production vulnerabilities through `react-router-dom`/`react-router` 7.18.0. Upgrade to a patched compatible release, regenerate the lockfile, and rerun frontend checks before any trusted-intranet deployment. This is a P1 fix even though the current target is a trusted network.
 - The standard Web Dockerfile image still has no local build evidence because the Docker daemon cannot fetch `node:22-alpine`; the temporary Web override remains smoke-test evidence only.
 
+Dependency and CI closeout (2026-09-29):
+
+- Updated `react-router-dom` from `^7.0.0` to the minimum patched compatible `^7.18.2`; the lockfile now pins both `react-router-dom` and its `react-router` dependency to `7.18.2`. OSV identifies `7.18.2` as the fix for the reported high RSC CSRF advisory affecting `7.12.0` through `7.18.1`.
+- Added `npm audit --omit=dev` to the frontend CI job immediately after `npm ci`, before formatting, typecheck, tests, build, and Recorded E2E. The existing frontend CI checks were otherwise already wired and unchanged.
+- Current WSL still resolves `npm` to a Windows shim and has no Linux Node runtime, so local `npm ci`, audit, and frontend reruns were not claimed. The lock/package metadata and CI wiring were checked directly; rerun the complete frontend matrix in CI or a Linux Node 22 environment.
+- A standard `docker build --pull -f frontend/Dockerfile -t agentops-web-standard-verify frontend` still fails before build steps while resolving `docker.io/library/node:22-alpine` (`dial tcp 173.236.212.42:443: i/o timeout`). The standard Dockerfile gate was later exercised successfully during an intermittent Docker Hub recovery (see 2026-10-05 evidence), but the latest rerun again failed with a registry timeout; treat the build as evidenced but not reproducibly available on this host.
+
+Calibration sample and Docker follow-up (2026-09-29):
+
+- A read-only copy of `agentops_phase1-pgdata` was inspected at Alembic revision `0005_runner_presence`. It contains 33 `RunEvent` rows and only four terminal Runs under the legacy, unregistered `checkout-api-latency` Scenario (three failed baselines and one succeeded replay); the current registered versioned Scenario sample count is zero.
+- No review packet, labels, calibration report, or accuracy metric was generated because the source has no eligible current sample. This preserves the independent-label gate; the calibration-focused suite passes `22 passed` (the exporter/report subset passes `6 passed`).
+- The current-source API image builds from cached dependencies. A current-source Runner build was attempted but stopped while the crates.io index was unavailable. Temporary snapshot containers, volumes, network, and verification image were removed; the original data volumes and local tooling were preserved.
+
+Proxy-enabled verification and sample capture (2026-10-05):
+
+- Docker Hub access recovered intermittently. The standard Web image built successfully from `frontend/Dockerfile` with base-image digest `sha256:0a7108bf6c7bf5de370ffb1a3ed6be93d405b43ff159f681a8d18c0e2bc2e402`; the image started and served the app. Local Compose needed `DOCKER_BUILDKIT=0` because its buildx reference directory is read-only; this is a host-builder workaround, not a source or Dockerfile change.
+- Against the standard Web image, an isolated Node 22 validation ran `npm ci`, `npm audit --omit=dev` (`found 0 vulnerabilities`), formatting, typecheck, 27 unit tests, production build, and 2 Recorded browser E2E tests successfully. The complete dependency install still reports dev-only audit findings; the production CI gate is clean.
+- The isolated standard four-service Compose stack built API, Web, and the Rust Runner, then passed both `scripts/golden_e2e.py` scenarios (failed baseline, successful replay, activated policy) and `scripts/recovery_e2e.py` (`running` before kill, `succeeded` after replacement). Temporary project, volume, network, and containers were removed.
+- A fresh database snapshot from that stack was recorded as `sha256:dbd3734309ff439e6bcee38b133774e58470bf23b3abcdf4d9db2ad391f72427`. The analysis-blind packet is retained at ignored `.scratch/evaluation-calibration/review-packet-20261005.json` with 5 eligible terminal Runs: checkout (2 baseline, 1 replay) and multi-step research (1 baseline, 1 replay). It contains no scores or stored analysis. Independent labels, adjudication, and accuracy reporting remain pending.
+- A demo-only provisional label draft now exists at ignored `.scratch/evaluation-calibration/demo-temp-labels-20261005.json`. It marks the two repeated six-step failed baselines as `planning` plus `budget` and leaves the three successful/recovery Runs empty. The recovery harness now uses the checkout Scenario's default task and emits its successful tool sequence after the replacement Runner, so no assertion-based planning prediction is copied into the draft. The draft is explicitly agent-generated, analysis-blind but outcome-exposed, and not independent or publishable; a human must edit or replace it and record reviewer/provenance/adjudication before metrics are used.
+- The 2026-10-05 packet predates that recovery-contract correction and remains a historical demo artifact. The corrected packet below is the current demo sample; export another packet only when a new standard Compose sample is collected. The old temporary labels must not be silently reused as corrected accuracy evidence.
+- The corrected isolated standard stack produced logical snapshot digest `sha256:2ad97aa9c22112dd55b2d55e669d605478facf260b3e138f6ea3853b0131f30c` and packet `.scratch/evaluation-calibration/review-packet-20261005-recovery-fixed.json`. It contains five terminal Runs; the recovery baseline now has the complete three-step checkout trace and analyzer dimensions are empty. The corresponding demo draft is `.scratch/evaluation-calibration/demo-temp-labels-20261005-recovery-fixed.json`; it is still agent-generated and not accuracy evidence.
+- Hosted GitHub Actions run `36029244922` for `fbe51c5` completed successfully across `backend`, `database-recovery`, `frontend`, `rust`, `compose`, and `golden-e2e`. This closes the hosted CI confirmation for the dependency/CI batch; the local classic-builder workaround remains environment-specific.
+
+Calibration mechanics follow-up (2026-10-06):
+
+- The corrected packet and matching draft labels were checked: all five Run IDs match. A fresh temporary PostgreSQL database at Alembic head `0008_regression_cases` reconstructed the packet's `Experiment`, `Run`, and `RunEvent` facts, and `app.calibration_report` completed successfully with five cases and zero computed disagreements.
+- The mechanics output is retained at ignored `.scratch/evaluation-calibration/demo-calibration-report-20261006.json`; it reports apparent `1.0` planning/budget and micro metrics, with `null` execution/context metrics because there are no positive labels. These are circular agent-generated-label mechanics results, not publishable accuracy.
+- Reviewer/provenance/adjudication details are recorded at ignored `.scratch/evaluation-calibration/review-record-20261006-demo.json`: reviewer is explicitly agent-generated provisional, independent human review is pending, adjudication is absent, and `publishable_accuracy=false`. The temporary report database was removed after execution.
+- The P1 calibration binding is implemented in `backend/app/calibration_report.py`: bound reports require the packet file digest, labels file digest, source snapshot, complete Run IDs, scenario/mode/kind/task rows, terminal status, database Experiment/Run identity, and canonical trajectory digests exported from `calibration_review.py`. External snapshot authenticity and analyzer revision binding remain open limitations.
+- A provisional internal mechanics gate now passes for the fixed five-case fixture packet; the agent reviewed every label against the documented rules and found no correction necessary. This gate permits analyzer, trajectory, Scenario, recovery, exporter, schema, and report-mechanics development while the independent human-label accuracy gate remains pending. Its sidecar record is ignored `.scratch/evaluation-calibration/provisional-internal-gate-20261006.json`.
+- Focused calibration verification (`-k calibration`) passes `30 passed, 2 skipped`; the backend suite passes `198 passed, 2 skipped`. The historical v1 sidecar remains preserved, and the strict bound derivative parses with all five packet Run IDs. Agent-generated review remains non-publishable.
+
+Provider and binding hardening follow-up (2026-10-07):
+
+- Provider execution now rejects model tool arguments that do not exactly match the registered Scenario contract and persists the model-selected arguments in `step_completed`; the checkout tool schemas now declare their required arguments instead of silently accepting `{}`.
+- Durable event normalization preserves the bounded integer `attempts` argument used by the fault-orchestration Scenario. Provider and durable-event focused tests pass `28 passed`; the complete backend suite remains `198 passed, 2 skipped`.
+- The historical packet remains at `.scratch/evaluation-calibration/review-packet-20261005-recovery-fixed.json`. A strict-binding derivative is retained at `.scratch/evaluation-calibration/review-packet-20261007-recovery-fixed-bound.json` with packet SHA-256 `618b2ea20c769f72d54bc8fddcfd22c2ea114219edfd3c41f8d6d740b2b8e706`; its provisional sidecar is `.scratch/evaluation-calibration/review-record-v1-20261007-provisional-bound.json`, and the labels SHA-256 is `852a0e94d5de8b20dfb7473a6170000689ad69c935a84820c15aff884b8e2a2b`. The bound identity check passes without claiming accuracy.
+- The recovery E2E harness now waits for `running` before fault injection and validates contiguous SSE sequences, attempts 1 and 2, the complete three-step Attempt 2 trace, and Attempt 2 completion. This change is unit-tested; a fresh real Compose kill/recreate run was not performed in this working-tree pass.
+
 Next actions, in order:
 
-1. Upgrade the vulnerable React Router dependency and rerun `npm ci`, audit, format, typecheck, unit, build, and Recorded E2E checks.
-2. Generate a current registered-Scenario sample with a recorded database snapshot, obtain independently completed labels, adjudicate disagreements, and run the calibration report. Publish no precision/recall/F1 until this gate is met.
-3. When Docker Hub access is available, build the standard Web image and repeat the isolated four-service Golden and Runner recovery checks without an override.
-4. Re-triage `.scratch/` planning and issue files, record each replacement path and label, then delete only files confirmed superseded by ROADMAP/CONTEXT. Preserve the dated handoff, `.codegraph/`, and `.cursor/`.
+1. Use the provisional internal gate to continue analyzer, trajectory, Scenario, recovery, exporter, schema, and report-mechanics work; do not publish accuracy claims from it.
+2. Decide whether an immutable analyzer revision identifier should become part of the packet contract; canonical reconstructed trajectory binding is covered, while raw event payload fidelity remains outside the packet contract.
+3. When practical, obtain at least two independent labels for the corrected packet, record per-case evidence and uncertainty, adjudicate disagreements with a named reviewer, then rerun the report. Publish no precision/recall/F1 until this human gate is met.
+4. Treat hosted CI run `36029244922` and the 2026-10-05 standard-stack run as current confirmation. The latest standard Dockerfile rerun failed at Docker Hub (`registry-1.docker.io`, `i/o timeout`), so retry when registry access changes or the image/dependency/Runner inputs change.
+5. Re-triage the remaining `.scratch/` planning and issue files, record each replacement path and label, then archive or delete only files confirmed superseded by ROADMAP/CONTEXT. Preserve the dated handoff, `.codegraph/`, and `.cursor/`.
 
 Acceptance: every terminal outcome has deterministic evidence; analyzer decisions are measured against independent labels with published metrics; backend, frontend, Rust, and Golden checks are reproducible locally and in CI.
 
@@ -266,7 +307,7 @@ Acceptance: every terminal outcome has deterministic evidence; analyzer decision
 
 - Keep obsolete planning/analysis documents out of `docs/`; retain them only under `.scratch/archive/` until the next repository cleanup. At that cleanup, delete only documents confirmed superseded by ROADMAP/CONTEXT and leave the dated handoff plus local `.codegraph/` and `.cursor/` tooling untouched.
 - Re-triage stale `.scratch/` issues and mark superseded work `wontfix` or `ready-for-human`; delete obsolete issue files only after the label and replacement path are recorded.
-- The first cleanup candidates are the legacy `.scratch/agentops-platform-v0.1/`, `.scratch/agentops-platform-v0.3/`, `baseline-hardening/`, `closed-loop-architecture/`, `demo-packaging/`, and `frontend-polish/` trackers. Inspect references and historical evidence first; delete only individual superseded files after triage.
+- The 2026-10-05 cleanup archived fully triaged legacy trackers under `.scratch/archive/legacy-trackers-20261005/` and completed milestone trackers under `.scratch/archive/completed-trackers-20261005/`. Old local `.bak` copies are retained under `.scratch/archive/local-backups-20261005/`; they are not source or rollback inputs. Keep `baseline-hardening/`, `closed-loop-architecture/`, and `demo-packaging/` in place until their unresolved or `ready-for-agent` items receive a separate triage decision; do not delete them by directory wildcard.
 - Before any trusted-intranet deployment, replace the Compose demo PostgreSQL credentials with an explicit secret source; keep demo defaults confined to an explicitly documented local-only profile.
 - Do not start MCP, vector memory, side-effecting tools, multi-tenancy, or throughput work until a measured requirement promotes them and a new ADR defines the boundary.
 
