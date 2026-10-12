@@ -19,6 +19,7 @@ from app.calibration_report import (
     report_labeled_runs,
     summarize_dimensions,
 )
+from app.failure_analyzer import ANALYZER_REVISION
 from app.phase1_models import Experiment, Run, RunEvent, new_id, utcnow
 from app.phase1_service import _trajectory_from_events
 
@@ -210,6 +211,7 @@ async def test_report_binds_labels_to_packet_and_review_metadata(api) -> None:
         trajectory, _ = await _trajectory_from_events(db, run)
     packet = ReviewPacket.model_validate(
         {
+            "analyzer_revision": ANALYZER_REVISION,
             "source_snapshot": "snapshot-1",
             "eligible_count": 1,
             "cases": [
@@ -228,6 +230,7 @@ async def test_report_binds_labels_to_packet_and_review_metadata(api) -> None:
     review_record = ReviewRecord.model_validate(
         {
             "packet": {
+                "analyzer_revision": ANALYZER_REVISION,
                 "source_snapshot": "snapshot-1",
                 "case_count": 1,
                 "packet_sha256": "a" * 64,
@@ -265,6 +268,7 @@ async def test_report_binds_labels_to_packet_and_review_metadata(api) -> None:
 
     assert report["binding"] == {
         "status": "bound",
+        "analyzer_revision": ANALYZER_REVISION,
         "source_snapshot": "snapshot-1",
         "packet_sha256": "a" * 64,
         "labels_sha256": "b" * 64,
@@ -345,6 +349,98 @@ async def test_report_binds_labels_to_packet_and_review_metadata(api) -> None:
                 labels_sha256="b" * 64,
                 require_binding=True,
             )
+
+
+def test_strict_binding_requires_and_matches_analyzer_revision() -> None:
+    run_id = uuid4()
+    labels = LabelSet.model_validate(
+        {
+            "name": "labels",
+            "provenance": "test-only",
+            "cases": [{"run_id": str(run_id), "dimensions": []}],
+        }
+    )
+    case = {
+        "run_id": str(run_id),
+        "scenario_id": "checkout-api-latency.v1",
+        "execution_mode": "fixture",
+        "kind": "baseline",
+        "task": "Investigate checkout latency",
+        "trajectory": {"run_status": "failed", "steps": []},
+    }
+    review_case = {
+        "run_id": str(run_id),
+        "scenario_id": "checkout-api-latency.v1",
+        "execution_mode": "fixture",
+        "kind": "baseline",
+        "task": "Investigate checkout latency",
+    }
+    packet = ReviewPacket.model_validate(
+        {"source_snapshot": "snapshot-1", "cases": [case]}
+    )
+    record = ReviewRecord.model_validate(
+        {
+            "packet": {
+                "analyzer_revision": ANALYZER_REVISION,
+                "source_snapshot": "snapshot-1",
+                "case_count": 1,
+                "packet_sha256": "a" * 64,
+                "labels_sha256": "b" * 64,
+            },
+            "reviewer": {
+                "status": "agent_generated_provisional",
+                "reviewer_ids": ["agent"],
+                "method": "test-only",
+            },
+            "adjudication": {"status": "pending"},
+            "cases": [review_case],
+        }
+    )
+    with pytest.raises(ValueError, match="packet analyzer_revision is required"):
+        _binding_summary(
+            labels,
+            packet=packet,
+            review_record=record,
+            packet_sha256="a" * 64,
+            labels_sha256="b" * 64,
+            require_binding=True,
+        )
+
+    packet.analyzer_revision = ANALYZER_REVISION
+    record.packet.analyzer_revision = None
+    with pytest.raises(ValueError, match="record analyzer_revision is required"):
+        _binding_summary(
+            labels,
+            packet=packet,
+            review_record=record,
+            packet_sha256="a" * 64,
+            labels_sha256="b" * 64,
+            require_binding=True,
+        )
+
+    packet.analyzer_revision = "failure-analyzer.v0"
+    record.packet.analyzer_revision = ANALYZER_REVISION
+    with pytest.raises(ValueError, match="does not match review packet"):
+        _binding_summary(
+            labels,
+            packet=packet,
+            review_record=record,
+            packet_sha256="a" * 64,
+            labels_sha256="b" * 64,
+            require_binding=True,
+        )
+
+    record.packet.analyzer_revision = "failure-analyzer.v0"
+    with pytest.raises(ValueError, match="current analyzer revision"):
+        _binding_summary(
+            labels,
+            packet=packet,
+            review_record=record,
+            packet_sha256="a" * 64,
+            labels_sha256="b" * 64,
+            require_binding=True,
+        )
+
 
 def test_review_record_rejects_publishable_agent_labels() -> None:
     with pytest.raises(ValidationError, match="agent-generated"):

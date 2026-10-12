@@ -14,6 +14,10 @@ from typing import Any
 
 from app.scenario_assertions import AssertionSuite, evaluate_assertion_suite
 
+# Bump this explicit semantic revision when analyzer behavior changes. It is
+# source-controlled rather than derived from the working tree.
+ANALYZER_REVISION = "failure-analyzer.v1"
+
 # ── Data structures ────────────────────────────────────────────────────────────────
 
 

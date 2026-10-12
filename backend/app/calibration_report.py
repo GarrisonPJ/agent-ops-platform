@@ -14,7 +14,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.failure_analyzer import analyze_trajectory
+from app.failure_analyzer import ANALYZER_REVISION, analyze_trajectory
 from app.phase1_database import make_engine
 from app.phase1_models import Experiment, Run
 from app.phase1_schemas import TERMINAL_RUN_STATUSES
@@ -66,6 +66,8 @@ class PacketCase(BaseModel):
 class ReviewPacket(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    # Optional for historical packets; strict binding requires this field.
+    analyzer_revision: str | None = Field(default=None, min_length=1)
     source_snapshot: str = Field(min_length=1)
     selection: str = ""
     eligible_count: int = Field(default=0, ge=0)
@@ -82,6 +84,8 @@ class ReviewPacket(BaseModel):
 class PacketBinding(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    # Optional for historical sidecars; strict binding requires this field.
+    analyzer_revision: str | None = Field(default=None, min_length=1)
     source_snapshot: str = Field(min_length=1)
     case_count: int = Field(ge=1)
     packet_sha256: str | None = Field(default=None, min_length=1)
@@ -240,6 +244,10 @@ def _binding_summary(
 
     if require_binding and packet_sha256 is None:
         raise ValueError("packet file digest is required")
+    if require_binding and packet.analyzer_revision is None:
+        raise ValueError("review packet analyzer_revision is required")
+    if require_binding and review_record.packet.analyzer_revision is None:
+        raise ValueError("review record analyzer_revision is required")
     if require_binding and review_record.packet.packet_sha256 is None:
         raise ValueError("review record packet_sha256 is required")
     if require_binding and labels_sha256 is None:
@@ -249,6 +257,17 @@ def _binding_summary(
 
     if review_record.packet.source_snapshot != packet.source_snapshot:
         raise ValueError("review record source_snapshot does not match review packet")
+    if (
+        require_binding
+        and packet.analyzer_revision != review_record.packet.analyzer_revision
+    ):
+        raise ValueError(
+            "review record analyzer_revision does not match review packet"
+        )
+    if require_binding and packet.analyzer_revision != ANALYZER_REVISION:
+        raise ValueError(
+            "review packet analyzer_revision does not match current analyzer revision"
+        )
     if review_record.packet.case_count != len(packet.cases):
         raise ValueError("review record case_count does not match review packet")
     if packet_sha256 is not None and review_record.packet.packet_sha256 is not None:
@@ -275,6 +294,7 @@ def _binding_summary(
 
     return {
         "status": "bound",
+        "analyzer_revision": packet.analyzer_revision,
         "source_snapshot": packet.source_snapshot,
         "packet_sha256": packet_sha256,
         "labels_sha256": labels_sha256,
@@ -436,6 +456,7 @@ async def report_labeled_runs(
     return {
         "label_set": labels.name,
         "provenance": labels.provenance,
+        "analyzer_revision": ANALYZER_REVISION,
         "binding": binding,
         "accuracy_status": (
             "unbound"
@@ -485,7 +506,10 @@ def main() -> None:
     parser.add_argument(
         "--require-binding",
         action="store_true",
-        help="require a packet and structured review record that match the labels",
+        help=(
+            "require a packet and structured review record with matching "
+            "digests, identities, and analyzer revision"
+        ),
     )
     args = parser.parse_args()
     database_url = os.getenv("DATABASE_URL")

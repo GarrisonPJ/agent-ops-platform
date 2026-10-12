@@ -81,11 +81,13 @@ report against the adjudicated labels.
 
 The report now supports explicit packet and v1 sidecar binding through
 `--require-binding`. Legacy calls without those inputs remain `unbound` for
-mechanics tests. Binding checks the packet file digest, source snapshot, Run
-identity rows, terminal status, current database Experiment/Run identity, and
-the canonical digest of each exported trajectory reconstructed from `RunEvent`.
-It does not prove that an external snapshot identifier is authentic or bind an
-analyzer revision. The packet is also
+mechanics tests. Binding checks the packet file digest, source snapshot, the
+explicit immutable analyzer revision, Run identity rows, terminal status,
+current database Experiment/Run identity, and the canonical digest of each
+exported trajectory reconstructed from `RunEvent`. Strict binding requires the
+packet and sidecar revisions to match the source-controlled analyzer revision
+(`failure-analyzer.v1` in the current implementation); it does not prove that
+an external snapshot identifier is authentic. The packet is also
 analysis-blind rather than outcome-blind; terminal status, limits, timings,
 and observations can reveal outcomes.
 
@@ -187,7 +189,8 @@ An empty array means the reviewer found none. Duplicate Run IDs, missing Runs,
 and non-terminal Runs are rejected.
 
 For a bound report, keep reviewer metadata in a separate v1 sidecar. The
-sidecar records the packet snapshot, packet-file SHA-256, labels-file SHA-256,
+sidecar records the packet snapshot, explicit analyzer revision, packet-file
+SHA-256, labels-file SHA-256,
 one identity row per Run (`scenario_id`, `execution_mode`, `kind`, and `task`),
 reviewer status and method, evidence/uncertainty, and adjudication status.
 Each packet case also records a canonical `trajectory_sha256` derived from its
@@ -197,6 +200,10 @@ the strict-binding derivative is
 `.scratch/evaluation-calibration/review-record-v1-20261007-provisional-bound.json`,
 paired with
 `.scratch/evaluation-calibration/review-packet-20261007-recovery-fixed-bound.json`.
+Those dated artifacts were created before the analyzer-revision field was
+introduced; regenerate the packet and sidecar with the current exporter before
+running a new strict report. Do not treat a historical file digest as evidence
+that it satisfies the current binding contract.
 Agent-generated sidecars must keep `publishable_accuracy` set to `false`.
 To set `publishable_accuracy=true`, the sidecar must name at least two unique
 human reviewer IDs and a completed adjudication with both an adjudicator and a
@@ -221,12 +228,13 @@ uv run python -m app.calibration_report \
 ```
 
 `--require-binding` rejects a report without the packet, structured review
-sidecar, packet-file digest, and labels-file digest. Binding checks compare the
-complete Run ID set, packet source snapshot and file digests, sidecar identity
-rows, packet terminal status, current database Experiment/Run identity, and
-each packet trajectory digest against both the packet content and the current
-`RunEvent` reconstruction. Calls without these options remain available for
-old mechanics tests and are reported as `unbound`.
+sidecar, packet-file digest, labels-file digest, and explicit analyzer revision.
+Binding checks compare the complete Run ID set, packet source snapshot and file
+digests, packet/sidecar analyzer revision, sidecar identity rows, packet
+terminal status, current database Experiment/Run identity, and each packet
+trajectory digest against both the packet content and the current `RunEvent`
+reconstruction. Calls without these options remain available for old mechanics
+tests and are reported as `unbound`.
 
 The JSON output includes `accuracy_status`: `provisional_mechanics` for a
 bound non-publishable review, `publishable` only after the human reviewer and

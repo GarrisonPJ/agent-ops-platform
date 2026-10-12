@@ -13,6 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.calibration_report import canonical_digest
+from app.failure_analyzer import ANALYZER_REVISION
 from app.phase1_database import make_engine
 from app.phase1_models import Experiment, Run
 from app.phase1_schemas import TERMINAL_RUN_STATUSES
@@ -76,6 +77,7 @@ async def build_review_packet(
             }
         )
     return {
+        "analyzer_revision": ANALYZER_REVISION,
         "source_snapshot": source_snapshot,
         "selection": "terminal Runs, round-robin by scenario/mode/kind/status; oldest first within each group",
         "eligible_count": eligible_count,

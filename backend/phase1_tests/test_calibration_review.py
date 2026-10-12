@@ -81,6 +81,7 @@ async def test_review_packet_balances_strata_without_exposing_analysis(api) -> N
         packet = await build_review_packet(db, limit=2, source_snapshot="test snapshot")
 
     assert packet["eligible_count"] == 3
+    assert packet["analyzer_revision"] == "failure-analyzer.v1"
     assert {case["scenario_id"] for case in packet["cases"]} == {
         "checkout-api-latency.v1",
         "multi-step-research.v1",
