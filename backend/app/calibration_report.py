@@ -244,6 +244,17 @@ def _normalized_digest(value: str, *, field: str = "digest") -> str:
     return digest
 
 
+def _require_source_snapshot_digest(value: str) -> None:
+    try:
+        digest = _normalized_digest(value, field="source_snapshot")
+    except ValueError as exc:
+        raise ValueError(
+            "source_snapshot must use the canonical sha256:<64hex> form"
+        ) from exc
+    if value != f"sha256:{digest}":
+        raise ValueError("source_snapshot must use the canonical sha256:<64hex> form")
+
+
 def _binding_summary(
     labels: LabelSet,
     *,
@@ -295,6 +306,8 @@ def _binding_summary(
     if require_binding and review_record.packet.labels_sha256 is None:
         raise ValueError("review record labels_sha256 is required")
 
+    _require_source_snapshot_digest(packet.source_snapshot)
+    _require_source_snapshot_digest(review_record.packet.source_snapshot)
     if review_record.packet.source_snapshot != packet.source_snapshot:
         raise ValueError("review record source_snapshot does not match review packet")
     if (

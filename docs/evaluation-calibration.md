@@ -90,7 +90,11 @@ an `event_stream_sha256` digest over the complete persisted event stream
 digest exposes no event payload values. Strict binding requires the
 packet and sidecar revisions to match the source-controlled analyzer revision
 (`failure-analyzer.v1` in the current implementation); it does not prove that
-an external snapshot identifier is authentic. The packet is also
+an external snapshot identifier is authentic. In strict mode, `source_snapshot`
+must use the canonical `sha256:<64hex>` form; this catches malformed or
+ambiguous identifiers but does not verify that an external backup or database
+snapshot actually produced the digest. Historical packets remain parseable and
+non-strict mechanics calls retain the legacy string form. The packet is also
 analysis-blind rather than outcome-blind; terminal status, limits, timings,
 and observations can reveal outcomes.
 
@@ -242,7 +246,10 @@ reconstruction, and each declared `event_stream_sha256` against a fresh digest
 of the current persisted event stream. Historical packets without that field
 remain parseable for inspection, but strict binding rejects them. Calls without
 these options remain available for old mechanics tests and are reported as
-`unbound`.
+`unbound`. Strict binding also requires the packet and sidecar
+`source_snapshot` values to use canonical `sha256:<64hex>` syntax; external
+snapshot provenance and authenticity still require an independently retained
+snapshot record or verification step.
 
 The JSON output includes `accuracy_status`: `provisional_mechanics` for a
 bound non-publishable review, `publishable` only after the human reviewer and

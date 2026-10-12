@@ -297,12 +297,13 @@ Calibration event-stream fidelity follow-up (2026-10-12):
 
 - Each analysis-blind packet case now includes `event_stream_sha256`, a canonical digest of every persisted `RunEvent` row using sequence, event type, normalized UTC timestamp, and payload. The packet stores only the digest, so raw event payload stays out of the review artifact.
 - Strict `calibration_report --require-binding` now rejects missing or malformed event-stream digests and rebuilds the digest from the current database before reporting. Event payload, event type, timestamp, and sequence changes are detected even when the sanitized trajectory projection is unchanged.
+- Strict binding now requires packet and sidecar `source_snapshot` values to use canonical `sha256:<64hex>` syntax. This catches malformed or ambiguous identifiers while leaving historical packets parseable; it does not prove that an external backup or database snapshot produced the digest.
 - Historical packet JSON remains parseable for inspection; strict binding requires the new field and current packet/sidecar identities. The packet remains analysis-blind and outcome exposure is unchanged.
 
 Next actions, in order:
 
 1. Use the provisional internal gate to continue analyzer, trajectory, Scenario, recovery, exporter, schema, and report-mechanics work; do not publish accuracy claims from it.
-2. Keep the explicit analyzer revision and event-stream fidelity digest in the packet and sidecar contract; strict reports reject missing, mismatched, or stale values. External snapshot authenticity remains outside the packet contract.
+2. Keep the explicit analyzer revision, event-stream fidelity digest, and canonical source snapshot identifier in the packet and sidecar contract; strict reports reject missing, mismatched, stale, or malformed values. External snapshot authenticity remains outside the packet contract.
 3. When practical, obtain at least two independent labels for the corrected packet, record per-case evidence and uncertainty, adjudicate disagreements with a named reviewer, then rerun the report. Publish no precision/recall/F1 until this human gate is met.
 4. Treat hosted CI run `36029244922` and the 2026-10-05 standard-stack run as current confirmation. The latest standard Dockerfile rerun failed at Docker Hub (`registry-1.docker.io`, `i/o timeout`), so retry when registry access changes or the image/dependency/Runner inputs change.
 5. Re-triage the remaining `.scratch/` planning and issue files, record each replacement path and label, then archive or delete only files confirmed superseded by ROADMAP/CONTEXT. Preserve the dated handoff, `.codegraph/`, and `.cursor/`.

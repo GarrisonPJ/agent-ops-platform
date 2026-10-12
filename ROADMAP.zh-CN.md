@@ -297,12 +297,13 @@ Provider 与 binding 加固后续（2026-10-07）：
 
 - 每个 analysis-blind packet case 现在包含 `event_stream_sha256`，它基于每条持久化 `RunEvent` 的 sequence、event type、规范化 UTC 时间戳和 payload 计算 canonical digest。packet 只保存摘要，不写入原始 event payload。
 - 严格 `calibration_report --require-binding` 现在拒绝缺失或格式错误的事件流摘要，并从当前数据库重建摘要后再报告。即使 sanitized trajectory 投影不变，event payload、event type、时间戳或 sequence 的变化也会被检测。
+- 严格 binding 现在要求 packet 与 sidecar 的 `source_snapshot` 使用 canonical `sha256:<64hex>` 格式。这可以捕获格式错误或含义不明确的标识，同时保留历史 packet 的解析兼容；它不能证明外部备份或数据库快照确实产生了该 digest。
 - 历史 packet JSON 仍可解析检查；严格 binding 要求新字段及当前 packet/sidecar 身份。packet 仍是 analysis-blind，终态暴露边界不变。
 
 后续顺序：
 
 1. 使用临时内部 gate 继续 analyzer、trajectory、Scenario、recovery、exporter、schema 和 report mechanics 开发；不得据此发布准确率结论。
-2. 保持 packet 与 sidecar 中的显式 analyzer revision 及事件流保真摘要 contract；严格报告会拒绝缺失、不匹配或过期值。外部 snapshot 真实性仍在 packet contract 之外。
+2. 保持 packet 与 sidecar 中的显式 analyzer revision、事件流保真摘要及 canonical source snapshot 标识 contract；严格报告会拒绝缺失、不匹配、过期或格式错误的值。外部 snapshot 真实性仍在 packet contract 之外。
 3. 条件允许时再让至少两名独立评审者标注修复版 packet，记录逐 case 证据与不确定性，由指定仲裁者处理分歧后运行报告；人工 gate 完成前不发布 precision/recall/F1。
 4. 将 hosted CI run `36029244922` 与 2026-10-05 标准栈运行作为当前确认；最新标准 Dockerfile 重跑在 Docker Hub（`registry-1.docker.io`，`i/o timeout`）失败，待 registry 状态变化或镜像、依赖、Runner 输入变化后再重试。
 5. 继续 triage 剩余 `.scratch/` 规划和工单，记录每个文件的替代路径与标签后，只归档或删除确认已被 ROADMAP/CONTEXT 取代的文件；保留带日期 handoff、`.codegraph/` 和 `.cursor/`。

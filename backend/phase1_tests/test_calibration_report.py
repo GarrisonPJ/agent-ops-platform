@@ -97,7 +97,6 @@ def test_label_set_rejects_unknown_dimensions_and_duplicate_runs() -> None:
             }
         )
 
-
 @pytest.mark.asyncio
 async def test_report_reconstructs_persisted_run_events(api) -> None:
     _, factory = api
@@ -225,7 +224,7 @@ async def test_report_binds_labels_to_packet_and_review_metadata(api) -> None:
     packet = ReviewPacket.model_validate(
         {
             "analyzer_revision": ANALYZER_REVISION,
-            "source_snapshot": "snapshot-1",
+            "source_snapshot": "sha256:" + "1" * 64,
             "eligible_count": 1,
             "cases": [
                 {
@@ -245,7 +244,7 @@ async def test_report_binds_labels_to_packet_and_review_metadata(api) -> None:
         {
             "packet": {
                 "analyzer_revision": ANALYZER_REVISION,
-                "source_snapshot": "snapshot-1",
+                "source_snapshot": "sha256:" + "1" * 64,
                 "case_count": 1,
                 "packet_sha256": "a" * 64,
                 "labels_sha256": "b" * 64,
@@ -283,7 +282,7 @@ async def test_report_binds_labels_to_packet_and_review_metadata(api) -> None:
     assert report["binding"] == {
         "status": "bound",
         "analyzer_revision": ANALYZER_REVISION,
-        "source_snapshot": "snapshot-1",
+        "source_snapshot": "sha256:" + "1" * 64,
         "packet_sha256": "a" * 64,
         "labels_sha256": "b" * 64,
         "case_count": 1,
@@ -426,13 +425,13 @@ def test_strict_binding_requires_and_matches_analyzer_revision() -> None:
         "task": "Investigate checkout latency",
     }
     packet = ReviewPacket.model_validate(
-        {"source_snapshot": "snapshot-1", "cases": [case]}
+        {"source_snapshot": "sha256:" + "1" * 64, "cases": [case]}
     )
     record = ReviewRecord.model_validate(
         {
             "packet": {
                 "analyzer_revision": ANALYZER_REVISION,
-                "source_snapshot": "snapshot-1",
+                "source_snapshot": "sha256:" + "1" * 64,
                 "case_count": 1,
                 "packet_sha256": "a" * 64,
                 "labels_sha256": "b" * 64,
@@ -455,6 +454,7 @@ def test_strict_binding_requires_and_matches_analyzer_revision() -> None:
             labels_sha256="b" * 64,
             require_binding=True,
         )
+
 
     packet.analyzer_revision = ANALYZER_REVISION
     record.packet.analyzer_revision = None
@@ -482,6 +482,81 @@ def test_strict_binding_requires_and_matches_analyzer_revision() -> None:
 
     record.packet.analyzer_revision = "failure-analyzer.v0"
     with pytest.raises(ValueError, match="current analyzer revision"):
+        _binding_summary(
+            labels,
+            packet=packet,
+            review_record=record,
+            packet_sha256="a" * 64,
+            labels_sha256="b" * 64,
+            require_binding=True,
+        )
+
+
+def test_strict_binding_requires_canonical_source_snapshot_digest() -> None:
+    run_id = uuid4()
+    labels = LabelSet.model_validate(
+        {
+            "name": "labels",
+            "provenance": "test-only",
+            "cases": [{"run_id": str(run_id), "dimensions": []}],
+        }
+    )
+    packet = ReviewPacket.model_validate(
+        {
+            "analyzer_revision": ANALYZER_REVISION,
+            "source_snapshot": "sha256:" + "1" * 64,
+            "cases": [
+                {
+                    "run_id": str(run_id),
+                    "scenario_id": "checkout-api-latency.v1",
+                    "execution_mode": "fixture",
+                    "kind": "baseline",
+                    "task": "Investigate checkout latency",
+                    "trajectory": {"run_status": "failed", "steps": []},
+                }
+            ],
+        }
+    )
+    record = ReviewRecord.model_validate(
+        {
+            "packet": {
+                "analyzer_revision": ANALYZER_REVISION,
+                "source_snapshot": "snapshot-1",
+                "case_count": 1,
+                "packet_sha256": "a" * 64,
+                "labels_sha256": "b" * 64,
+            },
+            "reviewer": {
+                "status": "agent_generated_provisional",
+                "reviewer_ids": ["agent"],
+                "method": "test-only",
+            },
+            "adjudication": {"status": "pending"},
+            "cases": [
+                {
+                    "run_id": str(run_id),
+                    "scenario_id": "checkout-api-latency.v1",
+                    "execution_mode": "fixture",
+                    "kind": "baseline",
+                    "task": "Investigate checkout latency",
+                }
+            ],
+        }
+    )
+
+    with pytest.raises(ValueError, match="source_snapshot.*sha256"):
+        _binding_summary(
+            labels,
+            packet=packet,
+            review_record=record,
+            packet_sha256="a" * 64,
+            labels_sha256="b" * 64,
+            require_binding=True,
+        )
+
+    packet.source_snapshot = f"sha256:{'a' * 64}"
+    record.packet.source_snapshot = f"sha256:{'b' * 64}"
+    with pytest.raises(ValueError, match="source_snapshot does not match"):
         _binding_summary(
             labels,
             packet=packet,
@@ -715,7 +790,7 @@ def test_cli_require_binding_rejects_missing_packet_digest(tmp_path, monkeypatch
     ).encode()
     packet_bytes = json.dumps(
         {
-            "source_snapshot": "snapshot-1",
+            "source_snapshot": "sha256:" + "1" * 64,
             "cases": [
                 {
                     "run_id": run_id,
@@ -738,7 +813,7 @@ def test_cli_require_binding_rejects_missing_packet_digest(tmp_path, monkeypatch
         json.dumps(
             {
                 "packet": {
-                    "source_snapshot": "snapshot-1",
+                    "source_snapshot": "sha256:" + "1" * 64,
                     "case_count": 1,
                     "labels_sha256": hashlib.sha256(labels_bytes).hexdigest(),
                 },
