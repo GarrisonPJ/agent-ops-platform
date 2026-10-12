@@ -12,7 +12,7 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from app.calibration_report import canonical_digest
+from app.calibration_report import canonical_digest, persisted_event_stream_digest
 from app.failure_analyzer import ANALYZER_REVISION
 from app.phase1_database import make_engine
 from app.phase1_models import Experiment, Run
@@ -74,6 +74,7 @@ async def build_review_packet(
                 "task": experiment.task,
                 "trajectory": trajectory,
                 "trajectory_sha256": canonical_digest(trajectory),
+                "event_stream_sha256": await persisted_event_stream_digest(db, run.id),
             }
         )
     return {

@@ -7,16 +7,18 @@ import asyncio
 import hashlib
 import json
 import os
+from datetime import timezone
 from pathlib import Path
 from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.failure_analyzer import ANALYZER_REVISION, analyze_trajectory
 from app.phase1_database import make_engine
-from app.phase1_models import Experiment, Run
+from app.phase1_models import Experiment, Run, RunEvent
 from app.phase1_schemas import TERMINAL_RUN_STATUSES
 from app.phase1_service import _trajectory_from_events
 from app.scenario_registry import assertion_suite_for_scenario
@@ -61,6 +63,8 @@ class PacketCase(BaseModel):
     task: str = Field(min_length=1)
     trajectory: dict[str, object]
     trajectory_sha256: str | None = Field(default=None, min_length=1)
+    # Optional for historical packets; strict binding requires this field.
+    event_stream_sha256: str | None = Field(default=None, min_length=1)
 
 
 class ReviewPacket(BaseModel):
@@ -193,6 +197,42 @@ def canonical_digest(value: object) -> str:
         allow_nan=False,
     )
     return f"sha256:{hashlib.sha256(canonical.encode('utf-8')).hexdigest()}"
+
+
+def event_stream_digest(events: list[RunEvent]) -> str:
+    """Digest persisted events without exposing their payloads in a packet."""
+
+    normalized = []
+    for event in sorted(events, key=lambda item: item.sequence):
+        occurred_at = event.occurred_at
+        if occurred_at.tzinfo is None:
+            occurred_at = occurred_at.replace(tzinfo=timezone.utc)
+        normalized.append(
+            {
+                "sequence": event.sequence,
+                "event_type": event.event_type,
+                "occurred_at": occurred_at.astimezone(timezone.utc)
+                .isoformat(timespec="microseconds")
+                .replace("+00:00", "Z"),
+                "payload": event.payload,
+            }
+        )
+    return canonical_digest(normalized)
+
+
+async def persisted_event_stream_digest(db: AsyncSession, run_id: str) -> str:
+    events = list(
+        (
+            await db.execute(
+                select(RunEvent)
+                .where(RunEvent.run_id == run_id)
+                .order_by(RunEvent.sequence.asc())
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return event_stream_digest(events)
 
 
 def _normalized_digest(value: str, *, field: str = "digest") -> str:
@@ -436,6 +476,27 @@ async def report_labeled_runs(
             if declared_digest != current_digest:
                 raise ValueError(
                     f"RunEvent trajectory digest does not match review packet: {run_id}"
+                )
+        packet_event_stream_sha256 = (
+            packet_case.event_stream_sha256 if packet_case is not None else None
+        )
+        if (
+            packet_case is not None
+            and packet_event_stream_sha256 is None
+            and require_binding
+        ):
+            raise ValueError(f"review packet event_stream_sha256 is required: {run_id}")
+        if packet_event_stream_sha256 is not None:
+            declared_event_digest = _normalized_digest(
+                packet_event_stream_sha256, field="event_stream_sha256"
+            )
+            current_event_digest = _normalized_digest(
+                await persisted_event_stream_digest(db, run_id),
+                field="event_stream_sha256",
+            )
+            if declared_event_digest != current_event_digest:
+                raise ValueError(
+                    f"RunEvent event-stream digest does not match review packet: {run_id}"
                 )
         predicted = set(
             analyze_trajectory(

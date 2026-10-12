@@ -282,7 +282,7 @@ Review 更新（2026-09-25）：
 - 已核对修复版 packet 与对应草稿标签，5 个 Run ID 全部匹配。在 Alembic head `0008_regression_cases` 的全新临时 PostgreSQL 数据库中重建 packet 的 `Experiment`、`Run` 和 `RunEvent` 事实后，`app.calibration_report` 成功运行，5 个 case 没有计算出的分歧。
 - mechanics 输出保存在被忽略的 `.scratch/evaluation-calibration/demo-calibration-report-20261006.json`；它显示 planning/budget 与 micro 的表面指标为 `1.0`，execution/context 因没有正例而为 `null`。这些是与 agent-generated labels 循环一致的 mechanics 结果，不是可发布准确率。
 - reviewer/provenance/仲裁信息记录在被忽略的 `.scratch/evaluation-calibration/review-record-20261006-demo.json`：评审者明确为 agent-generated provisional，独立人工复核仍待完成，尚无仲裁，`publishable_accuracy=false`。报告完成后已删除临时数据库。
-- P1 calibration binding 已在 `backend/app/calibration_report.py` 实现：绑定模式要求 packet 文件 digest、labels 文件 digest、source snapshot、完整 Run ID、scenario/mode/kind/task、终态、数据库 Experiment/Run 身份、由 `calibration_review.py` 导出的 canonical trajectory digest，以及源码显式维护的 analyzer revision `failure-analyzer.v1`。外部 snapshot 真实性和原始 event payload 完整性仍在 packet contract 之外。
+- P1 calibration binding 已在 `backend/app/calibration_report.py` 实现：绑定模式要求 packet 文件 digest、labels 文件 digest、source snapshot、完整 Run ID、scenario/mode/kind/task、终态、数据库 Experiment/Run 身份、由 `calibration_review.py` 导出的 canonical trajectory digest、完整事件流 digest，以及源码显式维护的 analyzer revision `failure-analyzer.v1`。外部 snapshot 真实性仍在 packet contract 之外。
 - 固定的 5-case fixture packet 已通过临时内部 mechanics gate；agent 按文档规则逐条复核标签，没有发现需要修正的 case。该 gate 允许继续开发 analyzer、trajectory、Scenario、recovery、exporter、schema 和 report mechanics，但独立人工准确率 gate 仍为 pending。旁路记录在被忽略的 `.scratch/evaluation-calibration/provisional-internal-gate-20261006.json`。
 - 校准聚焦验证（`-k calibration`）为 `31 passed, 2 skipped`；后端全套为 `199 passed, 2 skipped`。历史 v1 sidecar 继续保留；旧严格绑定派生 packet 仍可作为历史数据解析，但早于 analyzer revision 字段，新的严格报告前必须用当前 exporter 重新导出。agent-generated review 仍不可发布。
 
@@ -293,10 +293,16 @@ Provider 与 binding 加固后续（2026-10-07）：
 - 历史 packet 保留在 `.scratch/evaluation-calibration/review-packet-20261005-recovery-fixed.json`。严格绑定派生 packet `.scratch/evaluation-calibration/review-packet-20261007-recovery-fixed-bound.json` 与 sidecar `.scratch/evaluation-calibration/review-record-v1-20261007-provisional-bound.json` 早于 analyzer revision 字段；其 digest 继续作为历史证据保留，但新的严格报告前必须用当前 exporter 重新导出。它们仍不可发布，也不代表准确率成立。
 - recovery E2E harness 现在会等待明确的 `running` 后再注入故障，并校验连续 SSE sequence、Attempt 1/2、Attempt 2 的完整三步轨迹和 Attempt 2 完成事件。本轮只完成单元验证，没有把新的真实 Compose kill/recreate 运行写成已验证证据。
 
+校准事件流保真后续（2026-10-12）：
+
+- 每个 analysis-blind packet case 现在包含 `event_stream_sha256`，它基于每条持久化 `RunEvent` 的 sequence、event type、规范化 UTC 时间戳和 payload 计算 canonical digest。packet 只保存摘要，不写入原始 event payload。
+- 严格 `calibration_report --require-binding` 现在拒绝缺失或格式错误的事件流摘要，并从当前数据库重建摘要后再报告。即使 sanitized trajectory 投影不变，event payload、event type、时间戳或 sequence 的变化也会被检测。
+- 历史 packet JSON 仍可解析检查；严格 binding 要求新字段及当前 packet/sidecar 身份。packet 仍是 analysis-blind，终态暴露边界不变。
+
 后续顺序：
 
 1. 使用临时内部 gate 继续 analyzer、trajectory、Scenario、recovery、exporter、schema 和 report mechanics 开发；不得据此发布准确率结论。
-2. 保持 packet 与 sidecar 中的显式 analyzer revision contract；严格报告会拒绝缺失、不匹配或过期 revision。外部 snapshot 真实性和原始 event payload 完整性仍在 packet contract 之外。
+2. 保持 packet 与 sidecar 中的显式 analyzer revision 及事件流保真摘要 contract；严格报告会拒绝缺失、不匹配或过期值。外部 snapshot 真实性仍在 packet contract 之外。
 3. 条件允许时再让至少两名独立评审者标注修复版 packet，记录逐 case 证据与不确定性，由指定仲裁者处理分歧后运行报告；人工 gate 完成前不发布 precision/recall/F1。
 4. 将 hosted CI run `36029244922` 与 2026-10-05 标准栈运行作为当前确认；最新标准 Dockerfile 重跑在 Docker Hub（`registry-1.docker.io`，`i/o timeout`）失败，待 registry 状态变化或镜像、依赖、Runner 输入变化后再重试。
 5. 继续 triage 剩余 `.scratch/` 规划和工单，记录每个文件的替代路径与标签后，只归档或删除确认已被 ROADMAP/CONTEXT 取代的文件；保留带日期 handoff、`.codegraph/` 和 `.cursor/`。

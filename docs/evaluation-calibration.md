@@ -84,7 +84,10 @@ The report now supports explicit packet and v1 sidecar binding through
 mechanics tests. Binding checks the packet file digest, source snapshot, the
 explicit immutable analyzer revision, Run identity rows, terminal status,
 current database Experiment/Run identity, and the canonical digest of each
-exported trajectory reconstructed from `RunEvent`. Strict binding requires the
+exported trajectory reconstructed from `RunEvent`. Each packet case also carries
+an `event_stream_sha256` digest over the complete persisted event stream
+(`sequence`, `event_type`, normalized UTC `occurred_at`, and `payload`); the
+digest exposes no event payload values. Strict binding requires the
 packet and sidecar revisions to match the source-controlled analyzer revision
 (`failure-analyzer.v1` in the current implementation); it does not prove that
 an external snapshot identifier is authentic. The packet is also
@@ -193,15 +196,17 @@ sidecar records the packet snapshot, explicit analyzer revision, packet-file
 SHA-256, labels-file SHA-256,
 one identity row per Run (`scenario_id`, `execution_mode`, `kind`, and `task`),
 reviewer status and method, evidence/uncertainty, and adjudication status.
-Each packet case also records a canonical `trajectory_sha256` derived from its
-sanitized trajectory. The historical provisional sidecar is
+Each packet case records a canonical `trajectory_sha256` derived from its
+sanitized trajectory and an `event_stream_sha256` fidelity digest derived from
+all persisted `RunEvent` rows. The historical provisional sidecar is
 `.scratch/evaluation-calibration/review-record-v1-20261007-provisional.json`;
 the strict-binding derivative is
 `.scratch/evaluation-calibration/review-record-v1-20261007-provisional-bound.json`,
 paired with
 `.scratch/evaluation-calibration/review-packet-20261007-recovery-fixed-bound.json`.
 Those dated artifacts were created before the analyzer-revision field was
-introduced; regenerate the packet and sidecar with the current exporter before
+introduced and before `event_stream_sha256` became mandatory for strict
+binding; regenerate the packet and sidecar with the current exporter before
 running a new strict report. Do not treat a historical file digest as evidence
 that it satisfies the current binding contract.
 Agent-generated sidecars must keep `publishable_accuracy` set to `false`.
@@ -233,8 +238,11 @@ Binding checks compare the complete Run ID set, packet source snapshot and file
 digests, packet/sidecar analyzer revision, sidecar identity rows, packet
 terminal status, current database Experiment/Run identity, and each packet
 trajectory digest against both the packet content and the current `RunEvent`
-reconstruction. Calls without these options remain available for old mechanics
-tests and are reported as `unbound`.
+reconstruction, and each declared `event_stream_sha256` against a fresh digest
+of the current persisted event stream. Historical packets without that field
+remain parseable for inspection, but strict binding rejects them. Calls without
+these options remain available for old mechanics tests and are reported as
+`unbound`.
 
 The JSON output includes `accuracy_status`: `provisional_mechanics` for a
 bound non-publishable review, `publishable` only after the human reviewer and
@@ -242,8 +250,9 @@ adjudication gate, and `unbound` for legacy calls. It also reports TP, FP, FN,
 and TN for each dimension and across all
 Run/dimension pairs (`micro`), plus precision, recall, F1, and the Run IDs with
 disagreements. A metric is `null` when its denominator is zero. No event
-payloads are printed. Review the Run IDs and provenance before sharing a
-report.
+payloads are printed; `event_stream_sha256` binds the persisted stream without
+placing its raw payload in the packet. Review the Run IDs and provenance before
+sharing a report.
 
 The exporter is **analysis-blind**, rather than outcome-blind. It omits scores,
 stored analysis, and raw Provider output, but the packet still includes the

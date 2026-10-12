@@ -15,6 +15,7 @@ from app.calibration_report import (
     ReviewRecord,
     _binding_summary,
     canonical_digest,
+    event_stream_digest,
     main,
     report_labeled_runs,
     summarize_dimensions,
@@ -209,6 +210,18 @@ async def test_report_binds_labels_to_packet_and_review_metadata(api) -> None:
         run = await db.get(Run, run_id)
         assert run is not None
         trajectory, _ = await _trajectory_from_events(db, run)
+        events = list(
+            (
+                await db.execute(
+                    select(RunEvent)
+                    .where(RunEvent.run_id == run_id)
+                    .order_by(RunEvent.sequence.asc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+        event_stream_sha256 = event_stream_digest(events)
     packet = ReviewPacket.model_validate(
         {
             "analyzer_revision": ANALYZER_REVISION,
@@ -223,6 +236,7 @@ async def test_report_binds_labels_to_packet_and_review_metadata(api) -> None:
                     "task": "Investigate checkout latency",
                     "trajectory": trajectory,
                     "trajectory_sha256": canonical_digest(trajectory),
+                    "event_stream_sha256": event_stream_sha256,
                 }
             ],
         }
@@ -278,6 +292,20 @@ async def test_report_binds_labels_to_packet_and_review_metadata(api) -> None:
         "publishable_accuracy": False,
     }
     assert report["accuracy_status"] == "provisional_mechanics"
+
+    packet.cases[0].event_stream_sha256 = None
+    with pytest.raises(ValueError, match="event_stream_sha256 is required"):
+        async with factory() as db:
+            await report_labeled_runs(
+                db,
+                labels,
+                packet=packet,
+                review_record=review_record,
+                packet_sha256="a" * 64,
+                labels_sha256="b" * 64,
+                require_binding=True,
+            )
+    packet.cases[0].event_stream_sha256 = event_stream_sha256
 
     with pytest.raises(ValueError, match="packet_sha256"):
         async with factory() as db:
@@ -339,6 +367,28 @@ async def test_report_binds_labels_to_packet_and_review_metadata(api) -> None:
         event.payload = {**event.payload, "observation": "A changed observation."}
         await db.commit()
     with pytest.raises(ValueError, match="RunEvent trajectory digest"):
+        async with factory() as db:
+            await report_labeled_runs(
+                db,
+                labels,
+                packet=packet,
+                review_record=review_record,
+                packet_sha256="a" * 64,
+                labels_sha256="b" * 64,
+                require_binding=True,
+            )
+
+    async with factory() as db:
+        event = (
+            await db.execute(select(RunEvent).where(RunEvent.run_id == run_id))
+        ).scalar_one()
+        event.payload = {
+            **event.payload,
+            "observation": original_observation,
+            "unprojected": "changed",
+        }
+        await db.commit()
+    with pytest.raises(ValueError, match="RunEvent event-stream digest"):
         async with factory() as db:
             await report_labeled_runs(
                 db,
