@@ -1,12 +1,42 @@
 # Evaluation Calibration
 
 Status: analysis-blind review export and reporting tools ready; independent
-human-labeled sample pending (2026-10-06). A provisional internal mechanics
-gate passed for the fixed fixture packet; it is not an accuracy gate.
+human-labeled sample pending (2026-10-13). A provisional internal mechanics
+gate passes for the current nine-Run fixture packet; it is not an accuracy gate.
+
+Verification update (2026-10-13): current local evidence is indexed at ignored
+`.scratch/evaluation-calibration/20261013-compose-refresh-110352Z/README.md`.
+All three Golden Scenarios and Runner kill/replacement recovery passed in an
+isolated stack. The fault Scenario was rerun with checks requiring six baseline
+steps, three replay steps, and assertion aggregate `1.0` before activation.
+The resulting frozen PostgreSQL database at `0008_regression_cases` contains
+nine terminal Runs and 67 RunEvents. Backend verification passes
+`208 passed, 2 skipped` with loopback proxies removed.
+
+The standard API and Web Dockerfiles built using cached layers. The standard
+Runner build stalled during dependency installation and did not complete;
+the functional run used a cached Runner image with current Python source
+mounted read-only. Its Rust binary matched the current build-stage hash.
+No fresh registry pull, standard Runner build, or hosted CI success is claimed.
+
+The retained actual logical backup is `snapshot-final.dump`, with digest
+`sha256:b743bf85cd542e432bbe063afe25ff038cf9aa6a558a44ec3d704b33b0dfe7ea`.
+In the same evidence directory, `packet-final.json`,
+`provisional-labels-final.json`, `review-record-v1-final.json`, and
+`strict-report.stdout` form the matching artifact set. The packet includes
+`failure-analyzer.v1` and all trajectory/event-stream digests. File hashes,
+source consistency, and source-snapshot equality were checked. The strict
+report is `bound` with `accuracy_status=provisional_mechanics` and
+`publishable_accuracy=false`. The sidecar identifies the agent reviewer,
+per-case evidence/uncertainty, and pending adjudication; the author had read
+analyzer code and no independent review is claimed. These correlated fixture
+pairs include a repeated fault pair, no positive context case, and no Provider
+sample. They support engineering verification only. The isolated services
+were removed after verification; the dump and all data volumes were retained.
 
 Verification update (2026-10-05): the corrected recovery packet
 `.scratch/evaluation-calibration/review-packet-20261005-recovery-fixed.json`
-is the current demo sample. Its matching temporary labels remain
+was the demo sample at that date. Its matching temporary labels remain
 agent-generated and are not an independent label set. Backend verification
 with loopback proxy variables removed is `188 passed, 2 skipped`; the same
 proxy boundary applies to fake-Provider tests and is recorded in the local
@@ -126,7 +156,7 @@ When independent labels become available, replace the provisional labels with
 the human-reviewed set and keep this mechanics record as historical evidence;
 do not rename or promote the agent-generated labels.
 
-The offline report compares human labels with the current analyzer's
+The offline report compares supplied labels with the current analyzer's
 predictions for terminal Runs. It reads the Run's persisted `RunEvent` rows and
 uses the same latest-attempt trajectory conversion and Scenario assertions as
 terminal analysis. It does not change a Run, its analysis, or its score.
@@ -136,33 +166,54 @@ terminal analysis. It does not change a Run, its analysis, or its score.
 1. Export a fixed set of terminal Runs before looking at their analysis
    results. The exporter selects round-robin across registered Scenario,
    execution mode, Run kind, and terminal status; within each group it takes
-   the oldest Runs first. Record the database snapshot identifier. Check the
-   resulting mix: the tool cannot create missing Provider or failure examples.
-2. Have reviewers label the task and sanitized persisted events without
-   viewing `run_analyses`, score breakdowns, or this command's predictions.
+   the oldest Runs first. Retain the database snapshot and record its digest.
+   Check the resulting mix: the tool cannot create missing Provider or failure
+   examples.
+2. For the internal development gate, agent-generated provisional labels may
+   be used with `publishable_accuracy=false`. For publishable calibration,
+   have independent reviewers label the task and sanitized persisted events
+   without viewing `run_analyses`, score breakdowns, or this command's predictions.
    Resolve uncertain cases before reporting metrics. Keep the review method,
    reviewers, and adjudication record in `provenance`.
 3. Store the label file outside tracked source, such as under ignored
    `.scratch/`. It contains Run IDs and labels, not raw Provider responses or
    credentials.
 
-From `backend/`, with `DATABASE_URL` set to a migrated database, create the
-local review packet before preparing labels:
+From `backend/`, with `DATABASE_URL` set to a migrated, quiescent isolated
+sample database, capture a backup and create the local review packet before
+preparing labels. PostgreSQL 16 client prerequisites are documented in the
+[backup runbook](operations/backup-restore.md). Keep the database unchanged
+through backup, export, and reporting, or export and report from an isolated
+database restored from the retained backup. Choose unused filenames and stop
+if any command fails. The `20261013-v1` names below illustrate a new artifact
+set, not a completed export or verification:
 
 ```sh
+umask 077
 mkdir -p ../.scratch/evaluation-calibration
+uv run python -m app.database_recovery backup \
+  --output ../.scratch/evaluation-calibration/sample-20261013-v1.dump
+calibration_snapshot_sha256=$(sha256sum ../.scratch/evaluation-calibration/sample-20261013-v1.dump | cut -d ' ' -f 1)
 uv run python -m app.calibration_review \
-  --output ../.scratch/evaluation-calibration/review-packet.json \
-  --source-snapshot '<backup or database snapshot ID>' --limit 32
+  --output ../.scratch/evaluation-calibration/review-packet-20261013-v1.json \
+  --source-snapshot "sha256:$calibration_snapshot_sha256" --limit 32
 ```
+
+Retain the actual backup file and a sanitized capture record identifying the
+source database, capture time, application/schema revision, and digest. Pass
+that same `source_snapshot` value into the sidecar. Neither CLI reads the
+backup to verify that it produced the packet: canonical `sha256:<64hex>` syntax
+is a format check, not proof of authenticity or database correspondence.
 
 The file is created with owner-only permissions (mode `0600`, possibly further
 restricted by the local `umask`) and cannot overwrite an existing packet.
 It contains the task and latest-attempt persisted trajectory but omits Run
 scores, stored analysis, and Provider process output. Review the task and
 observation text for sensitive content before sharing it with reviewers. The
-packet is unlabeled; only independently completed reviews become the label
-file below. Use consistent interpretations: `planning` covers wrong or
+packet is unlabeled; prepare its matching label file separately, for example
+`../.scratch/evaluation-calibration/labels-20261013-v1-provisional.json`.
+Independent reviews are required before publishing accuracy. Use consistent
+interpretations: `planning` covers wrong or
 repeated tool choices, `execution` covers tool/Provider errors and timeouts,
 `context` covers missing or overloaded context, and `budget` covers an
 exhausted step or token allowance. Record uncertain cases and adjudication.
@@ -210,9 +261,11 @@ paired with
 `.scratch/evaluation-calibration/review-packet-20261007-recovery-fixed-bound.json`.
 Those dated artifacts were created before the analyzer-revision field was
 introduced and before `event_stream_sha256` became mandatory for strict
-binding; regenerate the packet and sidecar with the current exporter before
-running a new strict report. Do not treat a historical file digest as evidence
-that it satisfies the current binding contract.
+binding; export a new packet with the current exporter and separately prepare
+matching labels and a v1 sidecar before running a new strict report. The
+exporter creates only the packet; it does not create labels or a sidecar.
+Do not treat a historical file digest as evidence that it satisfies the current
+binding contract.
 Agent-generated sidecars must keep `publishable_accuracy` set to `false`.
 To set `publishable_accuracy=true`, the sidecar must name at least two unique
 human reviewer IDs and a completed adjudication with both an adjudicator and a
@@ -222,17 +275,70 @@ or uncertainty, and agent-generated review metadata are rejected. A publishable
 record also requires `--require-binding`; otherwise the report refuses the
 publishable claim.
 
+For the new provisional artifact set, prepare
+`../.scratch/evaluation-calibration/review-record-v1-20261013-provisional.json`
+separately. Compute the packet and finalized labels file hashes from their
+exact bytes, including whitespace:
+
+```sh
+sha256sum ../.scratch/evaluation-calibration/review-packet-20261013-v1.json \
+  ../.scratch/evaluation-calibration/labels-20261013-v1-provisional.json
+```
+
+Use this v1 sidecar shape, replacing every placeholder with the actual value.
+Copy `analyzer_revision` and `source_snapshot` from the new packet, set
+`case_count` to its case count, and include one identity row per packet Run
+with its exact `run_id`, `scenario_id`, `execution_mode`, `kind`, and `task`.
+The single case below is illustrative; the digest placeholders are not valid
+strict-binding inputs:
+
+```json
+{
+  "version": "v1",
+  "packet": {
+    "analyzer_revision": "<copy from new packet>",
+    "source_snapshot": "sha256:<digest of retained backup>",
+    "case_count": 1,
+    "packet_sha256": "<packet file SHA-256>",
+    "labels_sha256": "<finalized labels file SHA-256>"
+  },
+  "reviewer": {
+    "status": "agent_generated_provisional",
+    "reviewer_ids": ["<actual agent reviewer ID>"],
+    "method": "<actual provisional review method>"
+  },
+  "adjudication": { "status": "pending" },
+  "cases": [
+    {
+      "run_id": "00000000-0000-4000-8000-000000000001",
+      "scenario_id": "<copy from packet case>",
+      "execution_mode": "<copy from packet case>",
+      "kind": "<copy from packet case>",
+      "task": "<copy from packet case>",
+      "evidence": ["<actual step or trajectory evidence>"],
+      "uncertainty": "<actual uncertainty or explicit none>"
+    }
+  ],
+  "publishable_accuracy": false
+}
+```
+
+Recompute the corresponding file hash if the packet or labels change, and
+review the sidecar's case metadata again. Human annotation can remain pending
+while this provisional artifact set supports engineering verification.
+
 ## Generate the report
 
-Set `DATABASE_URL` to the database containing those Runs, then run from the
-repository root:
+After the new packet, matching labels, and sidecar are ready, set
+`DATABASE_URL` to the same fixed sample database (or its verified isolated
+restore), then run from the repository root:
 
 ```sh
 cd backend
 uv run python -m app.calibration_report \
-  --labels ../.scratch/evaluation-calibration/demo-temp-labels-20261005-recovery-fixed.json \
-  --packet ../.scratch/evaluation-calibration/review-packet-20261007-recovery-fixed-bound.json \
-  --review-record ../.scratch/evaluation-calibration/review-record-v1-20261007-provisional-bound.json \
+  --labels ../.scratch/evaluation-calibration/labels-20261013-v1-provisional.json \
+  --packet ../.scratch/evaluation-calibration/review-packet-20261013-v1.json \
+  --review-record ../.scratch/evaluation-calibration/review-record-v1-20261013-provisional.json \
   --require-binding
 ```
 
@@ -281,8 +387,11 @@ and the limitations above are documented.
 
 ## Demo temporary labels
 
-For the current demo-only packet, an agent-generated draft is retained at
-`.scratch/evaluation-calibration/demo-temp-labels-20261005-recovery-fixed.json`.
+For the current nine-Run demo-only packet, the agent-generated draft is
+`.scratch/evaluation-calibration/20261013-compose-refresh-110352Z/provisional-labels-final.json`.
+The five-Run draft at
+`.scratch/evaluation-calibration/demo-temp-labels-20261005-recovery-fixed.json`
+remains historical evidence.
 The earlier `.scratch/evaluation-calibration/demo-temp-labels-20261005.json`
 belongs to the historical pre-fix packet. The current draft is useful
 for exercising the report command and preparing a human review, but it is not
@@ -316,8 +425,9 @@ of a planning failure by itself; do not infer a dimension from terminal status.
 This contract correction was made after the first 2026-10-05 packet was
 captured. That packet and its temporary labels remain historical demo artifacts
 with the old one-step recovery trace; do not edit them in place. The corrected
-packet named above contains the three-step recovery trace. Export another
-packet only after collecting a new standard Compose sample.
+packet named above contains the three-step recovery trace. New packets must
+come from newly captured persisted events; record whether collection used a
+standard stack or an explicit runtime override, as in the 2026-10-13 sample.
 
 For the 2026-10-05 demo draft, the two failed six-step baselines are marked
 `planning` plus `budget` because they repeat the same action/arguments and hit

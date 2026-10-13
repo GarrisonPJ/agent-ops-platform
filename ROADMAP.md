@@ -159,7 +159,7 @@ Scope:
 Acceptance:
 
 - Golden checkout loop still passes after registry and assertion refactor.
-- At least one additional Scenario completes the full closed loop in CI without external APIs (`golden_e2e.py` now runs checkout and multi-step-research by default).
+- At least one additional Scenario completes the full closed loop in CI without external APIs (`golden_e2e.py` now runs checkout, multi-step-research, and API fault orchestration by default).
 - README, CONTEXT, and ADR-0006 describe registry, versioned identity, and assertion semantics; ROADMAP marks this milestone **Complete** when all acceptance items are evidenced in CI.
 
 ## Closed-loop depth follow-up
@@ -290,7 +290,7 @@ Provider and binding hardening follow-up (2026-10-07):
 
 - Provider execution now rejects model tool arguments that do not exactly match the registered Scenario contract and persists the model-selected arguments in `step_completed`; the checkout tool schemas now declare their required arguments instead of silently accepting `{}`.
 - Durable event normalization preserves the bounded integer `attempts` argument used by the fault-orchestration Scenario. Provider and durable-event focused tests pass `28 passed`; the complete backend suite remains `198 passed, 2 skipped`.
-- The historical packet remains at `.scratch/evaluation-calibration/review-packet-20261005-recovery-fixed.json`. The dated strict-binding derivative `.scratch/evaluation-calibration/review-packet-20261007-recovery-fixed-bound.json` and sidecar `.scratch/evaluation-calibration/review-record-v1-20261007-provisional-bound.json` predate the analyzer-revision field; retain their recorded digests as historical evidence, but regenerate both with the current exporter before a new strict report. They remain non-publishable and do not claim accuracy.
+- The historical packet remains at `.scratch/evaluation-calibration/review-packet-20261005-recovery-fixed.json`. The dated strict-binding derivative `.scratch/evaluation-calibration/review-packet-20261007-recovery-fixed-bound.json` and sidecar `.scratch/evaluation-calibration/review-record-v1-20261007-provisional-bound.json` predate the analyzer-revision field; retain their recorded digests as historical evidence, but export a new packet and separately prepare matching labels and a sidecar before a new strict report. They remain non-publishable and do not claim accuracy.
 - The recovery E2E harness now waits for `running` before fault injection and validates contiguous SSE sequences, attempts 1 and 2, the complete three-step Attempt 2 trace, and Attempt 2 completion. This change is unit-tested; a fresh real Compose kill/recreate run was not performed in this working-tree pass.
 
 Calibration event-stream fidelity follow-up (2026-10-12):
@@ -300,12 +300,21 @@ Calibration event-stream fidelity follow-up (2026-10-12):
 - Strict binding now requires packet and sidecar `source_snapshot` values to use canonical `sha256:<64hex>` syntax. This catches malformed or ambiguous identifiers while leaving historical packets parseable; it does not prove that an external backup or database snapshot produced the digest.
 - Historical packet JSON remains parseable for inspection; strict binding requires the new field and current packet/sidecar identities. The packet remains analysis-blind and outcome exposure is unchanged.
 
+Golden coverage and calibration compatibility follow-up (2026-10-13):
+
+- Canonical snapshot syntax is enforced only with `--require-binding`; matching historical string identifiers remain usable for non-strict mechanics reports. The regression exercises both paths against persisted Runs.
+- `golden_e2e.py` now includes `api-fault-orchestration.v1`. Its fixture baseline exhausts six calls returning 503; replay uses `retry_call → degrade_route → invoke_service` and satisfies the Scenario assertions with an improved score. CI's existing default invocation automatically includes all three Scenarios.
+- Fault Golden checks now require six baseline steps, three replay steps, and assertion aggregate `1.0` before activation. A positive score delta alone can accept an incomplete replay; regression cases cover that failure and ensure activation is not called. Backend verification with loopback proxies removed passes `208 passed, 2 skipped`.
+- The [calibration procedure](docs/evaluation-calibration.md) now starts from a retained backup digest and uses matching new packet/label/sidecar filenames. The exporter creates only the packet; provisional reviewer metadata and labels are prepared separately.
+- An isolated four-service stack passed all three Golden Scenarios, Runner kill/replacement recovery, and a repeat fault run with the strengthened checks. API and Web used standard Dockerfiles with cached layers. The standard Runner build stalled at dependency installation; functional verification used a cached Runner image with current Python source mounted read-only. Its Rust binary matched the current build-stage SHA-256. This is explicit override runtime evidence, not a completed standard Runner build or a new hosted CI result.
+- The frozen database produced a retained logical dump and a current nine-Run, 67-event packet. The strict report is `bound`, `provisional_mechanics`, and `publishable_accuracy=false`; reviewer metadata records fresh agent-generated labels, per-case evidence/uncertainty, and pending adjudication. The sample includes repeated/correlated fixture pairs and no positive context case. Evidence is indexed at ignored `.scratch/evaluation-calibration/20261013-compose-refresh-110352Z/README.md`. Containers/network were removed; the new and pre-existing data volumes were preserved.
+
 Next actions, in order:
 
-1. Use the provisional internal gate to continue analyzer, trajectory, Scenario, recovery, exporter, schema, and report-mechanics work; do not publish accuracy claims from it.
-2. Keep the explicit analyzer revision, event-stream fidelity digest, and canonical source snapshot identifier in the packet and sidecar contract; strict reports reject missing, mismatched, stale, or malformed values. External snapshot authenticity remains outside the packet contract.
-3. When practical, obtain at least two independent labels for the corrected packet, record per-case evidence and uncertainty, adjudicate disagreements with a named reviewer, then rerun the report. Publish no precision/recall/F1 until this human gate is met.
-4. Treat hosted CI run `36029244922` and the 2026-10-05 standard-stack run as current confirmation. The latest standard Dockerfile rerun failed at Docker Hub (`registry-1.docker.io`, `i/o timeout`), so retry when registry access changes or the image/dependency/Runner inputs change.
+1. Resolve the remaining standard Runner dependency-build gap with bounded diagnostics/retries when the environment permits, then rerun the three-Scenario Golden/recovery checks without the source override. Keep the 2026-10-05 standard-stack and hosted CI run `36029244922` as historical evidence; the 2026-10-13 override run does not replace them with a new standard-build or hosted CI claim.
+2. Use the current provisional packet/report to continue deterministic analyzer, trajectory, Scenario, recovery, exporter, and report-mechanics work. Missing human reviewers do not block this work. Preserve the analyzer revision, event-stream digest, and canonical snapshot contract; retain original snapshots and dated artifacts when collecting new samples.
+3. Improve controlled failure coverage before expanding product scope: the current nine-Run sample has execution positives but no positive context case and no Provider sample. New fixture cases can verify mechanics but cannot establish general accuracy.
+4. When practical, obtain at least two independent labels, record per-case evidence and uncertainty, adjudicate disagreements with a named reviewer, then rerun the report. Publish no precision/recall/F1 until this human gate is met; external snapshot authenticity remains outside the packet contract.
 5. Re-triage the remaining `.scratch/` planning and issue files, record each replacement path and label, then archive or delete only files confirmed superseded by ROADMAP/CONTEXT. Preserve the dated handoff, `.codegraph/`, and `.cursor/`.
 
 Acceptance: every terminal outcome has deterministic evidence; analyzer decisions are measured against independent labels with published metrics; backend, frontend, Rust, and Golden checks are reproducible locally and in CI.

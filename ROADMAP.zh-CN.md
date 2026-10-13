@@ -159,7 +159,7 @@ CI 收口（2026-08-23）：
 验收：
 
 - 注册表与断言重构后 Golden checkout 闭环仍可通过。
-- 至少一个额外场景在 CI 中无需外部 API 即可完成完整闭环（`golden_e2e.py` 默认跑 checkout 与 multi-step-research）。
+- 至少一个额外场景在 CI 中无需外部 API 即可完成完整闭环（`golden_e2e.py` 默认跑 checkout、multi-step-research 与 API fault orchestration）。
 - README、CONTEXT 与 ADR-0006 描述注册表、版本化身份与断言语义；CI 具备全部验收证据后，ROADMAP 将本里程碑标为 **已完成**。
 
 ## 闭环深化后续
@@ -290,7 +290,7 @@ Provider 与 binding 加固后续（2026-10-07）：
 
 - Provider 现在会拒绝不符合注册 Scenario 合约的模型 tool arguments，并把模型实际选择的 arguments 写入 `step_completed`；checkout 工具 schema 也明确声明了必需参数，不再静默接受 `{}`。
 - durable event normalization 现在保留 fault-orchestration Scenario 使用的有界整数 `attempts`。Provider 与 durable-event 聚焦测试为 `28 passed`，后端全套保持 `198 passed, 2 skipped`。
-- 历史 packet 保留在 `.scratch/evaluation-calibration/review-packet-20261005-recovery-fixed.json`。严格绑定派生 packet `.scratch/evaluation-calibration/review-packet-20261007-recovery-fixed-bound.json` 与 sidecar `.scratch/evaluation-calibration/review-record-v1-20261007-provisional-bound.json` 早于 analyzer revision 字段；其 digest 继续作为历史证据保留，但新的严格报告前必须用当前 exporter 重新导出。它们仍不可发布，也不代表准确率成立。
+- 历史 packet 保留在 `.scratch/evaluation-calibration/review-packet-20261005-recovery-fixed.json`。严格绑定派生 packet `.scratch/evaluation-calibration/review-packet-20261007-recovery-fixed-bound.json` 与 sidecar `.scratch/evaluation-calibration/review-record-v1-20261007-provisional-bound.json` 早于 analyzer revision 字段；其 digest 继续作为历史证据保留，但新的严格报告前必须导出新 packet，并单独准备匹配的 labels 与 sidecar。它们仍不可发布，也不代表准确率成立。
 - recovery E2E harness 现在会等待明确的 `running` 后再注入故障，并校验连续 SSE sequence、Attempt 1/2、Attempt 2 的完整三步轨迹和 Attempt 2 完成事件。本轮只完成单元验证，没有把新的真实 Compose kill/recreate 运行写成已验证证据。
 
 校准事件流保真后续（2026-10-12）：
@@ -300,12 +300,21 @@ Provider 与 binding 加固后续（2026-10-07）：
 - 严格 binding 现在要求 packet 与 sidecar 的 `source_snapshot` 使用 canonical `sha256:<64hex>` 格式。这可以捕获格式错误或含义不明确的标识，同时保留历史 packet 的解析兼容；它不能证明外部备份或数据库快照确实产生了该 digest。
 - 历史 packet JSON 仍可解析检查；严格 binding 要求新字段及当前 packet/sidecar 身份。packet 仍是 analysis-blind，终态暴露边界不变。
 
+Golden 覆盖与校准兼容性后续（2026-10-13）：
+
+- canonical snapshot 格式仅在 `--require-binding` 下强制校验；匹配的历史字符串标识仍可用于非严格 mechanics 报告。回归测试基于持久化 Run 验证两条路径。
+- `golden_e2e.py` 新增 `api-fault-orchestration.v1`：fixture baseline 六次调用返回 503 后耗尽预算；replay 执行 `retry_call → degrade_route → invoke_service`，满足场景断言且评分提升。CI 现有默认调用会自动覆盖全部三个场景。
+- 故障场景 Golden 现在在激活前要求 baseline 六步、replay 三步且断言 aggregate 为 `1.0`。单纯正分差可能接受不完整 replay；回归用例覆盖该反例并确认不会调用激活接口。清除回环代理后的后端验证通过 `208 passed, 2 skipped`。
+- [校准流程](docs/evaluation-calibration.md) 改为从保留的真实备份计算 digest，并使用匹配的新 packet/labels/sidecar 文件名。exporter 只生成 packet，临时 reviewer 元数据和 labels 需单独准备。
+- 隔离四服务栈通过全部三个 Golden 场景、Runner kill/replacement recovery，以及增强断言后的故障场景复跑。API 和 Web 使用标准 Dockerfile 与缓存层；标准 Runner 构建停在依赖安装，功能验收改用缓存 Runner 镜像并只读挂载当前 Python 源码，其 Rust binary SHA-256 与当前构建阶段一致。这是明确的 override 运行证据，不代表标准 Runner 构建完成或新的 hosted CI 结果。
+- 冻结后的数据库生成了保留的真实逻辑备份及新版九个 Run、67 条事件的 packet。严格报告为 `bound`、`provisional_mechanics`、`publishable_accuracy=false`；reviewer 信息记录新编写的 agent 标签、逐 case 证据/不确定性及待仲裁状态。样本含重复/相关 fixture 对，且没有 context 阳性。证据索引位于被忽略的 `.scratch/evaluation-calibration/20261013-compose-refresh-110352Z/README.md`。本轮容器/网络已清理，新旧数据卷均保留。
+
 后续顺序：
 
-1. 使用临时内部 gate 继续 analyzer、trajectory、Scenario、recovery、exporter、schema 和 report mechanics 开发；不得据此发布准确率结论。
-2. 保持 packet 与 sidecar 中的显式 analyzer revision、事件流保真摘要及 canonical source snapshot 标识 contract；严格报告会拒绝缺失、不匹配、过期或格式错误的值。外部 snapshot 真实性仍在 packet contract 之外。
-3. 条件允许时再让至少两名独立评审者标注修复版 packet，记录逐 case 证据与不确定性，由指定仲裁者处理分歧后运行报告；人工 gate 完成前不发布 precision/recall/F1。
-4. 将 hosted CI run `36029244922` 与 2026-10-05 标准栈运行作为当前确认；最新标准 Dockerfile 重跑在 Docker Hub（`registry-1.docker.io`，`i/o timeout`）失败，待 registry 状态变化或镜像、依赖、Runner 输入变化后再重试。
+1. 环境允许时用有超时限制的诊断/重试解决标准 Runner 依赖构建缺口，再移除源码 override 复跑三场景 Golden/recovery。2026-10-05 标准栈与 hosted CI run `36029244922` 保留为历史证据；2026-10-13 override 运行不能替代新的标准构建或 hosted CI 结果。
+2. 使用当前临时 packet/report 继续确定性的 analyzer、trajectory、Scenario、recovery、exporter 和 report mechanics 开发，不因缺少人工评审阻塞。保持 analyzer revision、事件流 digest 和 canonical snapshot contract；采集新样本时保留原始快照及带日期产物。
+3. 扩大产品范围前先补受控失败覆盖：当前九个 Run 的样本已有 execution 阳性，但没有 context 阳性或 Provider 样本。新增 fixture 可验证机制，不能证明通用准确率。
+4. 条件允许时再由至少两名独立评审者标注，记录逐 case 证据与不确定性，经指定仲裁者处理分歧后运行报告；人工 gate 完成前不发布 precision/recall/F1，外部 snapshot 真实性仍在 packet contract 之外。
 5. 继续 triage 剩余 `.scratch/` 规划和工单，记录每个文件的替代路径与标签后，只归档或删除确认已被 ROADMAP/CONTEXT 取代的文件；保留带日期 handoff、`.codegraph/` 和 `.cursor/`。
 
 验收：每个终态都有确定性证据；分析器结果使用独立标注并发布指标；后端、前端、Rust 与 Golden 检查在本地和 CI 可复现。
