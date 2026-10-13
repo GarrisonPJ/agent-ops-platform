@@ -103,6 +103,8 @@ def run_golden_loop(api_url: str, scenario_id: str) -> dict:
     baseline = wait_for_run(api_url, baseline["id"])
     if baseline["status"] != "failed":
         raise AssertionError(f"baseline should fail, got {baseline['status']}")
+    if scenario_id == "api-fault-orchestration.v1" and baseline["metrics"].get("steps") != 6:
+        raise AssertionError("fault baseline should contain exactly 6 persisted steps")
     assert_persisted_trace(api_url, baseline["id"])
 
     detail = request(api_url, "GET", f"/api/experiments/{experiment['id']}")
@@ -114,6 +116,11 @@ def run_golden_loop(api_url: str, scenario_id: str) -> dict:
     replay = wait_for_run(api_url, candidate["replay_run_id"])
     if replay["status"] != "succeeded":
         raise AssertionError(f"replay should succeed, got {replay['status']}")
+    if scenario_id == "api-fault-orchestration.v1":
+        if replay["metrics"].get("assertions", {}).get("aggregate") != 1.0:
+            raise AssertionError("fault replay should satisfy all Scenario assertions")
+        if replay["metrics"].get("steps") != 3:
+            raise AssertionError("fault replay should contain exactly 3 persisted steps")
     assert_persisted_trace(api_url, replay["id"])
 
     detail = request(api_url, "GET", f"/api/experiments/{experiment['id']}")

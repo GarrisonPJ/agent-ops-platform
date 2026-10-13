@@ -182,3 +182,86 @@ def test_golden_cli_supports_fault_scenario(scenario_args, expected, monkeypatch
     assert json.loads(capsys.readouterr().out) == {
         scenario_id: {"scenario_id": scenario_id} for scenario_id in expected
     }
+
+
+@pytest.mark.parametrize(
+    ("baseline_steps", "replay_tools", "error"),
+    [
+        (6, ["invoke_service"], "all Scenario assertions"),
+        (6, ["invoke_service"] * 3, "all Scenario assertions"),
+        (6, ["retry_call", "degrade_route", "invoke_service", "invoke_service"], "exactly 3"),
+        (5, ["retry_call", "degrade_route", "invoke_service"], "exactly 6"),
+        (6, ["retry_call", "degrade_route", "invoke_service"], None),
+    ],
+)
+def test_fault_golden_rejects_incomplete_fixture_before_activation(
+    baseline_steps, replay_tools, error, monkeypatch
+) -> None:
+    values = runpy.run_path(str(Path(__file__).parents[2] / "scripts" / "golden_e2e.py"))
+    run_loop = values["run_golden_loop"]
+    scenario_id = "api-fault-orchestration.v1"
+    suite = assertion_suite_for_scenario(scenario_id)
+    runs = {}
+    for run_id, status, tools in (
+        ("baseline", "failed", ["invoke_service"] * baseline_steps),
+        ("replay", "succeeded", replay_tools),
+    ):
+        score = compute_score(
+            {
+                "status": "success" if status == "succeeded" else "failed",
+                "steps": [
+                    {
+                        "action": {"name": tool, "arguments": {"service": "payments-api"}},
+                        "observation": "HTTP 503 Service Unavailable" if status == "failed" else "Service responded 200 OK.",
+                        "latency_ms": 31,
+                    }
+                    for tool in tools
+                ],
+            },
+            assertion_suite=suite,
+        )
+        runs[run_id] = {
+            "id": run_id,
+            "status": status,
+            "score": score["score"],
+            "metrics": {"steps": len(tools), "assertions": score["assertions"]},
+        }
+    delta = runs["replay"]["score"] - runs["baseline"]["score"]
+    assert delta > 0
+    if replay_tools == ["invoke_service"]:
+        assert runs["replay"]["metrics"]["assertions"]["aggregate"] == 0.2
+
+    active = {"id": "policy", "status": "active", "score_delta": delta}
+    details = iter(
+        [
+            {"candidate_policy": {"id": "policy", "status": "candidate"}},
+            {"candidate_policy": {"id": "policy", "status": "validated", "score_delta": delta}},
+            {"active_policy": active},
+        ]
+    )
+    responses = {
+        ("POST", "/api/experiments"): {"id": "experiment"},
+        ("POST", "/api/experiments/experiment/runs"): {"id": "baseline"},
+        ("GET", "/api/runs/baseline"): runs["baseline"],
+        ("POST", "/api/policies/policy/replay"): {"replay_run_id": "replay"},
+        ("GET", "/api/runs/replay"): runs["replay"],
+        ("POST", "/api/policies/policy/activate"): active,
+    }
+    calls = []
+
+    def request(api_url, method, path, body=None):
+        calls.append((method, path))
+        if (method, path) == ("GET", "/api/experiments/experiment"):
+            return next(details)
+        return responses[(method, path)]
+
+    monkeypatch.setitem(run_loop.__globals__, "request", request)
+    monkeypatch.setitem(run_loop.__globals__, "assert_persisted_trace", lambda *args: None)
+    if error is not None:
+        with pytest.raises(AssertionError, match=error):
+            run_loop("http://localhost:8000", scenario_id)
+        assert ("POST", "/api/policies/policy/activate") not in calls
+    else:
+        result = run_loop("http://localhost:8000", scenario_id)
+        assert result["policy"]["status"] == "active"
+        assert calls.count(("POST", "/api/policies/policy/activate")) == 1
