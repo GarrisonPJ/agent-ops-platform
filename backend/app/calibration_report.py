@@ -306,8 +306,9 @@ def _binding_summary(
     if require_binding and review_record.packet.labels_sha256 is None:
         raise ValueError("review record labels_sha256 is required")
 
-    _require_source_snapshot_digest(packet.source_snapshot)
-    _require_source_snapshot_digest(review_record.packet.source_snapshot)
+    if require_binding:
+        _require_source_snapshot_digest(packet.source_snapshot)
+        _require_source_snapshot_digest(review_record.packet.source_snapshot)
     if review_record.packet.source_snapshot != packet.source_snapshot:
         raise ValueError("review record source_snapshot does not match review packet")
     if (

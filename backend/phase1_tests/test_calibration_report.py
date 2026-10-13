@@ -292,6 +292,41 @@ async def test_report_binds_labels_to_packet_and_review_metadata(api) -> None:
     }
     assert report["accuracy_status"] == "provisional_mechanics"
 
+    legacy_packet = packet.model_copy(update={"source_snapshot": "snapshot-1"})
+    legacy_review_record = review_record.model_copy(
+        update={
+            "packet": review_record.packet.model_copy(
+                update={"source_snapshot": "snapshot-1"}
+            )
+        }
+    )
+    async with factory() as db:
+        legacy_report = await report_labeled_runs(
+            db,
+            labels,
+            packet=legacy_packet,
+            review_record=legacy_review_record,
+            packet_sha256="a" * 64,
+            labels_sha256="b" * 64,
+            require_binding=False,
+        )
+    assert legacy_report == {
+        **report,
+        "binding": {**report["binding"], "source_snapshot": "snapshot-1"},
+    }
+
+    with pytest.raises(ValueError, match="source_snapshot.*sha256"):
+        async with factory() as db:
+            await report_labeled_runs(
+                db,
+                labels,
+                packet=legacy_packet,
+                review_record=legacy_review_record,
+                packet_sha256="a" * 64,
+                labels_sha256="b" * 64,
+                require_binding=True,
+            )
+
     packet.cases[0].event_stream_sha256 = None
     with pytest.raises(ValueError, match="event_stream_sha256 is required"):
         async with factory() as db:
