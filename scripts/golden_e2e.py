@@ -23,6 +23,11 @@ GOLDEN_SCENARIOS = {
         "task": "Answer a research question using search and fetch tools",
         "scenario_params": {"topic": "checkout latency"},
     },
+    "api-fault-orchestration.v1": {
+        "name_prefix": "Golden API fault orchestration",
+        "task": "Stabilize a failing API dependency without exhausting the step budget",
+        "scenario_params": {"service": "payments-api"},
+    },
 }
 
 
