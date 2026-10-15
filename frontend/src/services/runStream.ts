@@ -27,20 +27,34 @@ export function subscribeToRunStream(runId: string, after: number, callbacks: Ru
   }
 
   const source = new EventSource(`/api/runs/${encodeURIComponent(runId)}/stream?after=${after}`);
+  const eventTypes = eventEnvelopeSchema.shape.type.options;
+  let closed = false;
+  const close = () => {
+    if (closed) return;
+    closed = true;
+    for (const type of eventTypes) source.removeEventListener(type, onMessage);
+    source.onopen = null;
+    source.onmessage = null;
+    source.onerror = null;
+    source.close();
+  };
   source.onopen = callbacks.onOpen;
-  source.onmessage = (message) => {
+  const onMessage = (message: Event) => {
+    if (!(message instanceof MessageEvent)) return;
     const event = parseRunEvent(message.data);
     if (!event) {
       console.warn("Dropped invalid run event", message.data);
       return;
     }
     callbacks.onEvent(event);
-    if (TERMINAL_EVENTS.has(event.type)) source.close();
+    if (TERMINAL_EVENTS.has(event.type)) close();
   };
+  source.onmessage = onMessage;
+  for (const type of eventTypes) source.addEventListener(type, onMessage);
   source.onerror = () => {
-    source.close();
+    close();
     callbacks.onDisconnect("The event stream was interrupted.");
   };
 
-  return () => source.close();
+  return close;
 }
