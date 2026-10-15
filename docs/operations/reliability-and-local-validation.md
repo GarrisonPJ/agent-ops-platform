@@ -187,6 +187,32 @@ to pass. A later standard build retry again timed out resolving
 availability as environment-dependent. Never treat an override as a successful
 standard image build.
 
+The Runner installs its Python protocol dependencies from
+`runner-requirements.lock`. When updating `backend/uv.lock`, refresh the pinned
+`pydantic`/`httpx` dependency closure in that file from the same lock, then build
+the standard Runner image and run `pip check` inside it. The image installs
+binary wheels with bounded pip timeout/retries. Its Rust stage uses
+`cargo build --release --locked`; only Cargo manifests, the lockfile, and crate
+sources enter that stage, so edits to the Python dependency lock or runtime
+instructions preserve the Rust build cache. Python application code is copied
+after dependency installation.
+
+On 2026-10-15, the standard Runner Dockerfile completed a local build with a
+fresh locked Rust compilation and installation of all 11 pinned Python
+packages. After a concurrent analyzer edit, a second standard build refreshed
+the application copy and reused those Rust/pip layers. The final standard
+four-service Compose stack passed Web/API/Runner readiness, all three Golden
+scenarios, and the original Runner recovery assertions (`running` before the
+kill, then `succeeded` with the complete Attempt 2 trace). Runner/API Python
+sources matched the final checkout and neither container had a source bind
+mount. Base images and API/Web dependency layers used local Docker cache; this
+is standard local build/runtime evidence, not a clean hosted CI run.
+The build logs, source hashes, image identities, package check, recovery result,
+and database dump are preserved under
+`.scratch/evaluation-calibration/20261015-standard-runner-closeout/`, with the
+final acceptance artifacts in `final/`. The isolated project's containers were
+removed after verification; its image and database volume were retained.
+
 Provider fake-server tests must not be sent through an inherited corporate
 proxy. On 2026-10-05 the isolated command below completed the full backend
 suite with `188 passed, 2 skipped`; the same suite had produced loopback

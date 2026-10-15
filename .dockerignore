@@ -10,6 +10,7 @@
 !backend/app/**
 !backend/pyproject.toml
 !backend/uv.lock
+!runner-requirements.lock
 
 runner/target/
 runner/**/target/
