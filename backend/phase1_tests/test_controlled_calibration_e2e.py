@@ -119,11 +119,12 @@ def test_subprocess_credentials_stay_in_environment_and_failures_are_not_success
         e2e._command(["-m", "alembic", "upgrade", "head"], SERVICE_URL)
 
 
+@pytest.mark.parametrize("error_type", [RuntimeError, ConnectionError])
 def test_cli_failure_output_excludes_exception_message_and_exits_nonzero(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys, error_type: type[Exception]
 ) -> None:
     async def fail(*_args):
-        raise RuntimeError(SERVICE_URL + " private-token")
+        raise error_type(SERVICE_URL + " private-token")
 
     monkeypatch.setenv("DATABASE_URL", SERVICE_URL)
     monkeypatch.delenv("RUNNER_TOKEN", raising=False)
@@ -134,7 +135,7 @@ def test_cli_failure_output_excludes_exception_message_and_exits_nonzero(
     assert exit_info.value.code == 1
     output = capsys.readouterr()
     assert "private" not in output.out + output.err
-    assert json.loads(output.err) == {"status": "failed", "error_type": "RuntimeError"}
+    assert json.loads(output.err) == {"status": "failed", "error_type": error_type.__name__}
 
 
 def test_malformed_database_url_is_sanitized_before_import_side_effects(tmp_path: Path) -> None:
@@ -221,7 +222,7 @@ def test_report_comparison_rejects_malformed_digest(digest: object) -> None:
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("failure", [None, "restore", "report"])
+@pytest.mark.parametrize("failure", [None, "restore", "report", "restore_cleanup", "source_cleanup"])
 async def test_harness_restores_captured_file_and_cleans_both_databases_on_failure(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: str | None
 ) -> None:
@@ -237,6 +238,8 @@ async def test_harness_restores_captured_file_and_cleans_both_databases_on_failu
             yield SERVICE_URL.replace("keep_this_database", "agentops_calibration_uuid"), "agentops_restore_uuid"
         finally:
             operations.append("drop_source")
+            if failure == "source_cleanup":
+                raise ConnectionError("cleanup lost connection with private-token")
 
     async def capture(_url, token, directory):
         assert token == "private-token"
@@ -266,6 +269,8 @@ async def test_harness_restores_captured_file_and_cleans_both_databases_on_failu
             yield "postgresql://operator:private-password@localhost/agentops_restore_uuid"
         finally:
             operations.append("drop_restore")
+            if failure == "restore_cleanup":
+                raise ConnectionError("cleanup lost connection with private-token")
 
     def command(arguments, url):
         if "app.calibration_report" not in arguments:
@@ -286,7 +291,7 @@ async def test_harness_restores_captured_file_and_cleans_both_databases_on_failu
     monkeypatch.setattr(e2e.asyncpg, "connect", AsyncMock(return_value=AsyncMock()))
 
     if failure:
-        with pytest.raises(RecoveryError):
+        with pytest.raises((RecoveryError, ConnectionError)):
             await e2e.run(SERVICE_URL, "private-token", output)
     else:
         summary = await e2e.run(SERVICE_URL, "private-token", output)
@@ -296,4 +301,8 @@ async def test_harness_restores_captured_file_and_cleans_both_databases_on_failu
     summary_text = (output / "e2e-summary.json").read_text()
     assert "private" not in summary_text
     if failure:
-        assert json.loads(summary_text)["stage"] == ("restore" if failure == "restore" else "restored_report")
+        assert json.loads(summary_text)["stage"] == {
+            "restore": "restore", "report": "restored_report",
+            "restore_cleanup": "cleanup_restore", "source_cleanup": "cleanup_source",
+        }[failure]
+        assert json.loads(summary_text)["status"] == "failed"

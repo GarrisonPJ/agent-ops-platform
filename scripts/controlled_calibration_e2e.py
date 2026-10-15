@@ -189,6 +189,8 @@ async def run(database_url: str, token: str, output: Path) -> dict[str, object]:
                 _compare_reports(original_report, restored_report)
                 if file_digest(snapshot) != snapshot_digest:
                     raise RecoveryError("backup changed during verification")
+                stage = "cleanup_restore"
+            stage = "cleanup_source"
         summary.update(
             status="ok", case_count=6, event_count=30,
             source_snapshot=snapshot_digest,
