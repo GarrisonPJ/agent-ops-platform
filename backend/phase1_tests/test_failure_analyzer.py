@@ -61,6 +61,27 @@ def test_provider_error_and_timeout_are_run_level_classifications() -> None:
 
     assert provider_report.dominant_classification == FailureClassification.PROVIDER_ERROR.value
     assert timeout_report.dominant_classification == FailureClassification.TIMEOUT.value
+    assert provider_report.dimensions == timeout_report.dimensions == {"execution": 1.0}
+    assert provider_report.dominant == timeout_report.dominant == "execution"
+
+
+def test_empty_trajectory_without_execution_evidence_has_no_dimension() -> None:
+    for status in ("succeeded", "failed", "cancelled"):
+        report = analyze_trajectory({"run_status": status, "steps": []})
+
+        assert report.dimensions == {}
+        assert report.dominant is None
+        assert report.evidence == []
+
+
+def test_empty_trajectory_with_provider_error_and_timeout_has_one_execution_dimension() -> None:
+    report = analyze_trajectory(
+        {"run_status": "timed_out", "provider_error": True, "steps": []}
+    )
+
+    assert report.dimensions == {"execution": 1.0}
+    assert report.dominant == "execution"
+    assert {item.failure_type for item in report.evidence} == {"provider_error", "timeout"}
 
 
 def test_legacy_trajectory_analysis_still_uses_existing_dimensions() -> None:

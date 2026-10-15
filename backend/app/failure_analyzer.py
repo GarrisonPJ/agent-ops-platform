@@ -16,7 +16,7 @@ from app.scenario_assertions import AssertionSuite, evaluate_assertion_suite
 
 # Bump this explicit semantic revision when analyzer behavior changes. It is
 # source-controlled rather than derived from the working tree.
-ANALYZER_REVISION = "failure-analyzer.v1"
+ANALYZER_REVISION = "failure-analyzer.v2"
 
 # ── Data structures ────────────────────────────────────────────────────────────────
 
@@ -323,6 +323,8 @@ def analyze_trajectory(
     if total_steps == 0:
         run_level_evidence = _run_level_failure_evidence(trajectory)
         return FailureReport(
+            dimensions={item.dimension: 1.0 for item in run_level_evidence},
+            dominant=run_level_evidence[0].dimension if run_level_evidence else None,
             evidence=run_level_evidence,
             classification_rates={
                 item.failure_type: 1.0
