@@ -194,6 +194,7 @@ async def capture_cases(
             raise ValueError(f"unexpected persisted terminal status: {case.name}")
         captured.append({"name": case.name, "run_id": run_id, "context_state": case.context_state,
                          "expected_dimensions": list(case.dimensions), "expected_provider_error": case.provider_error,
+                         "unknown_dimensions": ["context"] if case.context_state == "unknown" else [],
                          "evidence": case.evidence, "event_count": len(events), "provider_request_count": requests})
     return captured
 
@@ -212,7 +213,8 @@ async def export_artifacts(
         raise ValueError("packet did not select exactly the controlled Runs")
     write_packet(output / "packet.json", packet)
     labels = {"name": "controlled-calibration.v1", "provenance": "Agent-authored input contracts fixed in controlled_calibration_capture.py before capture; not independent labels or accuracy evidence.",
-              "cases": [{"run_id": case["run_id"], "dimensions": case["expected_dimensions"]} for case in captured]}
+              "cases": [{"run_id": case["run_id"], "dimensions": case["expected_dimensions"],
+                         "unknown_dimensions": case["unknown_dimensions"]} for case in captured]}
     write_packet(output / "provisional-labels.json", labels)
     captured_by_id = {case["run_id"]: case for case in captured}
     record = {
@@ -239,7 +241,7 @@ async def export_artifacts(
         "captured_at": datetime.now(timezone.utc).isoformat(), "schema_revision": application_alembic_head(),
         "source_snapshot": source_snapshot, "script_sha256": file_digest(Path(__file__)),
         "boundary": "ASGI authenticated Runner API, injected context measurements and loopback Fake Provider; no Rust supervision or external model.",
-        "context_contract": "positive: observed pressure; negative: observed low use with no truncation signal; unknown: measurement absent, no supported signal. Unknown cases in report counts do not validate true context negatives.",
+        "context_contract": "positive: observed pressure; negative: observed low use with no truncation signal; unknown: measurement absent, no supported signal. Unknown cases are excluded from assessed context counts and disagreements, and remain visible in report coverage.",
         "publishable_accuracy": False, "cases": captured,
     })
     if report["disagreements"]:

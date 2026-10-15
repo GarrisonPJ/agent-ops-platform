@@ -29,6 +29,17 @@ async def test_controlled_capture_persists_context_contracts_and_fake_provider_e
     report = await export_artifacts(factory, tmp_path, captured, snapshot)
     assert report["binding"]["status"] == "bound"
     assert report["accuracy_status"] == "provisional_mechanics"
+    assert report["evaluation_scope"] == "assessed_run_dimension_pairs"
+    assert report["coverage"]["by_dimension"]["context"] == {
+        "known_count": 2, "unknown_count": 4, "total_count": 6, "ratio": pytest.approx(1 / 3),
+    }
+    assert report["coverage"]["micro"] == {
+        "known_count": 20, "unknown_count": 4, "total_count": 24, "ratio": pytest.approx(5 / 6),
+    }
+    assert report["by_dimension"]["context"]["tp"] == 1
+    assert report["by_dimension"]["context"]["tn"] == 1
+    assert report["micro"]["tp"] == 3
+    assert report["micro"]["tn"] == 17
     assert report["disagreements"] == []
     packet = json.loads((tmp_path / "packet.json").read_text())
     trajectories = {case["run_id"]: case["trajectory"] for case in packet["cases"]}
@@ -116,6 +127,47 @@ async def test_run_capture_binds_token_and_restores_environment_on_failure(api, 
 
 
 @pytest.mark.asyncio
+async def test_partial_human_review_keeps_publishable_gate_and_binds_unknown_labels(api, tmp_path: Path) -> None:
+    client, factory = api
+    captured = await capture_cases(client, factory, "test-runner-token")
+    snapshot = tmp_path / "mechanics-only-snapshot"
+    snapshot.write_bytes(b"test-only snapshot identity; not a database backup")
+    await export_artifacts(factory, tmp_path, captured, snapshot)
+    labels_path = tmp_path / "provisional-labels.json"
+    labels = json.loads(labels_path.read_text())
+    packet = ReviewPacket.model_validate_json((tmp_path / "packet.json").read_text())
+    record = json.loads((tmp_path / "review-record.json").read_text())
+    record.update(
+        reviewer={"status": "multi_reviewer", "reviewer_ids": ["test-human-a", "test-human-b"],
+                  "method": "Test-only human gate mechanics; not independent accuracy evidence."},
+        adjudication={"status": "complete", "adjudicator": "test-adjudicator", "decision": "test-only acceptance"},
+        publishable_accuracy=True,
+    )
+    review_record = ReviewRecord.model_validate(record)
+    async with factory() as db:
+        report = await report_labeled_runs(
+            db, LabelSet.model_validate(labels), packet=packet, review_record=review_record,
+            packet_sha256=record["packet"]["packet_sha256"],
+            labels_sha256=controlled_calibration_capture.file_digest(labels_path), require_binding=True,
+        )
+    assert report["accuracy_status"] == "publishable"
+    assert report["binding"]["publishable_accuracy"] is True
+    assert report["evaluation_scope"] == "assessed_run_dimension_pairs"
+    assert report["coverage"]["micro"]["known_count"] == 20
+
+    low_pressure_id = next(case["run_id"] for case in captured if case["name"] == "context_low_pressure")
+    next(case for case in labels["cases"] if case["run_id"] == low_pressure_id)["unknown_dimensions"] = ["context"]
+    labels_path.write_text(json.dumps(labels))
+    async with factory() as db:
+        with pytest.raises(ValueError, match="labels_sha256 does not match labels"):
+            await report_labeled_runs(
+                db, LabelSet.model_validate(labels), packet=packet, review_record=review_record,
+                packet_sha256=record["packet"]["packet_sha256"],
+                labels_sha256=controlled_calibration_capture.file_digest(labels_path), require_binding=True,
+            )
+
+
+@pytest.mark.asyncio
 async def test_capture_expected_labels_are_fixed_before_analysis(api, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from app import calibration_report
     from app.failure_analyzer import FailureReport
@@ -123,7 +175,7 @@ async def test_capture_expected_labels_are_fixed_before_analysis(api, tmp_path: 
     client, factory = api
     captured = await capture_cases(client, factory, "test-runner-token")
     # Perturb report predictions only: persisted terminal analysis already ran.
-    monkeypatch.setattr(calibration_report, "analyze_trajectory", lambda *_args, **_kwargs: FailureReport())
+    monkeypatch.setattr(calibration_report, "analyze_trajectory", lambda *_args, **_kwargs: FailureReport(dimensions={"context": 1.0, "budget": 1.0}))
     snapshot = tmp_path / "mechanics-only-snapshot"
     snapshot.write_bytes(b"test-only snapshot identity")
     with pytest.raises(ValueError, match="contract/report disagreement"):
@@ -131,7 +183,13 @@ async def test_capture_expected_labels_are_fixed_before_analysis(api, tmp_path: 
     labels = json.loads((tmp_path / "provisional-labels.json").read_text())
     expected = {case["run_id"]: case["expected_dimensions"] for case in captured}
     assert {case["run_id"]: case["dimensions"] for case in labels["cases"]} == expected
+    assert {case["run_id"]: case["unknown_dimensions"] for case in labels["cases"]} == {
+        case["run_id"]: ["context"] if case["context_state"] == "unknown" else [] for case in captured
+    }
     disagreements = json.loads((tmp_path / "strict-report.json").read_text())["disagreements"]
     assert {case["run_id"]: case["false_negatives"] for case in disagreements} == {
-        case["run_id"]: case["expected_dimensions"] for case in captured if case["expected_dimensions"]
+        case["run_id"]: ["execution"] if "execution" in case["expected_dimensions"] else [] for case in captured
+    }
+    assert {case["run_id"]: case["false_positives"] for case in disagreements} == {
+        case["run_id"]: ["budget", "context"] if case["context_state"] == "negative" else ["budget"] for case in captured
     }

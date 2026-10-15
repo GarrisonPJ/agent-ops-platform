@@ -10,6 +10,7 @@ from pydantic import ValidationError
 from sqlalchemy import select
 
 from app.calibration_report import (
+    DIMENSIONS,
     LabelSet,
     ReviewPacket,
     ReviewRecord,
@@ -96,6 +97,69 @@ def test_label_set_rejects_unknown_dimensions_and_duplicate_runs() -> None:
                 ],
             }
         )
+
+
+def test_unknown_dimension_labels_are_optional_and_disjoint() -> None:
+    payload = {
+        "name": "review",
+        "provenance": "test-only",
+        "cases": [{"run_id": str(uuid4()), "dimensions": ["planning"]}],
+    }
+    legacy = LabelSet.model_validate(payload)
+    assert legacy.cases[0].unknown_dimensions == set()
+    payload["cases"][0]["unknown_dimensions"] = ["context"]
+    assert LabelSet.model_validate(payload).cases[0].unknown_dimensions == {"context"}
+
+    payload["cases"][0]["unknown_dimensions"] = ["unsupported"]
+    with pytest.raises(ValidationError, match="Input should be"):
+        LabelSet.model_validate(payload)
+    payload["cases"][0]["unknown_dimensions"] = ["planning"]
+    with pytest.raises(ValidationError, match="must not overlap"):
+        LabelSet.model_validate(payload)
+
+
+def test_dimension_metrics_exclude_unknown_pairs_and_report_coverage() -> None:
+    comparisons = [
+        ({"planning"}, {"planning", "context"}),
+        ({"execution"}, {"planning"}),
+    ]
+    legacy = summarize_dimensions(comparisons)
+    explicit = summarize_dimensions(comparisons, unknown_dimensions=[set(), set()])
+    assert explicit == legacy
+    summary = summarize_dimensions(
+        comparisons, unknown_dimensions=[{"context"}, {"context"}]
+    )
+    assert summary["by_dimension"]["context"] == {
+        "tp": 0, "fp": 0, "fn": 0, "tn": 0,
+        "precision": None, "recall": None, "f1": None,
+    }
+    for dimension in ("planning", "execution", "budget"):
+        assert summary["by_dimension"][dimension] == legacy["by_dimension"][dimension]
+    assert summary["micro"] == {
+        "tp": 1, "fp": 1, "fn": 1, "tn": 3,
+        "precision": 0.5, "recall": 0.5, "f1": 0.5,
+    }
+    assert summary["coverage"]["by_dimension"]["context"] == {
+        "known_count": 0, "unknown_count": 2, "total_count": 2, "ratio": 0.0,
+    }
+    assert summary["coverage"]["micro"] == {
+        "known_count": 6, "unknown_count": 2, "total_count": 8, "ratio": 0.75,
+    }
+    all_unknown = summarize_dimensions(
+        [(set(), {"context"})], unknown_dimensions=[set(DIMENSIONS)]
+    )
+    assert all_unknown["micro"] == summary["by_dimension"]["context"]
+    assert all_unknown["coverage"]["micro"] == {
+        "known_count": 0, "unknown_count": 4, "total_count": 4, "ratio": 0.0,
+    }
+    for unknown in ([], [set(), set(), set()]):
+        with pytest.raises(ValueError, match="number of comparisons"):
+            summarize_dimensions(comparisons, unknown_dimensions=unknown)
+    with pytest.raises(ValueError, match="unknown dimension"):
+        summarize_dimensions(comparisons, unknown_dimensions=[{"unsupported"}, set()])
+    with pytest.raises(ValueError, match="must not overlap"):
+        summarize_dimensions(comparisons, unknown_dimensions=[{"planning"}, set()])
+
 
 @pytest.mark.asyncio
 async def test_report_reconstructs_persisted_run_events(api) -> None:

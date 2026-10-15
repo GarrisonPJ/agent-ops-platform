@@ -36,6 +36,13 @@ class LabeledRun(BaseModel):
 
     run_id: UUID
     dimensions: set[Dimension]
+    unknown_dimensions: set[Dimension] = Field(default_factory=set)
+
+    @model_validator(mode="after")
+    def disjoint_dimensions(self) -> LabeledRun:
+        if self.dimensions & self.unknown_dimensions:
+            raise ValueError("positive and unknown dimensions must not overlap")
+        return self
 
 
 class LabelSet(BaseModel):
@@ -371,19 +378,43 @@ def _metric(counts: dict[str, int]) -> dict[str, int | float | None]:
 
 def summarize_dimensions(
     comparisons: list[tuple[set[str], set[str]]],
+    *,
+    unknown_dimensions: list[set[str]] | None = None,
 ) -> dict[str, object]:
     if not comparisons:
         raise ValueError("at least one labeled Run is required")
+    if unknown_dimensions is None:
+        unknown_dimensions = [set() for _ in comparisons]
+    if len(unknown_dimensions) != len(comparisons):
+        raise ValueError("unknown_dimensions must match the number of comparisons")
     known = set(DIMENSIONS)
-    if any((expected | predicted) - known for expected, predicted in comparisons):
+    if any(
+        (expected | predicted | unknown) - known
+        for (expected, predicted), unknown in zip(
+            comparisons, unknown_dimensions, strict=True
+        )
+    ):
         raise ValueError("labels or predictions contain an unknown dimension")
+    if any(
+        expected & unknown
+        for (expected, _), unknown in zip(
+            comparisons, unknown_dimensions, strict=True
+        )
+    ):
+        raise ValueError("positive and unknown dimensions must not overlap")
 
     counts_by_dimension = {
         dimension: {"tp": 0, "fp": 0, "fn": 0, "tn": 0}
         for dimension in DIMENSIONS
     }
-    for expected, predicted in comparisons:
+    unknown_counts = {dimension: 0 for dimension in DIMENSIONS}
+    for (expected, predicted), unknown in zip(
+        comparisons, unknown_dimensions, strict=True
+    ):
         for dimension, counts in counts_by_dimension.items():
+            if dimension in unknown:
+                unknown_counts[dimension] += 1
+                continue
             if dimension in expected:
                 cell = "tp" if dimension in predicted else "fn"
             else:
@@ -394,12 +425,31 @@ def summarize_dimensions(
     for counts in counts_by_dimension.values():
         for key in totals:
             totals[key] += counts[key]
+    total_count = len(comparisons) * len(DIMENSIONS)
+    unknown_count = sum(unknown_counts.values())
     return {
         "by_dimension": {
             dimension: _metric(counts)
             for dimension, counts in counts_by_dimension.items()
         },
         "micro": _metric(totals),
+        "coverage": {
+            "by_dimension": {
+                dimension: {
+                    "known_count": len(comparisons) - count,
+                    "unknown_count": count,
+                    "total_count": len(comparisons),
+                    "ratio": (len(comparisons) - count) / len(comparisons),
+                }
+                for dimension, count in unknown_counts.items()
+            },
+            "micro": {
+                "known_count": total_count - unknown_count,
+                "unknown_count": unknown_count,
+                "total_count": total_count,
+                "ratio": (total_count - unknown_count) / total_count,
+            },
+        },
     }
 
 
@@ -519,12 +569,14 @@ async def report_labeled_runs(
         )
         expected = set(case.dimensions)
         comparisons.append((expected, predicted))
-        if predicted != expected:
+        false_positives = predicted - expected - case.unknown_dimensions
+        false_negatives = expected - predicted
+        if false_positives or false_negatives:
             disagreements.append(
                 {
                     "run_id": run_id,
-                    "false_positives": sorted(predicted - expected),
-                    "false_negatives": sorted(expected - predicted),
+                    "false_positives": sorted(false_positives),
+                    "false_negatives": sorted(false_negatives),
                 }
             )
 
@@ -541,7 +593,11 @@ async def report_labeled_runs(
             else "provisional_mechanics"
         ),
         "case_count": len(labels.cases),
-        **summarize_dimensions(comparisons),
+        "evaluation_scope": "assessed_run_dimension_pairs",
+        **summarize_dimensions(
+            comparisons,
+            unknown_dimensions=[set(case.unknown_dimensions) for case in labels.cases],
+        ),
         "disagreements": disagreements,
     }
 
