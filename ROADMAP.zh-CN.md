@@ -313,15 +313,21 @@ Golden 覆盖与校准兼容性后续（2026-10-13）：
 
 - 修复 Provider 在零工具步骤时发生错误或超时的漏判：已有执行证据现在同时投影到 `execution` 维度和 dominant。语义 revision 升至 `failure-analyzer.v2`；旧 v1 packet 保留，但不再满足当前严格绑定。
 - 新增 `backend/scripts/controlled_calibration_capture.py`，预先固定 context 高压力、低压力、测量未知及 Fake Provider 成功、超时、无效响应六个合同。通过认证 ASGI Runner API 持久化事件，生成真实备份、packet、单独保存的合同标签、review sidecar、严格报告与摘要；合同不一致时保留产物并失败。它不覆盖 Rust supervision 或外部模型。
-- 新临时库采集六个 Run、30 条事件，严格报告为 `bound`、`provisional_mechanics`、`publishable_accuracy=false`，合同无分歧。证据位于本地 `.scratch/roadmap-closeout-20261015/controlled-capture-20261015/`。context 未测量不等于确认阴性。2026-10-13 旧受控采集对 Provider 故障使用空标签，存在语义缺陷，保留原件但停止用于当前 gate。
-- 标准 Runner Dockerfile 已锁定 Python 依赖闭包，使用 Cargo locked build，并在应用修改时保留依赖缓存。完成标准构建及最终源码刷新后，隔离标准四服务栈通过三个 Golden 场景与 Runner 恢复，没有源码挂载，Python 源码摘要与工作树一致。基础镜像和 API/Web 层使用 Docker 缓存；这是本地证据，不是新的 hosted CI。证据：`.scratch/evaluation-calibration/20261015-standard-runner-closeout/final/`。
-- 当前后端全套为 `225 passed`，包含独立 PostgreSQL 测试，无跳过；协议 schema 导出检查通过。Linux Node 22 下锁文件安装、生产依赖 audit（0 漏洞）、格式、类型检查、27 项前端单测、构建和 2 项 Recorded E2E 均通过；验收记录位于 `.scratch/roadmap-closeout-20261015/`。
+- 早先二元标签批次在临时库采集六个 Run、30 条事件，严格报告为 `bound`、`provisional_mechanics`、`publishable_accuracy=false`，合同无分歧。`.scratch/roadmap-closeout-20261015/controlled-capture-20261015/` 原样保留为历史机制证据：该报告把未测量 context 计为阴性，不能证明当前 unknown 评估覆盖率。2026-10-13 旧受控采集对 Provider 故障使用空标签，存在语义缺陷，保留原件但停止用于 gate。
+- 标准 Runner Dockerfile 已锁定 Python 依赖闭包，使用 Cargo locked build，并在应用修改时保留依赖缓存。完成标准构建及最终源码刷新后，隔离标准四服务栈通过三个 Golden 场景与 Runner 恢复，没有源码挂载，Python 源码摘要与该次验收记录的源码快照一致。基础镜像和 API/Web 层使用 Docker 缓存；这是本地证据，不是新的 hosted CI。证据：`.scratch/evaluation-calibration/20261015-standard-runner-closeout/final/`。
+- 此前收口时后端全套为 `225 passed`，包含独立 PostgreSQL 测试，无跳过；协议 schema 导出检查通过。Linux Node 22 下锁文件安装、生产依赖 audit（0 漏洞）、格式、类型检查、27 项前端单测、构建和 2 项 Recorded E2E 均通过；这些有日期的验收记录位于 `.scratch/roadmap-closeout-20261015/`。
 - 已完成剩余旧 tracker 的逐文件 triage：24 个 issue 与 4 份规划标为 `wontfix`，原文和替代路径保存在 `.scratch/archive/superseded-trackers-20261013/README.md`。旧验收项不等于全部实现，不能重新把已移除架构或公网托管要求列为当前任务。
+
+unknown 校准后续（2026-10-15）：
+
+- 标签新增可选 `unknown_dimensions` 集合，与阳性 `dimensions` 不得重叠；省略时保留历史二元标签行为。逐维及 micro 混淆计数、指标和分歧只统计已评估的 Run/维度组合。既有 metrics 字典结构保留，顶层新增 `evaluation_scope="assessed_run_dimension_pairs"` 以及逐维和 micro coverage（`known_count`、`unknown_count`、`total_count`、`ratio`）。
+- 新批次六个 Run、30 条事件已通过严格绑定，无合同分歧：context 已知 2 / 未知 4、总数 6（`tp=1`、`tn=1`），micro 已知 20 / 未知 4、总数 24（`tp=3`、`tn=17`）。当前工程 gate 位于 `.scratch/roadmap-closeout-20261015/controlled-capture-unknown-20261015/`；本轮后端全套通过 `228 passed`，包含独立 PostgreSQL 检查，无跳过。
+- analyzer 仍为 `failure-analyzer.v2`，packet 与 v1 sidecar schema 不变，现有 labels 原字节 digest 会绑定 unknown 修改。人工评审、仲裁、绑定与 `accuracy_status` gate 保持不变；合法 unknown 本身不禁止 publishable，但 publishable 也不证明完整覆盖或样本代表性。本批 agent 标签仍为 `publishable_accuracy=false`。
 
 后续顺序：
 
 1. 后续获得推送授权后运行 hosted CI，验证本地提交；本轮仅本地 commit，不把 2026-10-05 的 CI 结果当作当前提交结果。
-2. 工程开发使用新的 v2 六合同 packet；扩展 analyzer、trajectory、Scenario、recovery、exporter 或报告时，维护相应回归及 revision/digest 绑定。当前没有必须新增的产品功能，不启动推测性 Phase 1.5。
+2. 使用已验证的 unknown-aware v2 六合同批次作为当前工程 gate；扩展 analyzer、trajectory、Scenario、recovery、exporter 或报告时，维护相应回归及 revision/digest 绑定。当前没有必须新增的产品功能，不启动推测性 Phase 1.5。
 3. 条件允许时再由至少两名独立评审者标注代表性样本，记录证据与不确定性，经指定仲裁者处理分歧后重新导出/报告。人工 gate 未完成前不发布 precision/recall/F1；这不阻塞工程开发，外部 snapshot 来源真实性仍不由 report 自动证明。
 4. 只有确实启动可信内网部署时，才推进数据库凭据与访问边界整改；只有出现实际需求并通过 ADR，才提升吞吐量、协作等暂缓项。
 

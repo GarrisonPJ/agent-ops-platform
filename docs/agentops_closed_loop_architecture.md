@@ -97,10 +97,10 @@ The [roadmap](../ROADMAP.md) and [calibration procedure](evaluation-calibration.
 record dated verification evidence. On 2026-10-15, the standard Runner build
 completed and an isolated standard four-service stack passed all three Golden
 Scenarios and Runner kill/replacement recovery. Runner/API Python hashes matched
-the final sources, with no source mounts. Base images and API/Web layers used
+the recorded source snapshot for that acceptance run, with no source mounts. Base images and API/Web layers used
 Docker cache; Runner Rust compilation and pinned Python dependency installation
 completed before the final source refresh reused those layers. Current backend
-verification passes 225 tests including PostgreSQL checks, with no skips; Linux
+verification passes 228 tests including PostgreSQL checks, with no skips; Linux
 Node 22 passes formatting, typecheck, 27 unit tests, build, production dependency
 audit, and two Recorded E2E tests. This is local evidence, not a new hosted CI
 result. The [local validation runbook](operations/reliability-and-local-validation.md)
@@ -118,8 +118,12 @@ packets rather than relabeling historical v1 reports.
 The bound report remains provisional engineering evidence with
 `publishable_accuracy=false`. Agent-authored input contracts and correlated
 fixtures cannot establish general accuracy; missing context measurements are
-not confirmed negatives. Independent human labels and adjudication remain a
-separate publication gate and do not block deterministic engineering work.
+not confirmed negatives. Calibration labels can explicitly mark
+`unknown_dimensions`; report counts and disagreements use assessed Run/dimension
+pairs, with separate coverage counts. The publication gate still describes
+reviewer, adjudication, and binding requirements; it does not establish complete
+coverage. Independent human labels and adjudication remain a separate gate and
+do not block deterministic engineering work.
 
 ## Deliberately deferred
 

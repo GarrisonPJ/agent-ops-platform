@@ -1,9 +1,10 @@
 # Evaluation Calibration
 
 Status: analysis-blind export, bound reporting, and controlled capture are ready
-(2026-10-15). The current six-case controlled packet uses
-`failure-analyzer.v2` and passes a provisional mechanics gate. Independent human
-labels and adjudication remain pending; they do not block engineering work.
+(2026-10-15). The six-case controlled packet uses `failure-analyzer.v2`.
+Labels distinguish positive, negative, and unknown dimensions; reports measure
+assessed Run/dimension pairs and expose their coverage. Independent human labels
+and adjudication remain pending; they do not block engineering work.
 
 ## Controlled capture (2026-10-15)
 
@@ -14,14 +15,19 @@ artifacts and fails the command. Context measurements are injected; Provider
 cases call a loopback Fake Provider. This does not exercise Rust supervision,
 the standard container stack, or an external model.
 
-| Case | Expected dimension | Evidence boundary |
-| --- | --- | --- |
-| Context pressure | `context` | Injected use of 8191/8192, above 95%. |
-| Low context pressure | Empty | Measured use of 1200/8192 with no truncation signal. |
-| Context unknown | Empty | Measurement absent; this is not a confirmed context negative. |
-| Provider success | Empty | Three valid checkout tool calls followed by a final response. |
-| Provider timeout | `execution` | Timeout before any completed tool step. |
-| Invalid Provider response | `execution` | Empty choices before any completed tool step. |
+| Case | Positive dimensions | Unknown dimensions | Evidence boundary |
+| --- | --- | --- | --- |
+| Context pressure | `context` | Empty | Injected use of 8191/8192, above 95%. |
+| Low context pressure | Empty | Empty | Measured use of 1200/8192 with no truncation signal. |
+| Context unknown | Empty | `context` | Measurement absent; this is not a confirmed context negative. |
+| Provider success | Empty | `context` | Three valid checkout tool calls followed by a final response; context pressure is unmeasured. |
+| Provider timeout | `execution` | `context` | Timeout before any completed tool step; context pressure is unmeasured. |
+| Invalid Provider response | `execution` | `context` | Empty choices before any completed tool step; context pressure is unmeasured. |
+
+Dimensions outside both sets are assessed negatives. These contract definitions
+give expected context coverage of two known and four unknown pairs out of six,
+and micro coverage of 20 known and four unknown pairs out of 24. The fresh
+unknown-aware capture below verifies these contract counts.
 
 The last two cases exposed a real analyzer defect: the zero-step branch kept
 execution evidence but omitted the dimension and dominant projection. The fix
@@ -53,18 +59,34 @@ The tool writes `case-contracts.json`, a real `snapshot.dump`, `packet.json`,
 provenance. Existing directories and nonempty or outdated databases are
 rejected. Use a fresh database and directory for each rerun.
 
-The successful 2026-10-15 capture is retained locally at
+The earlier binary-label capture on 2026-10-15 is retained locally at
 `.scratch/roadmap-closeout-20261015/controlled-capture-20261015/`:
 six terminal Runs, 30 RunEvents, schema `0008_regression_cases`, strict binding
 `bound`, no contract disagreements, `accuracy_status=provisional_mechanics`,
 and `publishable_accuracy=false`. The actual backup digest is
 `sha256:f081ab0c53d9df09925f7b449b9b024dbc1a11b33d40439d6c959920c90b053b`.
 The reviewer is agent-generated provisional and adjudication is pending.
-Unknown context remains unknown even when report mechanics count the supplied
-empty label. These results establish contract consistency, not general
-accuracy; the report does not independently authenticate an external backup.
-Current backend verification passes all 225 tests, including PostgreSQL checks,
-with no skips.
+That report treated every unlisted dimension as an assessed negative, including
+unmeasured context. It is historical binary-label mechanics evidence, not a
+result for the current unknown-aware evaluation scope or general accuracy.
+Retain its artifacts unchanged. Backend verification at that closeout passed
+all 225 tests, including PostgreSQL checks, with no skips.
+
+The fresh unknown-aware batch is retained at
+`.scratch/roadmap-closeout-20261015/controlled-capture-unknown-20261015/`.
+Its six Runs and 30 events pass strict binding with no contract disagreements:
+context has two known and four unknown decisions (`tp=1`, `tn=1`); micro has
+20 known and four unknown decisions (`tp=3`, `tn=17`). Its scope is
+`assessed_run_dimension_pairs`. The real backup digest is
+`sha256:22199fe4fc3a4ba5db99e700193df2612e7f50696abfbccdbd99d9068fb839c5`.
+The report remains `provisional_mechanics`, `publishable_accuracy=false`, with
+agent-generated review and pending adjudication. This is the current controlled
+mechanics gate; preserve both earlier batches unchanged. The analyzer remains
+`failure-analyzer.v2`, and the packet and v1 review-sidecar schemas are unchanged.
+The report does not independently authenticate an external backup. Full backend
+verification after this change passes 228 tests including isolated PostgreSQL
+checks, with no skips; logs are retained under
+`.scratch/roadmap-closeout-20261015/unknown-dimensions-backend/`.
 
 ## Historical verification
 
@@ -237,8 +259,9 @@ terminal analysis. It does not change a Run, its analysis, or its score.
    be used with `publishable_accuracy=false`. For publishable calibration,
    have independent reviewers label the task and sanitized persisted events
    without viewing `run_analyses`, score breakdowns, or this command's predictions.
-   Resolve uncertain cases before reporting metrics. Keep the review method,
-   reviewers, and adjudication record in `provenance`.
+   Mark dimensions that cannot be assessed as unknown and adjudicate reviewer
+   disagreements before publishing metrics. Keep the review method, reviewers,
+   and adjudication record in `provenance`.
 3. Store the label file outside tracked source, such as under ignored
    `.scratch/`. It contains Run IDs and labels, not raw Provider responses or
    credentials.
@@ -279,8 +302,10 @@ packet is unlabeled; prepare its matching label file separately, for example
 Independent reviews are required before publishing accuracy. Use consistent
 interpretations: `planning` covers wrong or
 repeated tool choices, `execution` covers tool/Provider errors and timeouts,
-`context` covers missing or overloaded context, and `budget` covers an
-exhausted step or token allowance. Record uncertain cases and adjudication.
+`context` covers explicit context loss/truncation or pressure above 95%, and
+`budget` covers an exhausted step or token allowance. Missing context
+measurements alone make `context` unknown. Record uncertain cases and
+adjudication.
 
 The local Phase 1 volume inspected on 2026-09-24 held only four legacy fixture
 Runs under an unregistered Scenario ID. It cannot supply a current independent
@@ -296,7 +321,8 @@ The JSON file has this shape:
   "cases": [
     {
       "run_id": "00000000-0000-4000-8000-000000000001",
-      "dimensions": ["planning"]
+      "dimensions": ["planning"],
+      "unknown_dimensions": ["context"]
     },
     {
       "run_id": "00000000-0000-4000-8000-000000000002",
@@ -307,8 +333,14 @@ The JSON file has this shape:
 ```
 
 Only `planning`, `execution`, `context`, and `budget` are valid dimensions.
-An empty array means the reviewer found none. Duplicate Run IDs, missing Runs,
-and non-terminal Runs are rejected.
+`dimensions` is the positive set; optional `unknown_dimensions` is the set the
+reviewer could not assess. Both sets use the same allowed names and must be
+disjoint. A dimension in neither set is an assessed negative. An empty
+`dimensions` array means no positives, so use `unknown_dimensions` whenever an
+absence of evidence cannot support a negative. Omitting `unknown_dimensions`
+defaults to an empty set and preserves historical binary-label behavior.
+Duplicate Run IDs, missing Runs, non-terminal Runs, and overlapping positive
+and unknown dimensions are rejected.
 
 For a bound report, keep reviewer metadata in a separate v1 sidecar. The
 sidecar records the packet snapshot, explicit analyzer revision, packet-file
@@ -338,6 +370,10 @@ Empty or duplicate reviewer IDs, incomplete adjudication, missing case evidence
 or uncertainty, and agent-generated review metadata are rejected. A publishable
 record also requires `--require-binding`; otherwise the report refuses the
 publishable claim.
+Valid unknown dimensions do not by themselves force `publishable_accuracy` to
+`false`; the human-review and binding gates still apply. A publishable record
+does not establish complete coverage or a representative sample. Report the
+coverage and selection limitations alongside any metrics.
 
 For the new provisional artifact set, prepare
 `../.scratch/evaluation-calibration/review-record-v1-20261013-provisional.json`
@@ -387,9 +423,11 @@ strict-binding inputs:
 }
 ```
 
-Recompute the corresponding file hash if the packet or labels change, and
-review the sidecar's case metadata again. Human annotation can remain pending
-while this provisional artifact set supports engineering verification.
+Recompute the corresponding file hash if the packet or labels change, including
+any `unknown_dimensions` edit, and review the sidecar's case metadata again.
+The existing labels-file digest covers the exact bytes; no packet or sidecar
+schema change is needed. Human annotation can remain pending while this
+provisional artifact set supports engineering verification.
 
 ## Generate the report
 
@@ -424,12 +462,36 @@ snapshot record or verification step.
 The JSON output includes `accuracy_status`: `provisional_mechanics` for a
 bound non-publishable review, `publishable` only after the human reviewer and
 adjudication gate, and `unbound` for legacy calls. It also reports TP, FP, FN,
-and TN for each dimension and across all
-Run/dimension pairs (`micro`), plus precision, recall, F1, and the Run IDs with
-disagreements. A metric is `null` when its denominator is zero. No event
-payloads are printed; `event_stream_sha256` binds the persisted stream without
-placing its raw payload in the packet. Review the Run IDs and provenance before
-sharing a report.
+and TN for each dimension and across assessed Run/dimension pairs (`micro`),
+plus precision, recall, F1, and the Run IDs with disagreements. Predictions for
+unknown dimensions contribute no confusion counts or disagreements. A metric
+is `null` when its denominator is zero. The existing metrics dictionaries keep
+their structure; the report adds the stable top-level
+`evaluation_scope="assessed_run_dimension_pairs"` and `coverage` fields.
+
+Coverage reports `known_count`, `unknown_count`, `total_count`, and `ratio`
+(`known_count / total_count`) for each dimension and for micro. For example,
+the six contract definitions above imply this coverage portion of a report:
+
+```json
+{
+  "evaluation_scope": "assessed_run_dimension_pairs",
+  "coverage": {
+    "by_dimension": {
+      "planning": { "known_count": 6, "unknown_count": 0, "total_count": 6, "ratio": 1.0 },
+      "execution": { "known_count": 6, "unknown_count": 0, "total_count": 6, "ratio": 1.0 },
+      "context": { "known_count": 2, "unknown_count": 4, "total_count": 6, "ratio": 0.3333333333333333 },
+      "budget": { "known_count": 6, "unknown_count": 0, "total_count": 6, "ratio": 1.0 }
+    },
+    "micro": { "known_count": 20, "unknown_count": 4, "total_count": 24, "ratio": 0.8333333333333334 }
+  }
+}
+```
+
+Unknown coverage must remain visible even when assessed-pair metrics show
+perfect agreement. No event payloads are printed; `event_stream_sha256` binds
+the persisted stream without placing its raw payload in the packet. Review the
+Run IDs and provenance before sharing a report.
 
 The exporter is **analysis-blind**, rather than outcome-blind. It omits scores,
 stored analysis, and raw Provider output, but the packet still includes the
@@ -471,13 +533,15 @@ Use the following rules when an agent prepares a draft or a reviewer edits it:
 | `context` | explicit truncation/context evidence or context-window use above 95% of its limit | token counts are nonzero or the Run has several steps |
 | `budget` | the trajectory reaches `max_steps` (or an explicit token/step allowance) without success | a Run ends early, succeeds, or has a large but unused allowance |
 
-The label is a set: multiple dimensions are allowed when independent evidence
-supports each one, and an empty set means no demonstrated dimension. Reviewers
-should cite the step index or trajectory field in their working notes, keep
-uncertain cases separate, and avoid inferring a cause from terminal status
-alone. A successful replay can still have a dimension if the trajectory shows
-one, and a failed Run can have an empty set if no supported dimension is
-observable.
+Multiple positive dimensions are allowed when independent evidence supports
+each one. Mark an unassessable dimension in `unknown_dimensions` instead of
+counting it as negative; this includes context pressure when measurements and
+explicit context evidence are absent. An empty positive set alone does not
+mean every dimension is known. Reviewers should cite the step index or
+trajectory field in their working notes, record uncertainty, and avoid
+inferring a cause from terminal status alone. A successful replay can still
+have a positive dimension if the trajectory shows one, and a failed Run can
+have no positive dimensions while some dimensions remain unknown.
 
 Check that each packet task matches its Scenario contract before applying
 Scenario assertions. The recovery harness intentionally exercises the
@@ -496,9 +560,11 @@ standard stack or an explicit runtime override, as in the 2026-10-13 sample.
 For the 2026-10-05 demo draft, the two failed six-step baselines are marked
 `planning` plus `budget` because they repeat the same action/arguments and hit
 `max_steps=6` without success. The recovery and successful replay trajectories
-are empty because they show no supported planning, execution, context, or
-budget evidence. These are examples for manual correction, not adjudicated
-labels. After editing, replace `name` and `provenance` with the real reviewer
+have empty positive sets in that historical binary-label draft because they
+show no supported planning, execution, context, or budget evidence. A new
+review must distinguish unmeasured context from an assessed negative. These
+are examples for manual correction, not adjudicated labels. After editing,
+replace `name` and `provenance` with the real reviewer
 method, roles, snapshot identifier, and adjudication record; do not overwrite
 the analysis-blind packet. Current strict reports require a newly exported
 packet and matching labels/sidecar bound to `failure-analyzer.v2`.
