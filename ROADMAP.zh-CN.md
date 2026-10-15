@@ -321,13 +321,20 @@ Golden 覆盖与校准兼容性后续（2026-10-13）：
 unknown 校准后续（2026-10-15）：
 
 - 标签新增可选 `unknown_dimensions` 集合，与阳性 `dimensions` 不得重叠；省略时保留历史二元标签行为。逐维及 micro 混淆计数、指标和分歧只统计已评估的 Run/维度组合。既有 metrics 字典结构保留，顶层新增 `evaluation_scope="assessed_run_dimension_pairs"` 以及逐维和 micro coverage（`known_count`、`unknown_count`、`total_count`、`ratio`）。
-- 新批次六个 Run、30 条事件已通过严格绑定，无合同分歧：context 已知 2 / 未知 4、总数 6（`tp=1`、`tn=1`），micro 已知 20 / 未知 4、总数 24（`tp=3`、`tn=17`）。当前工程 gate 位于 `.scratch/roadmap-closeout-20261015/controlled-capture-unknown-20261015/`；本轮后端全套通过 `228 passed`，包含独立 PostgreSQL 检查，无跳过。
+- 六个 Run、30 条事件已通过严格绑定，无合同分歧：context 已知 2 / 未知 4、总数 6（`tp=1`、`tn=1`），micro 已知 20 / 未知 4、总数 24（`tp=3`、`tn=17`）。此前工程 gate 保留在 `.scratch/roadmap-closeout-20261015/controlled-capture-unknown-20261015/`；该检查点的后端全套通过 `228 passed`，包含独立 PostgreSQL 检查，无跳过。
 - analyzer 仍为 `failure-analyzer.v2`，packet 与 v1 sidecar schema 不变，现有 labels 原字节 digest 会绑定 unknown 修改。人工评审、仲裁、绑定与 `accuracy_status` gate 保持不变；合法 unknown 本身不禁止 publishable，但 publishable 也不证明完整覆盖或样本代表性。本批 agent 标签仍为 `publishable_accuracy=false`。
+
+受控校准集成后续（2026-10-15）：
+
+- 新增 `scripts/controlled_calibration_e2e.py`：创建独占 PostgreSQL 采集库与恢复库，运行六合同、恢复真实 dump、核对其 digest 与源库/恢复库 manifest，仅规范化两个 binding 文件 digest 的前缀后要求严格报告全部字段一致。两份原始报告保持不变，检查包含 unknown 覆盖率与 `publishable_accuracy=false`，保留诊断且只清理本次创建的数据库。可复现命令和 digest 规范化规则见[校准流程](docs/evaluation-calibration.md)。
+- 本轮当前本地工程 gate 已通过，产物位于 `.scratch/roadmap-closeout-20261015/postgres-calibration-e2e/capture-run-verified/`：六个 Run、30 条事件、schema `0008_regression_cases`，实际恢复的备份为 `sha256:85f81cb1aadd5f7cd3df5c3da2d68783ddccf91c2ede7a6892af885bb835439b`，源库/恢复库 manifest 与报告匹配，context 已知 2 / 未知 4、micro 已知 20 / 未知 4，状态为 `bound`、`provisional_mechanics`、`publishable_accuracy=false`。父目录的 `local-verification.json` 记录 harness UUID 数据库剩余 0，29 个产物文件的凭据匹配数为 0。历史批次及首次比较失败的产物继续保留。
+- 后端全套通过 `256 passed in 31.89s`，包含 PostgreSQL 检查，无跳过（同一证据目录的 `backend-full.log`）。既有 backup/restore 演练也已通过；`legacy-recovery.log` 与 `legacy-cleanup.json` 记录其独占库清理及既有数据库保留。这些宿主机检查覆盖本轮修改，此前标准镜像验收仍只对应当时记录的源码快照。
+- `database-recovery` CI job 已在 retention 检查后接入该 gate，步骤限时五分钟，产物保留七天。这补齐现有可靠性/评估工作的手动集成缺口；这些修改的 hosted CI 仍待后续获准推送后运行。历史快照继续保留，不新增 Phase 1.5。
 
 后续顺序：
 
-1. 后续获得推送授权后运行 hosted CI，验证本地提交；本轮仅本地 commit，不把 2026-10-05 的 CI 结果当作当前提交结果。
-2. 使用已验证的 unknown-aware v2 六合同批次作为当前工程 gate；扩展 analyzer、trajectory、Scenario、recovery、exporter 或报告时，维护相应回归及 revision/digest 绑定。当前没有必须新增的产品功能，不启动推测性 Phase 1.5。
+1. 后续获得推送授权后运行 hosted CI，验证本地提交和新接入的 PostgreSQL 校准采集/恢复 gate；本轮仅本地 commit，不把 2026-10-05 的 CI 结果当作当前提交结果。
+2. 维护 unknown-aware v2 六合同工程 gate 和自动 PostgreSQL 采集/恢复检查；扩展 analyzer、trajectory、Scenario、recovery、exporter 或报告时，维护相应回归及 revision/digest 绑定。当前没有必须新增的产品功能，不启动推测性 Phase 1.5。
 3. 条件允许时再由至少两名独立评审者标注代表性样本，记录证据与不确定性，经指定仲裁者处理分歧后重新导出/报告。人工 gate 未完成前不发布 precision/recall/F1；这不阻塞工程开发，外部 snapshot 来源真实性仍不由 report 自动证明。
 4. 只有确实启动可信内网部署时，才推进数据库凭据与访问边界整改；只有出现实际需求并通过 ADR，才提升吞吐量、协作等暂缓项。
 

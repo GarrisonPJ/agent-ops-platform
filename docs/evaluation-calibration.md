@@ -1,6 +1,7 @@
 # Evaluation Calibration
 
-Status: analysis-blind export, bound reporting, and controlled capture are ready
+Status: analysis-blind export, bound reporting, controlled capture, and the
+PostgreSQL capture/restore gate are ready
 (2026-10-15). The six-case controlled packet uses `failure-analyzer.v2`.
 Labels distinguish positive, negative, and unknown dimensions; reports measure
 assessed Run/dimension pairs and expose their coverage. Independent human labels
@@ -26,8 +27,8 @@ the standard container stack, or an external model.
 
 Dimensions outside both sets are assessed negatives. These contract definitions
 give expected context coverage of two known and four unknown pairs out of six,
-and micro coverage of 20 known and four unknown pairs out of 24. The fresh
-unknown-aware capture below verifies these contract counts.
+and micro coverage of 20 known and four unknown pairs out of 24. The captures
+and restore verification below verify these contract counts.
 
 The last two cases exposed a real analyzer defect: the zero-step branch kept
 execution evidence but omitted the dimension and dominant projection. The fix
@@ -72,7 +73,7 @@ result for the current unknown-aware evaluation scope or general accuracy.
 Retain its artifacts unchanged. Backend verification at that closeout passed
 all 225 tests, including PostgreSQL checks, with no skips.
 
-The fresh unknown-aware batch is retained at
+The earlier unknown-aware batch is retained at
 `.scratch/roadmap-closeout-20261015/controlled-capture-unknown-20261015/`.
 Its six Runs and 30 events pass strict binding with no contract disagreements:
 context has two known and four unknown decisions (`tp=1`, `tn=1`); micro has
@@ -80,13 +81,79 @@ context has two known and four unknown decisions (`tp=1`, `tn=1`); micro has
 `assessed_run_dimension_pairs`. The real backup digest is
 `sha256:22199fe4fc3a4ba5db99e700193df2612e7f50696abfbccdbd99d9068fb839c5`.
 The report remains `provisional_mechanics`, `publishable_accuracy=false`, with
-agent-generated review and pending adjudication. This is the current controlled
-mechanics gate; preserve both earlier batches unchanged. The analyzer remains
+agent-generated review and pending adjudication. This was the controlled
+mechanics gate at that checkpoint; preserve both earlier batches unchanged. The analyzer remains
 `failure-analyzer.v2`, and the packet and v1 review-sidecar schemas are unchanged.
 The report does not independently authenticate an external backup. Full backend
-verification after this change passes 228 tests including isolated PostgreSQL
+verification at that checkpoint passed 228 tests including isolated PostgreSQL
 checks, with no skips; logs are retained under
 `.scratch/roadmap-closeout-20261015/unknown-dimensions-backend/`.
+
+## PostgreSQL capture and restore gate
+
+`scripts/controlled_calibration_e2e.py` makes the six-case controlled gate
+repeatable without manually provisioning the capture database. Supply
+`DATABASE_URL` through a protected environment for a dedicated PostgreSQL test
+service whose role has `CREATEDB`; install matching `pg_dump` and `pg_restore`
+clients on `PATH` (CI uses PostgreSQL 16). The script generates a temporary
+Runner token in memory when none is supplied. From `backend/`, choose an output
+directory that does not exist:
+
+```sh
+PYTHONPATH=. VIRTUAL_ENV= uv run python ../scripts/controlled_calibration_e2e.py \
+  --output ../.scratch/calibration-postgres-NEW
+```
+
+The script creates uniquely named capture and restore databases, migrates the
+capture database, runs the existing six contracts, and restores their actual
+`snapshot.dump` into the second database. It checks the backup digest, compares
+source and restored database manifests, and requires the restored strict report
+to equal the source strict report in all fields after normalizing only
+`binding.packet_sha256` and `binding.labels_sha256`: both must be valid
+64-hex digests, with an optional `sha256:` prefix. The original report files are
+retained unchanged. The checks include
+`assessed_run_dimension_pairs` scope, context known 2 / unknown 4,
+micro known 20 / unknown 4, `provisional_mechanics`, and
+`publishable_accuracy=false`. This verifies backup/report mechanics for the
+controlled sample; independent labels and adjudication remain pending.
+
+The output retains the original capture artifacts under `capture/`, plus
+`restored-strict-report.json` and `e2e-summary.json`. Failures retain available
+artifacts and a summary with the failed stage and error type, without logging
+credentials or environment settings. Cleanup runs on success and failure and
+only drops databases created by this invocation; each rerun needs a new output
+path.
+
+The `database-recovery` CI job now runs this command after its retention tests,
+using `.scratch/calibration-postgres-ci/` and separate temporary databases on
+the existing PostgreSQL service. It retains only that artifact directory for
+seven days, including on failure. This wiring closes the manual-only
+integration gap; hosted CI for these changes remains pending a later authorized
+push. Historical snapshots and the earlier unknown-aware v2 gate above remain
+preserved.
+
+Local verification on 2026-10-15 passed at
+`.scratch/roadmap-closeout-20261015/postgres-calibration-e2e/capture-run-verified/`:
+six Runs, 30 events, schema `0008_regression_cases`, matching database manifests,
+and complete report equality under the two-field digest normalization above.
+The actual restored `capture/snapshot.dump` has digest
+`sha256:85f81cb1aadd5f7cd3df5c3da2d68783ddccf91c2ede7a6892af885bb835439b`.
+The gate is `bound`, `provisional_mechanics`, `publishable_accuracy=false`, with
+context known 2 / unknown 4 and micro known 20 / unknown 4. This is the current
+local controlled mechanics gate; it does not authenticate unrelated external
+backups or establish independent accuracy.
+
+The parent evidence directory retains `e2e-verified.stdout`,
+`local-verification.json`, and `backend-full.log`. Verification found no remaining
+databases matching the harness's UUID naming pattern; scanning 29 artifact files
+found zero credential matches. The earlier failed comparison and its artifacts
+remain preserved. Full backend verification passed `256 passed in 31.89s`,
+including PostgreSQL checks, with no skips. The existing `backup_restore_e2e.py`
+compatibility rehearsal also passed; `legacy-recovery.log` and
+`legacy-cleanup.json` record removal of its two owned databases and preservation
+of pre-existing databases. These are local host checks for this change. The
+earlier standard-image acceptance covers its recorded source snapshot, and no
+new image acceptance or hosted CI run is claimed.
 
 ## Historical verification
 

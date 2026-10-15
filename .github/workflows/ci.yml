@@ -104,6 +104,22 @@ jobs:
       - name: Test PostgreSQL retention
         working-directory: backend
         run: uv run pytest phase1_tests/test_data_retention_postgres.py phase1_tests/test_state_invariants_postgres.py -q --tb=short
+      - name: Verify controlled calibration capture and restore
+        timeout-minutes: 5
+        working-directory: backend
+        env:
+          VIRTUAL_ENV:
+          PYTHONPATH: .
+        run: uv run python ../scripts/controlled_calibration_e2e.py --output ../.scratch/calibration-postgres-ci
+      - name: Retain controlled calibration diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: calibration-postgres-ci
+          path: .scratch/calibration-postgres-ci/
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 7
 
   frontend:
     runs-on: ubuntu-latest

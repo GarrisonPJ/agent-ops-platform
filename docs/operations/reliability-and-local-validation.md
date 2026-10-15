@@ -241,6 +241,56 @@ Record the exact command, tool versions, proxy treatment, and exit status. The
 local results do not replace the CI PostgreSQL multi-connection, Compose, and
 Golden checks.
 
+## Repeat the PostgreSQL calibration gate
+
+Use a dedicated PostgreSQL test service with a `CREATEDB` role and provide its
+`DATABASE_URL` through a protected environment. Matching `pg_dump` and
+`pg_restore` clients must be on `PATH` (CI uses PostgreSQL 16). From `backend/`,
+choose an output directory that does not exist:
+
+```sh
+PYTHONPATH=. VIRTUAL_ENV= uv run python ../scripts/controlled_calibration_e2e.py \
+  --output ../.scratch/calibration-postgres-NEW
+```
+
+The harness generates a temporary Runner token in memory by default, creates
+unique capture and restore databases, and runs migrations plus the six-case
+controlled capture. It restores the actual captured dump, verifies the backup
+digest and matching database manifests, and requires complete strict-report
+equality after restoration, normalizing only the optional `sha256:` prefix in
+valid 64-hex `binding.packet_sha256` and `binding.labels_sha256` values. It keeps
+both original report files unchanged. The gate checks unknown-aware coverage and
+`assessed_run_dimension_pairs` scope,
+while keeping `failure-analyzer.v2`, `provisional_mechanics`, and
+`publishable_accuracy=false`. It does not establish independent accuracy.
+
+The output keeps the original capture artifacts in `capture/`, the restored
+report in `restored-strict-report.json`, and success or sanitized failure
+stage/type in `e2e-summary.json`. Credentials and environment settings are not
+diagnostic artifacts. Cleanup runs on success and failure and only drops
+databases created by that invocation; retain the output and choose a new path
+for a rerun. Existing application databases and dated calibration artifacts
+are not cleanup targets.
+
+The `database-recovery` CI job runs the same harness after the PostgreSQL
+retention checks, with a five-minute step timeout and the fresh workspace path
+`.scratch/calibration-postgres-ci/`. Its artifact upload retains only that
+directory for seven days on success or failure. The CI wiring is ready for
+the next authorized push; it is not a hosted CI result. See the
+[calibration procedure](../evaluation-calibration.md) for the controlled cases
+and retained evidence.
+
+On 2026-10-15, the host-run gate passed under
+`.scratch/roadmap-closeout-20261015/postgres-calibration-e2e/capture-run-verified/`.
+The evidence directory's `local-verification.json` records zero remaining harness
+UUID databases and zero credential matches across 29 artifact files.
+`backend-full.log` records `256 passed in 31.89s`, with no skips. The existing
+backup/restore compatibility rehearsal also passed; `legacy-recovery.log` and
+`legacy-cleanup.json` record its result, owned database cleanup, and preservation
+of pre-existing databases. These local checks cover the new changes; the earlier
+standard-image acceptance remains tied to its earlier source snapshot, and
+hosted CI is still pending.
+
 ## Evidence and escalation
 
 Record UTC time, application revision, sanitized Run IDs, endpoint status,

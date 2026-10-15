@@ -94,16 +94,20 @@ Runner recovery, registered Scenarios, and the narrow Provider boundary are impl
 The next milestone targets a single machine or trusted team network. It prioritizes state-machine reliability and evaluation accuracy; throughput and multi-user collaboration remain deferred. See [ROADMAP.md](../ROADMAP.md) for the promotion gates.
 
 The [roadmap](../ROADMAP.md) and [calibration procedure](evaluation-calibration.md)
-record dated verification evidence. On 2026-10-15, the standard Runner build
-completed and an isolated standard four-service stack passed all three Golden
+record dated verification evidence. At the earlier standard-image acceptance on
+2026-10-15, the standard Runner build completed and an isolated standard
+four-service stack passed all three Golden
 Scenarios and Runner kill/replacement recovery. Runner/API Python hashes matched
 the recorded source snapshot for that acceptance run, with no source mounts. Base images and API/Web layers used
 Docker cache; Runner Rust compilation and pinned Python dependency installation
 completed before the final source refresh reused those layers. Current backend
-verification passes 228 tests including PostgreSQL checks, with no skips; Linux
-Node 22 passes formatting, typecheck, 27 unit tests, build, production dependency
-audit, and two Recorded E2E tests. This is local evidence, not a new hosted CI
-result. The [local validation runbook](operations/reliability-and-local-validation.md)
+verification passes 256 tests including PostgreSQL checks, with no skips. The
+host-run PostgreSQL calibration gate also passes real dump restoration and
+strict-report comparison, normalizing only the two binding file-digest prefixes.
+Earlier Linux Node 22 evidence includes formatting, typecheck, 27 unit tests,
+build, production dependency audit, and two Recorded E2E tests. The new host
+checks do not extend the earlier image acceptance to the current source snapshot;
+there is no new hosted CI result. The [local validation runbook](operations/reliability-and-local-validation.md)
 records toolchain, cache, proxy, and build boundaries.
 
 The current six-case controlled capture supplements the fixture sample with
