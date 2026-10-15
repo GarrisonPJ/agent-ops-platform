@@ -327,9 +327,15 @@ unknown 校准后续（2026-10-15）：
 受控校准集成后续（2026-10-15）：
 
 - 新增 `scripts/controlled_calibration_e2e.py`：创建独占 PostgreSQL 采集库与恢复库，运行六合同、恢复真实 dump、核对其 digest 与源库/恢复库 manifest，仅规范化两个 binding 文件 digest 的前缀后要求严格报告全部字段一致。两份原始报告保持不变，检查包含 unknown 覆盖率与 `publishable_accuracy=false`，保留诊断且只清理本次创建的数据库。可复现命令和 digest 规范化规则见[校准流程](docs/evaluation-calibration.md)。
-- 本轮当前本地工程 gate 已通过，产物位于 `.scratch/roadmap-closeout-20261015/postgres-calibration-e2e/capture-run-verified/`：六个 Run、30 条事件、schema `0008_regression_cases`，实际恢复的备份为 `sha256:85f81cb1aadd5f7cd3df5c3da2d68783ddccf91c2ede7a6892af885bb835439b`，源库/恢复库 manifest 与报告匹配，context 已知 2 / 未知 4、micro 已知 20 / 未知 4，状态为 `bound`、`provisional_mechanics`、`publishable_accuracy=false`。父目录的 `local-verification.json` 记录 harness UUID 数据库剩余 0，29 个产物文件的凭据匹配数为 0。历史批次及首次比较失败的产物继续保留。
-- 后端全套通过 `256 passed in 31.89s`，包含 PostgreSQL 检查，无跳过（同一证据目录的 `backend-full.log`）。既有 backup/restore 演练也已通过；`legacy-recovery.log` 与 `legacy-cleanup.json` 记录其独占库清理及既有数据库保留。这些宿主机检查覆盖本轮修改，此前标准镜像验收仍只对应当时记录的源码快照。
+- 此前本地工程检查点已通过，产物位于 `.scratch/roadmap-closeout-20261015/postgres-calibration-e2e/capture-run-verified/`：六个 Run、30 条事件、schema `0008_regression_cases`，实际恢复的备份为 `sha256:85f81cb1aadd5f7cd3df5c3da2d68783ddccf91c2ede7a6892af885bb835439b`，源库/恢复库 manifest 与报告匹配，context 已知 2 / 未知 4、micro 已知 20 / 未知 4，状态为 `bound`、`provisional_mechanics`、`publishable_accuracy=false`。父目录的 `local-verification.json` 记录 harness UUID 数据库剩余 0，29 个产物文件的凭据匹配数为 0。历史批次及首次比较失败的产物继续保留。
+- 该检查点的后端全套通过 `256 passed in 31.89s`，包含 PostgreSQL 检查，无跳过（同一证据目录的 `backend-full.log`）。既有 backup/restore 演练也已通过；`legacy-recovery.log` 与 `legacy-cleanup.json` 记录其独占库清理及既有数据库保留。这些宿主机检查覆盖该检查点，此前标准镜像验收仍只对应当时记录的源码快照。
 - `database-recovery` CI job 已在 retention 检查后接入该 gate，步骤限时五分钟，产物保留七天。这补齐现有可靠性/评估工作的手动集成缺口；这些修改的 hosted CI 仍待后续获准推送后运行。历史快照继续保留，不新增 Phase 1.5。
+
+编码凭据与 CI 步骤后续（2026-10-15）：
+
+- 修复 Alembic 经 ConfigParser 传递已编码异步数据库 URL 时的百分号处理，并在脱敏摘要中将报告验证后的清理失败标为 `cleanup_restore` 或 `cleanup_source`。CLI 回归覆盖编码 URL 及清理失败。
+- 最终后端全套通过 `262 passed in 42.72s`，包含 PostgreSQL 检查，无跳过。当前 gate 使用含编码凭据的非超级 `LOGIN CREATEDB` 角色，通过完整迁移及真实采集/恢复，dump 为 `sha256:57feb2fc0d0e7d679b1d9600860bdc56e3f74913cc8e3a549aa62dc84cb1d48a`。临时库及角色已删除、配置指定的数据库保留，产物与解压 dump 的已知凭据匹配数为 0。证据位于 `.scratch/roadmap-closeout-20261015/ci-sequence-followup/`，索引见[校准后续](docs/evaluation-calibration.md#encoded-credentials-and-ci-step-follow-up-2026-10-15)。
+- 分别完成本地 CI 命令复现：此前 backend job 通过 schema 导出/diff、`246 passed, 2 skipped` 及 migration up/down/up，其中两个 PostgreSQL 模块未启用；此前 recovery job 启用全部十项 PostgreSQL 测试，并依序通过迁移、既有 backup/restore 和受控采集/恢复。这些本地检查不等于 hosted CI 成功，也不更新此前镜像验收，临时准确率 gate 不变。
 
 后续顺序：
 

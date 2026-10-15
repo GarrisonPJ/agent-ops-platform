@@ -244,7 +244,8 @@ Golden checks.
 ## Repeat the PostgreSQL calibration gate
 
 Use a dedicated PostgreSQL test service with a `CREATEDB` role and provide its
-`DATABASE_URL` through a protected environment. Matching `pg_dump` and
+`DATABASE_URL` in SQLAlchemy async format, `postgresql+asyncpg://`, through a
+protected environment. Matching `pg_dump` and
 `pg_restore` clients must be on `PATH` (CI uses PostgreSQL 16). From `backend/`,
 choose an output directory that does not exist:
 
@@ -272,6 +273,13 @@ databases created by that invocation; retain the output and choose a new path
 for a rerun. Existing application databases and dated calibration artifacts
 are not cleanup targets.
 
+Use normal URL encoding for reserved password characters, including `%40` and
+`%25`; do not double percent signs in `DATABASE_URL`. Alembic handles the
+ConfigParser escape internally. If database cleanup fails after report
+verification, the sanitized summary identifies `cleanup_restore` or
+`cleanup_source` and the command fails; inspect that stage when diagnosing
+leftover owned databases.
+
 The `database-recovery` CI job runs the same harness after the PostgreSQL
 retention checks, with a five-minute step timeout and the fresh workspace path
 `.scratch/calibration-postgres-ci/`. Its artifact upload retains only that
@@ -280,16 +288,25 @@ the next authorized push; it is not a hosted CI result. See the
 [calibration procedure](../evaluation-calibration.md) for the controlled cases
 and retained evidence.
 
-On 2026-10-15, the host-run gate passed under
+At the earlier 2026-10-15 checkpoint, the host-run gate passed under
 `.scratch/roadmap-closeout-20261015/postgres-calibration-e2e/capture-run-verified/`.
 The evidence directory's `local-verification.json` records zero remaining harness
 UUID databases and zero credential matches across 29 artifact files.
 `backend-full.log` records `256 passed in 31.89s`, with no skips. The existing
 backup/restore compatibility rehearsal also passed; `legacy-recovery.log` and
 `legacy-cleanup.json` record its result, owned database cleanup, and preservation
-of pre-existing databases. These local checks cover the new changes; the earlier
+of pre-existing databases. These local checks cover that checkpoint; the earlier
 standard-image acceptance remains tied to its earlier source snapshot, and
 hosted CI is still pending.
+
+The later encoded-credential gate and final full-suite evidence are indexed in
+`.scratch/roadmap-closeout-20261015/ci-sequence-followup/`, alongside separate
+local reproductions of the backend and recovery CI steps. The backend job leaves
+`RETENTION_POSTGRES_URL` unset and skips two PostgreSQL modules; the recovery job
+enables and passes their ten tests. See the
+[dated follow-up](../evaluation-calibration.md#encoded-credentials-and-ci-step-follow-up-2026-10-15)
+for the final counts, dump identity, and cleanup evidence. These local command
+reproductions are distinct from hosted CI and earlier image acceptance.
 
 ## Evidence and escalation
 

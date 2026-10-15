@@ -93,8 +93,9 @@ checks, with no skips; logs are retained under
 
 `scripts/controlled_calibration_e2e.py` makes the six-case controlled gate
 repeatable without manually provisioning the capture database. Supply
-`DATABASE_URL` through a protected environment for a dedicated PostgreSQL test
-service whose role has `CREATEDB`; install matching `pg_dump` and `pg_restore`
+`DATABASE_URL` in the project's SQLAlchemy async format, `postgresql+asyncpg://`,
+through a protected environment for a dedicated PostgreSQL test service whose
+role has `CREATEDB`; install matching `pg_dump` and `pg_restore`
 clients on `PATH` (CI uses PostgreSQL 16). The script generates a temporary
 Runner token in memory when none is supplied. From `backend/`, choose an output
 directory that does not exist:
@@ -132,16 +133,16 @@ integration gap; hosted CI for these changes remains pending a later authorized
 push. Historical snapshots and the earlier unknown-aware v2 gate above remain
 preserved.
 
-Local verification on 2026-10-15 passed at
+An earlier local verification checkpoint on 2026-10-15 passed at
 `.scratch/roadmap-closeout-20261015/postgres-calibration-e2e/capture-run-verified/`:
 six Runs, 30 events, schema `0008_regression_cases`, matching database manifests,
 and complete report equality under the two-field digest normalization above.
 The actual restored `capture/snapshot.dump` has digest
 `sha256:85f81cb1aadd5f7cd3df5c3da2d68783ddccf91c2ede7a6892af885bb835439b`.
 The gate is `bound`, `provisional_mechanics`, `publishable_accuracy=false`, with
-context known 2 / unknown 4 and micro known 20 / unknown 4. This is the current
-local controlled mechanics gate; it does not authenticate unrelated external
-backups or establish independent accuracy.
+context known 2 / unknown 4 and micro known 20 / unknown 4. This was the local
+controlled mechanics gate at that checkpoint; it does not authenticate unrelated
+external backups or establish independent accuracy.
 
 The parent evidence directory retains `e2e-verified.stdout`,
 `local-verification.json`, and `backend-full.log`. Verification found no remaining
@@ -151,9 +152,46 @@ remain preserved. Full backend verification passed `256 passed in 31.89s`,
 including PostgreSQL checks, with no skips. The existing `backup_restore_e2e.py`
 compatibility rehearsal also passed; `legacy-recovery.log` and
 `legacy-cleanup.json` record removal of its two owned databases and preservation
-of pre-existing databases. These are local host checks for this change. The
+of pre-existing databases. These are local host checks for that checkpoint. The
 earlier standard-image acceptance covers its recorded source snapshot, and no
 new image acceptance or hosted CI run is claimed.
+
+### Encoded credentials and CI step follow-up (2026-10-15)
+
+Alembic now escapes percent signs at the ConfigParser boundary, so URLs with
+encoded password characters such as `%40` and `%25` can migrate normally.
+Supply a normally encoded `postgresql+asyncpg://` URL; do not double
+the percent signs in `DATABASE_URL`. Successful verification followed by a
+database cleanup failure now reports `cleanup_restore` or `cleanup_source`,
+rather than `verify_report`, and the CLI exits unsuccessfully with a sanitized
+stage/type summary.
+
+Evidence is retained under
+`.scratch/roadmap-closeout-20261015/ci-sequence-followup/`:
+
+- `final-backend/summary.json` and `backend-full.log` record the final full suite:
+  `262 passed in 42.72s`, with PostgreSQL tests enabled and no skips.
+- `backend-job/summary.json` records the earlier local backend CI step sequence:
+  schema export/diff, `246 passed, 2 skipped`, and migration up/down/up. That job
+  sets `DATABASE_URL` and leaves `RETENTION_POSTGRES_URL` unset; the two skips
+  are entire modules containing the ten PostgreSQL tests, rather than failures.
+- `run-20261015T132323Z-d29b3110/sequence-summary.json` records the earlier local
+  recovery CI sequence: migration, existing backup/restore rehearsal, all ten
+  PostgreSQL tests, and controlled capture/restore passed in order. The harness
+  preserved the source's table contents and sequence state; owned databases were
+  removed and the configured original database remained.
+- `encoded-url-20261015T132952Z-26f65c91/encoded-url-summary.json` records the
+  final gate with encoded credentials on a temporary `LOGIN CREATEDB` role
+  without superuser access. Migration to head and capture/restore passed; the
+  actual dump digest is
+  `sha256:57feb2fc0d0e7d679b1d9600860bdc56e3f74913cc8e3a549aa62dc84cb1d48a`.
+  The harness preserved its configured database; its capture/restore databases,
+  test anchor database, and temporary role were removed afterward. Artifact and
+  decompressed-dump scans found zero known credential matches.
+
+These are local checks of CI commands and the current host-run gate. They do
+not establish hosted CI success or extend the earlier standard-image acceptance
+to this source snapshot. The provisional accuracy gate remains unchanged.
 
 ## Historical verification
 

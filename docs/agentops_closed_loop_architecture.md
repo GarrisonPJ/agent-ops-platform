@@ -101,13 +101,14 @@ Scenarios and Runner kill/replacement recovery. Runner/API Python hashes matched
 the recorded source snapshot for that acceptance run, with no source mounts. Base images and API/Web layers used
 Docker cache; Runner Rust compilation and pinned Python dependency installation
 completed before the final source refresh reused those layers. Current backend
-verification passes 256 tests including PostgreSQL checks, with no skips. The
+verification passes 262 tests including PostgreSQL checks, with no skips. The
 host-run PostgreSQL calibration gate also passes real dump restoration and
 strict-report comparison, normalizing only the two binding file-digest prefixes.
 Earlier Linux Node 22 evidence includes formatting, typecheck, 27 unit tests,
 build, production dependency audit, and two Recorded E2E tests. The new host
-checks do not extend the earlier image acceptance to the current source snapshot;
-there is no new hosted CI result. The [local validation runbook](operations/reliability-and-local-validation.md)
+checks do not extend the earlier image acceptance to the current source snapshot.
+Backend and recovery CI steps were also reproduced locally on the earlier
+source snapshot, with no new hosted CI result. The [local validation runbook](operations/reliability-and-local-validation.md)
 records toolchain, cache, proxy, and build boundaries.
 
 The current six-case controlled capture supplements the fixture sample with
