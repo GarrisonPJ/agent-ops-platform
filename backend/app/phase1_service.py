@@ -668,7 +668,17 @@ async def create_regression_case(
 
 async def cancel_run(db: AsyncSession, run_id: str) -> RunResponse:
     while True:
+        # Match the Job -> Run lock order used by lease writers.
+        job = (
+            await db.execute(
+                select(RunnerJob)
+                .where(RunnerJob.run_id == run_id)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+        ).scalar_one_or_none()
         run = await require_run(db, run_id)
+        await db.refresh(run)
         if run.status in TERMINAL_RUN_STATUSES:
             return run_response(run)
 
@@ -691,7 +701,6 @@ async def cancel_run(db: AsyncSession, run_id: str) -> RunResponse:
             await db.rollback()
             continue
 
-        job = await db.get(RunnerJob, run_id)
         if job is not None:
             job.cancel_requested_at = now
         await db.commit()
@@ -832,6 +841,17 @@ async def claim_job(db: AsyncSession, runner_id: str) -> tuple[RunnerJob, Run] |
         .all()
     )
     for run_id in candidates:
+        # Claim and cancellation must acquire Job before updating Run.
+        job = (
+            await db.execute(
+                select(RunnerJob)
+                .where(RunnerJob.run_id == run_id)
+                .with_for_update(skip_locked=True)
+                .execution_options(populate_existing=True)
+            )
+        ).scalar_one_or_none()
+        if job is None:
+            continue
         now = utcnow()
         claimed = await db.execute(
             update(Run)
@@ -840,9 +860,8 @@ async def claim_job(db: AsyncSession, runner_id: str) -> tuple[RunnerJob, Run] |
         )
         if claimed.rowcount != 1:
             continue
-        job = await db.get(RunnerJob, run_id)
-        run = await db.get(Run, run_id)
-        if job is None or run is None:
+        run = await db.get(Run, run_id, populate_existing=True)
+        if run is None:
             await db.rollback()
             raise DomainError(500, "JOB_INVARIANT_BROKEN", "Run job is missing")
         job.lease_id = str(uuid4())
