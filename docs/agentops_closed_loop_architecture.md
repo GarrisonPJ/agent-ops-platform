@@ -1,7 +1,7 @@
 # AgentOps Closed-Loop Architecture
 
 Status: current for Phase 1
-Last reviewed: 2026-10-05
+Last reviewed: 2026-10-15
 
 ## System goal
 
@@ -26,7 +26,7 @@ The current system is a focused evaluation control plane, not a generic orchestr
 | Python agent | Registered Scenario handlers with deterministic fixture and narrow Provider paths | `backend/app/scenarios/`, `backend/app/phase1_provider.py` |
 | Product workflow | Experiments, Trace, deterministic Analysis, persisted comparisons, regression replay, activate/reject | `frontend/src/Phase1App.tsx` |
 | Offline regression adapter | Recorded persisted facts validated through the frontend contract | `frontend/src/services/recorded/` |
-| Evaluation calibration | Read-only analysis-blind review export and labeled accuracy report over persisted terminal RunEvents | `backend/app/calibration_review.py`, `backend/app/calibration_report.py` |
+| Evaluation calibration | Read-only analysis-blind packets and bound reports over persisted terminal RunEvents; independent human-label accuracy remains gated | `backend/app/calibration_review.py`, `backend/app/calibration_report.py` |
 | End-to-end verification | Real Compose stack, Golden loop, and Runner recovery fault test | `infra/docker/docker-compose.phase1.yml`, `scripts/golden_e2e.py`, `scripts/recovery_e2e.py` |
 
 ## Component ownership
@@ -59,6 +59,12 @@ flowchart LR
 9. A successful positive Replay validates the candidate. The first activation request queues any missing eligible RegressionCase replays without activating the Policy.
 10. A person reviews the regression results and explicitly activates again or rejects the Policy. No policy activates automatically.
 
+The registry contains `checkout-api-latency.v1`, `multi-step-research.v1`, and
+`api-fault-orchestration.v1`. Each Scenario retains its own allowlisted tools,
+fixture semantics, and terminal assertions within this same workflow. The
+[Scenario contributor guide](agents/scenario-development.md) describes their
+versioning and assertion contract; `scripts/golden_e2e.py` covers all three.
+
 ## Reliability properties already enforced
 
 - `run_id + sequence` is unique and duplicate event uploads are idempotent.
@@ -87,7 +93,33 @@ Runner recovery, registered Scenarios, and the narrow Provider boundary are impl
 
 The next milestone targets a single machine or trusted team network. It prioritizes state-machine reliability and evaluation accuracy; throughput and multi-user collaboration remain deferred. See [ROADMAP.md](../ROADMAP.md) for the promotion gates.
 
-As of 2026-10-05, backend verification reports `188 passed, 2 skipped` when loopback fake-Provider tests run with inherited proxy variables removed. Linux Node 22 passes frontend formatting, typecheck, `27` unit tests, build, and `2` Recorded browser E2E tests. An isolated standard four-service Compose stack passed both Golden scenarios and Runner recovery; a standard Web Dockerfile build also succeeded during intermittent Docker Hub recovery, but the latest rerun failed resolving `node:22-alpine` with a registry timeout, so local reproducibility remains environment-dependent. The corrected analysis-blind packet is ready for independent labels; publishable precision/recall/F1 results remain pending. See the [local validation runbook](operations/reliability-and-local-validation.md) and [calibration procedure](evaluation-calibration.md) for the exact boundaries.
+The [roadmap](../ROADMAP.md) and [calibration procedure](evaluation-calibration.md)
+record dated verification evidence. On 2026-10-15, the standard Runner build
+completed and an isolated standard four-service stack passed all three Golden
+Scenarios and Runner kill/replacement recovery. Runner/API Python hashes matched
+the final sources, with no source mounts. Base images and API/Web layers used
+Docker cache; Runner Rust compilation and pinned Python dependency installation
+completed before the final source refresh reused those layers. Current backend
+verification passes 225 tests including PostgreSQL checks, with no skips; Linux
+Node 22 passes formatting, typecheck, 27 unit tests, build, production dependency
+audit, and two Recorded E2E tests. This is local evidence, not a new hosted CI
+result. The [local validation runbook](operations/reliability-and-local-validation.md)
+records toolchain, cache, proxy, and build boundaries.
+
+The current six-case controlled capture supplements the fixture sample with
+injected context pressure/low-use/unknown measurements and loopback Fake
+Provider success/timeout/invalid-response cases. It uses authenticated ASGI
+Runner API persistence, independently of the standard-stack verification above;
+it does not exercise Rust supervision or external models. Zero-step Provider
+execution failures now project their execution evidence into dimensions and
+dominant; this semantic fix uses `failure-analyzer.v2`, requiring new strict
+packets rather than relabeling historical v1 reports.
+
+The bound report remains provisional engineering evidence with
+`publishable_accuracy=false`. Agent-authored input contracts and correlated
+fixtures cannot establish general accuracy; missing context measurements are
+not confirmed negatives. Independent human labels and adjudication remain a
+separate publication gate and do not block deterministic engineering work.
 
 ## Deliberately deferred
 

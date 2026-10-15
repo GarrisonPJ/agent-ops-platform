@@ -96,7 +96,7 @@ npm ci
 VITE_MOCK_API=true npm run dev
 ```
 
-The UI displays **Recorded Demo Data** in this mode. Fixtures replay persisted events in order; they do not reimplement scoring, analysis, policy compilation, or state transitions in TypeScript.
+The UI displays **Recorded Demo Data** in this mode. Fixtures replay persisted events in order; they do not reimplement scoring, analysis, policy compilation, or state transitions in TypeScript. Recorded Preview is an offline development and regression adapter; public hosting is outside the current milestone.
 
 ## Architecture
 
@@ -119,6 +119,8 @@ flowchart LR
 | Python agent | Registered Scenario handlers with deterministic fixtures and narrow, scenario-specific opt-in Provider paths |
 
 Python Pydantic models own protocol v1. Versioned JSON Schemas and Golden fixtures live in [contracts/v1](contracts/v1); Rust Serde types validate those same fixtures in CI.
+
+The [closed-loop architecture](docs/agentops_closed_loop_architecture.md) explains component ownership, Runner recovery and attempt fencing, registered Scenarios, cross-language contracts, and the human activation gate. Accepted boundary decisions are recorded in [docs/adr](docs/adr).
 
 ## Reliability and trust boundaries
 
@@ -189,7 +191,9 @@ cd frontend && npm run e2e:recorded
 
 CI covers Python, migrations, TypeScript, frontend formatting and Recorded browser E2E, Rust protocol/process supervision, Compose validation, Golden loops, and Runner recovery. See the [local validation runbook](docs/operations/reliability-and-local-validation.md) for the WSL toolchain and proxy setup.
 
-Read-only [calibration review and reporting tools](docs/evaluation-calibration.md) export analysis-blind review packets from terminal Runs and compare separate labels with predictions reconstructed from persisted RunEvents. The 2026-09-25 checks recorded `186 passed, 2 skipped` for backend, `27` frontend unit tests, and `2` Recorded browser E2E tests. An isolated four-service Compose stack passed both Golden scenarios and Runner recovery with a temporary local-Node Web override. The standard Web Dockerfile build was blocked locally by a Docker Hub timeout; no independently labeled sample or publishable evaluation-accuracy metrics exist yet.
+Verification evidence is dated in [ROADMAP.md](ROADMAP.md) and the [calibration procedure](docs/evaluation-calibration.md). On 2026-10-15, a standard Runner build and isolated standard four-service Compose stack passed all three Golden Scenarios and Runner kill/replacement recovery. API/Runner Python source hashes matched the checkout, with no source mounts. Base images and API/Web layers used Docker cache; the Runner Rust compilation and pinned Python installation completed before a final source refresh reused those layers. Backend verification passes 225 tests; frontend verification passes 27 unit tests and two Recorded E2E tests. These are local results; current commits have no new hosted CI result.
+
+Read-only calibration tools export analysis-blind packets from terminal Runs and compare separate labels with predictions reconstructed from persisted RunEvents. The current six-case controlled packet covers measured/unknown context and loopback Fake Provider success, timeout, and invalid response; its bound report uses `failure-analyzer.v2` and remains provisional mechanics evidence with `publishable_accuracy=false`. Independent human labels and adjudication remain pending; this does not block deterministic engineering work, and no publishable precision/recall/F1 is claimed. Use the linked evidence records for current counts and remaining verification work.
 
 ## Deliberate non-goals
 

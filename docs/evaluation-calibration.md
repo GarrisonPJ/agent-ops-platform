@@ -1,10 +1,74 @@
 # Evaluation Calibration
 
-Status: analysis-blind review export and reporting tools ready; independent
-human-labeled sample pending (2026-10-13). A provisional internal mechanics
-gate passes for the current nine-Run fixture packet; it is not an accuracy gate.
+Status: analysis-blind export, bound reporting, and controlled capture are ready
+(2026-10-15). The current six-case controlled packet uses
+`failure-analyzer.v2` and passes a provisional mechanics gate. Independent human
+labels and adjudication remain pending; they do not block engineering work.
 
-Verification update (2026-10-13): current local evidence is indexed at ignored
+## Controlled capture (2026-10-15)
+
+`backend/scripts/controlled_calibration_capture.py` fixes input contracts before
+execution, persists Runs through authenticated ASGI Runner API routes, and
+compares separate contract labels with predictions. A mismatch retains the
+artifacts and fails the command. Context measurements are injected; Provider
+cases call a loopback Fake Provider. This does not exercise Rust supervision,
+the standard container stack, or an external model.
+
+| Case | Expected dimension | Evidence boundary |
+| --- | --- | --- |
+| Context pressure | `context` | Injected use of 8191/8192, above 95%. |
+| Low context pressure | Empty | Measured use of 1200/8192 with no truncation signal. |
+| Context unknown | Empty | Measurement absent; this is not a confirmed context negative. |
+| Provider success | Empty | Three valid checkout tool calls followed by a final response. |
+| Provider timeout | `execution` | Timeout before any completed tool step. |
+| Invalid Provider response | `execution` | Empty choices before any completed tool step. |
+
+The last two cases exposed a real analyzer defect: the zero-step branch kept
+execution evidence but omitted the dimension and dominant projection. The fix
+bumps the semantic revision to `failure-analyzer.v2`. Historical v1 packets stay
+unchanged and cannot satisfy current strict revision binding. In particular,
+the earlier controlled capture under
+`.scratch/roadmap-closeout-20261013/controlled-capture-20261013/` incorrectly
+gave those Provider failures empty labels; its agreement result is defective
+and must not be used as the current gate.
+
+Use a new, empty disposable PostgreSQL database named
+`agentops_calibration_<suffix>` (or exactly `agentops_controlled_calibration`),
+migrated to the application head. Supply `DATABASE_URL` and `RUNNER_TOKEN`
+through a protected environment; do not use a working/demo database. From
+`backend/`, choose an unused output directory and run:
+
+```sh
+env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY \
+  -u http_proxy -u https_proxy -u all_proxy \
+  NO_PROXY=localhost,127.0.0.1 no_proxy=localhost,127.0.0.1 \
+  UV_CACHE_DIR=/tmp/agentops-uv-cache \
+  uv run python -m scripts.controlled_calibration_capture \
+  --output ../.scratch/evaluation-calibration/controlled-capture-NEW
+```
+
+The tool writes `case-contracts.json`, a real `snapshot.dump`, `packet.json`,
+`provisional-labels.json`, `review-record.json`, `strict-report.json`, and
+`capture-manifest.json` with file hashes, source-snapshot identity, and per-case
+provenance. Existing directories and nonempty or outdated databases are
+rejected. Use a fresh database and directory for each rerun.
+
+The successful 2026-10-15 capture is retained locally at
+`.scratch/roadmap-closeout-20261015/controlled-capture-20261015/`:
+six terminal Runs, 30 RunEvents, schema `0008_regression_cases`, strict binding
+`bound`, no contract disagreements, `accuracy_status=provisional_mechanics`,
+and `publishable_accuracy=false`. The actual backup digest is
+`sha256:f081ab0c53d9df09925f7b449b9b024dbc1a11b33d40439d6c959920c90b053b`.
+The reviewer is agent-generated provisional and adjudication is pending.
+Unknown context remains unknown even when report mechanics count the supplied
+empty label. These results establish contract consistency, not general
+accuracy; the report does not independently authenticate an external backup.
+Current backend verification passes all 225 tests, including PostgreSQL checks,
+with no skips.
+
+## Historical verification
+
+Verification update (2026-10-13): local evidence at that date is indexed at ignored
 `.scratch/evaluation-calibration/20261013-compose-refresh-110352Z/README.md`.
 All three Golden Scenarios and Runner kill/replacement recovery passed in an
 isolated stack. The fault Scenario was rerun with checks requiring six baseline
@@ -119,7 +183,7 @@ an `event_stream_sha256` digest over the complete persisted event stream
 (`sequence`, `event_type`, normalized UTC `occurred_at`, and `payload`); the
 digest exposes no event payload values. Strict binding requires the
 packet and sidecar revisions to match the source-controlled analyzer revision
-(`failure-analyzer.v1` in the current implementation); it does not prove that
+(`failure-analyzer.v2` in the current implementation); it does not prove that
 an external snapshot identifier is authentic. In strict mode, `source_snapshot`
 must use the canonical `sha256:<64hex>` form; this catches malformed or
 ambiguous identifiers but does not verify that an external backup or database
@@ -387,13 +451,13 @@ and the limitations above are documented.
 
 ## Demo temporary labels
 
-For the current nine-Run demo-only packet, the agent-generated draft is
+For the historical nine-Run demo-only packet, the agent-generated draft is
 `.scratch/evaluation-calibration/20261013-compose-refresh-110352Z/provisional-labels-final.json`.
 The five-Run draft at
 `.scratch/evaluation-calibration/demo-temp-labels-20261005-recovery-fixed.json`
 remains historical evidence.
 The earlier `.scratch/evaluation-calibration/demo-temp-labels-20261005.json`
-belongs to the historical pre-fix packet. The current draft is useful
+belongs to the historical pre-fix packet. These drafts remain useful
 for exercising the report command and preparing a human review, but it is not
 an independent label set and must not be used to claim precision, recall, F1,
 or production readiness. The draft's provenance says this explicitly.
@@ -436,4 +500,5 @@ are empty because they show no supported planning, execution, context, or
 budget evidence. These are examples for manual correction, not adjudicated
 labels. After editing, replace `name` and `provenance` with the real reviewer
 method, roles, snapshot identifier, and adjudication record; do not overwrite
-the analysis-blind packet.
+the analysis-blind packet. Current strict reports require a newly exported
+packet and matching labels/sidecar bound to `failure-analyzer.v2`.

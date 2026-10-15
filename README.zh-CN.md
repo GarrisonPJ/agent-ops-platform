@@ -96,7 +96,7 @@ npm ci
 VITE_MOCK_API=true npm run dev
 ```
 
-此模式会持续显示 **Recorded Demo Data**。Fixture 只按时间顺序回放真实闭环中持久化的事件，不会在 TypeScript 中重新实现评分、分析、策略编译或状态机。
+此模式会持续显示 **Recorded Demo Data**。Fixture 只按时间顺序回放真实闭环中持久化的事件，不会在 TypeScript 中重新实现评分、分析、策略编译或状态机。Recorded Preview 用于离线开发和确定性回归检查；公网托管不属于当前里程碑。
 
 ## 架构
 
@@ -119,6 +119,8 @@ flowchart LR
 | Python Agent | 注册 Scenario Handler，提供确定性 Fixture 与窄边界、场景专属的 Provider 路径 |
 
 Python Pydantic 类型是协议 v1 的事实来源。版本化 JSON Schema 与 Golden fixtures 位于 [contracts/v1](contracts/v1)，Rust Serde 类型在 CI 中验证同一批 fixtures。
+
+[闭环架构文档](docs/agentops_closed_loop_architecture.md)解释组件职责、Runner 租约恢复与 Attempt 隔离、注册 Scenario、跨语言 contract，以及人工激活门禁。已接受的边界决策见 [docs/adr](docs/adr)。
 
 ## 可靠性与安全边界
 
@@ -189,7 +191,9 @@ cd frontend && npm run e2e:recorded
 
 CI 覆盖 Python、数据库迁移、TypeScript、前端格式与 Recorded 浏览器 E2E、Rust 协议与进程监督、Compose 配置、Golden 闭环及 Runner 恢复。WSL 工具链与代理设置见[本地验证 runbook](docs/operations/reliability-and-local-validation.md)。
 
-只读[校准分析盲审导出与报告工具](docs/evaluation-calibration.md)从终态 Run 导出盲审样本，并将单独标注的标签与根据持久化 RunEvent 重建的预测进行比较。2026-09-25 的检查记录为后端 `186 passed, 2 skipped`、前端 `27` 项单测和 `2` 项 Recorded 浏览器 E2E。隔离的四服务 Compose 栈通过两个 Golden 场景及 Runner 恢复，但使用了临时本地 Node Web 覆盖；标准 Web Dockerfile 构建在本地因 Docker Hub 超时受阻。独立标注样本与可发布的评估准确率指标尚未完成。
+按日期记录的验证证据见 [ROADMAP.zh-CN.md](ROADMAP.zh-CN.md)和[校准流程](docs/evaluation-calibration.md)。2026-10-15 的标准 Runner 构建及隔离标准四服务 Compose 栈通过全部三个 Golden Scenario 和 Runner 终止/替换恢复；API/Runner 的 Python 源码摘要与工作树一致，没有源码挂载。基础镜像和 API/Web 层使用 Docker 缓存；Runner 已完成 Rust 编译与锁定 Python 依赖安装，最终源码刷新复用了本轮依赖层。后端通过 225 项测试，前端通过 27 项单测及 2 项 Recorded E2E。这些是本地结果，当前提交尚无新的托管 CI 结果。
+
+只读校准工具从终态 Run 导出分析盲审 packet，并将单独标注的标签与根据持久化 RunEvent 重建的预测进行比较。当前六案例受控 packet 覆盖已测量/未知 context 及回环 Fake Provider 的成功、超时和无效响应；绑定报告采用 `failure-analyzer.v2`，仍仅是临时工程机制证据，`publishable_accuracy=false`。独立人评与争议裁决仍待完成；这不阻塞确定性工程开发，也不构成可发布的 precision/recall/F1。最新计数和验证待办以链接中的证据记录为准。
 
 ## 明确不做
 

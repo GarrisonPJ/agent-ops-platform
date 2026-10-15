@@ -309,21 +309,29 @@ Golden 覆盖与校准兼容性后续（2026-10-13）：
 - 隔离四服务栈通过全部三个 Golden 场景、Runner kill/replacement recovery，以及增强断言后的故障场景复跑。API 和 Web 使用标准 Dockerfile 与缓存层；标准 Runner 构建停在依赖安装，功能验收改用缓存 Runner 镜像并只读挂载当前 Python 源码，其 Rust binary SHA-256 与当前构建阶段一致。这是明确的 override 运行证据，不代表标准 Runner 构建完成或新的 hosted CI 结果。
 - 冻结后的数据库生成了保留的真实逻辑备份及新版九个 Run、67 条事件的 packet。严格报告为 `bound`、`provisional_mechanics`、`publishable_accuracy=false`；reviewer 信息记录新编写的 agent 标签、逐 case 证据/不确定性及待仲裁状态。样本含重复/相关 fixture 对，且没有 context 阳性。证据索引位于被忽略的 `.scratch/evaluation-calibration/20261013-compose-refresh-110352Z/README.md`。本轮容器/网络已清理，新旧数据卷均保留。
 
+受控覆盖与本地工程收口（2026-10-15）：
+
+- 修复 Provider 在零工具步骤时发生错误或超时的漏判：已有执行证据现在同时投影到 `execution` 维度和 dominant。语义 revision 升至 `failure-analyzer.v2`；旧 v1 packet 保留，但不再满足当前严格绑定。
+- 新增 `backend/scripts/controlled_calibration_capture.py`，预先固定 context 高压力、低压力、测量未知及 Fake Provider 成功、超时、无效响应六个合同。通过认证 ASGI Runner API 持久化事件，生成真实备份、packet、单独保存的合同标签、review sidecar、严格报告与摘要；合同不一致时保留产物并失败。它不覆盖 Rust supervision 或外部模型。
+- 新临时库采集六个 Run、30 条事件，严格报告为 `bound`、`provisional_mechanics`、`publishable_accuracy=false`，合同无分歧。证据位于本地 `.scratch/roadmap-closeout-20261015/controlled-capture-20261015/`。context 未测量不等于确认阴性。2026-10-13 旧受控采集对 Provider 故障使用空标签，存在语义缺陷，保留原件但停止用于当前 gate。
+- 标准 Runner Dockerfile 已锁定 Python 依赖闭包，使用 Cargo locked build，并在应用修改时保留依赖缓存。完成标准构建及最终源码刷新后，隔离标准四服务栈通过三个 Golden 场景与 Runner 恢复，没有源码挂载，Python 源码摘要与工作树一致。基础镜像和 API/Web 层使用 Docker 缓存；这是本地证据，不是新的 hosted CI。证据：`.scratch/evaluation-calibration/20261015-standard-runner-closeout/final/`。
+- 当前后端全套为 `225 passed`，包含独立 PostgreSQL 测试，无跳过；协议 schema 导出检查通过。Linux Node 22 下锁文件安装、生产依赖 audit（0 漏洞）、格式、类型检查、27 项前端单测、构建和 2 项 Recorded E2E 均通过；验收记录位于 `.scratch/roadmap-closeout-20261015/`。
+- 已完成剩余旧 tracker 的逐文件 triage：24 个 issue 与 4 份规划标为 `wontfix`，原文和替代路径保存在 `.scratch/archive/superseded-trackers-20261013/README.md`。旧验收项不等于全部实现，不能重新把已移除架构或公网托管要求列为当前任务。
+
 后续顺序：
 
-1. 环境允许时用有超时限制的诊断/重试解决标准 Runner 依赖构建缺口，再移除源码 override 复跑三场景 Golden/recovery。2026-10-05 标准栈与 hosted CI run `36029244922` 保留为历史证据；2026-10-13 override 运行不能替代新的标准构建或 hosted CI 结果。
-2. 使用当前临时 packet/report 继续确定性的 analyzer、trajectory、Scenario、recovery、exporter 和 report mechanics 开发，不因缺少人工评审阻塞。保持 analyzer revision、事件流 digest 和 canonical snapshot contract；采集新样本时保留原始快照及带日期产物。
-3. 扩大产品范围前先补受控失败覆盖：当前九个 Run 的样本已有 execution 阳性，但没有 context 阳性或 Provider 样本。新增 fixture 可验证机制，不能证明通用准确率。
-4. 条件允许时再由至少两名独立评审者标注，记录逐 case 证据与不确定性，经指定仲裁者处理分歧后运行报告；人工 gate 完成前不发布 precision/recall/F1，外部 snapshot 真实性仍在 packet contract 之外。
-5. 继续 triage 剩余 `.scratch/` 规划和工单，记录每个文件的替代路径与标签后，只归档或删除确认已被 ROADMAP/CONTEXT 取代的文件；保留带日期 handoff、`.codegraph/` 和 `.cursor/`。
+1. 后续获得推送授权后运行 hosted CI，验证本地提交；本轮仅本地 commit，不把 2026-10-05 的 CI 结果当作当前提交结果。
+2. 工程开发使用新的 v2 六合同 packet；扩展 analyzer、trajectory、Scenario、recovery、exporter 或报告时，维护相应回归及 revision/digest 绑定。当前没有必须新增的产品功能，不启动推测性 Phase 1.5。
+3. 条件允许时再由至少两名独立评审者标注代表性样本，记录证据与不确定性，经指定仲裁者处理分歧后重新导出/报告。人工 gate 未完成前不发布 precision/recall/F1；这不阻塞工程开发，外部 snapshot 来源真实性仍不由 report 自动证明。
+4. 只有确实启动可信内网部署时，才推进数据库凭据与访问边界整改；只有出现实际需求并通过 ADR，才提升吞吐量、协作等暂缓项。
 
-验收：每个终态都有确定性证据；分析器结果使用独立标注并发布指标；后端、前端、Rust 与 Golden 检查在本地和 CI 可复现。
+验收分开记录：确定性工程机制、本地可重复验证与文档清理单独收口；独立标注及准确率发布 gate 仍为 pending，不能用 agent 合同替代。
 
 ### P2：明确清理项与延后项
 
 - 过时的规划/分析文档移出 `docs/`，下一次仓库清理前仅保留在 `.scratch/archive/`；清理时只删除已确认被 ROADMAP/CONTEXT 取代的文档，保留带日期 handoff 以及本地 `.codegraph/`、`.cursor/` 工具目录。
 - 重新 triage 过期 `.scratch/` 工单，将已取代内容标记为 `wontfix` 或 `ready-for-human`；只有记录标签和替代路径后才删除旧 issue 文件。
-- 2026-10-05 已将完成逐文件 triage 的旧 tracker 归档到 `.scratch/archive/legacy-trackers-20261005/`，将已完成里程碑 tracker 归档到 `.scratch/archive/completed-trackers-20261005/`，旧 `.bak` 副本保留在 `.scratch/archive/local-backups-20261005/`（均不是源码或回滚输入）。替代路径和证据见各目录 README。`baseline-hardening/`、`closed-loop-architecture/`、`demo-packaging/` 仍保留，待单独处理未完成或 `ready-for-agent` 条目；不得使用目录通配符删除。
+- 2026-10-05 归档的 legacy/completed tracker 与本地 `.bak` 副本继续保留，替代路径见各目录 README。2026-10-13 已将 `baseline-hardening/`、`closed-loop-architecture/`、`demo-packaging/` 的剩余 28 份文件逐一标记 `wontfix` 并归档到 `.scratch/archive/superseded-trackers-20261013/`；不再有待实现旧条目。这些被忽略的本地归档不是源码或回滚输入，原文、日期 handoff、`.codegraph/` 和 `.cursor/` 保留。
 - 在任何可信内网部署前，将 Compose 中用于演示的 PostgreSQL 凭据替换为显式 Secret 来源；演示默认值只能留在明确标注的本地 profile 中。
 - MCP、向量记忆、有副作用工具、多租户和吞吐量优化，只有在出现可度量需求并通过新 ADR 后才提升优先级。
 
