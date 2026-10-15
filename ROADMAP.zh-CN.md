@@ -337,6 +337,14 @@ unknown 校准后续（2026-10-15）：
 - 最终后端全套通过 `262 passed in 42.72s`，包含 PostgreSQL 检查，无跳过。当前 gate 使用含编码凭据的非超级 `LOGIN CREATEDB` 角色，通过完整迁移及真实采集/恢复，dump 为 `sha256:57feb2fc0d0e7d679b1d9600860bdc56e3f74913cc8e3a549aa62dc84cb1d48a`。临时库及角色已删除、配置指定的数据库保留，产物与解压 dump 的已知凭据匹配数为 0。证据位于 `.scratch/roadmap-closeout-20261015/ci-sequence-followup/`，索引见[校准后续](docs/evaluation-calibration.md#encoded-credentials-and-ci-step-follow-up-2026-10-15)。
 - 分别完成本地 CI 命令复现：此前 backend job 通过 schema 导出/diff、`246 passed, 2 skipped` 及 migration up/down/up，其中两个 PostgreSQL 模块未启用；此前 recovery job 启用全部十项 PostgreSQL 测试，并依序通过迁移、既有 backup/restore 和受控采集/恢复。这些本地检查不等于 hosted CI 成功，也不更新此前镜像验收，临时准确率 gate 不变。
 
+当前版本整体验收（2026-10-15）：
+
+- **本地工程验收通过**，一项非阻断 UI 不足记录在[验收矩阵](docs/operations/system-acceptance.md)。代码修复为本地提交 `3f10485` 和 `5a65d4a`，没有推送。
+- 修复真实 PostgreSQL 取消/完成死锁，让取消和领取统一采用 Job → Run 锁顺序；确定性 PostgreSQL 回归也能拒绝“只修取消、将死锁转移到 queued claim”的不完整方案。修复原生命名 SSE 的接收与监听清理，真实浏览器已能显示此前为空的六步 Trace。
+- 最终通过 **265 项后端测试、无跳过**、协议导出/diff、**34 项前端单测**、类型/构建/格式检查、**2 项 Recorded E2E** 以及 Rust fmt/Clippy/workspace 测试。刷新后的标准镜像通过三个 Golden 闭环、真实 checkout UI 与 RegressionCase 激活门禁、真实请求中断后 `after=1` 续接、取消、Runner kill/replacement、非终态旧 Lease 写入拒绝和应用备份恢复。147 个源码文件的摘要与已提交代码一致，应用容器没有源码挂载。允许 Docker 缓存，这些提交的 hosted CI 仍未验证。
+- 新建 PostgreSQL 库中的 migration up/down/up、retention/并发及六合同校准采集/恢复通过。agent 合同标签仍为 `provisional_mechanics`、`publishable_accuracy=false`，独立标注与仲裁继续 pending。本地产物位于 `.scratch/system-acceptance-20261015/`。
+- 非阻断后续：RegressionCase Replay 完成后，卡片状态有时需导航或刷新才更新，持久化激活门禁仍正确。将其作为有界 UI 维护处理，不新增产品里程碑。
+
 后续顺序：
 
 1. 后续获得推送授权后运行 hosted CI，验证本地提交和新接入的 PostgreSQL 校准采集/恢复 gate；本轮仅本地 commit，不把 2026-10-05 的 CI 结果当作当前提交结果。
