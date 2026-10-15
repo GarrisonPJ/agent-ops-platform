@@ -10,6 +10,8 @@ import re
 import shutil
 import subprocess
 import tempfile
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -104,13 +106,17 @@ def _require_tool(name: str) -> None:
 
 def _run_tool(name: str, arguments: list[str], environment: dict[str, str]) -> None:
     _require_tool(name)
-    result = subprocess.run(
-        [name, *arguments],
-        env=environment,
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    try:
+        result = subprocess.run(
+            [name, *arguments],
+            env=environment,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=120,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RecoveryError(f"{name} exceeded its timeout") from exc
     if result.returncode != 0:
         raise RecoveryError(f"{name} failed with exit code {result.returncode}")
 
@@ -306,15 +312,43 @@ def compare_manifests(
     }
 
 
+@asynccontextmanager
+async def restored_backup(
+    value: str, target_name: str, backup_path: Path
+) -> AsyncIterator[str]:
+    """Restore a backup for bounded checks; remove only a database we created."""
+    source_url = normalize_postgres_url(value)
+    validate_disposable_database_name(target_name, database_name(source_url))
+    admin_url = database_url_for(source_url, "postgres")
+    target_url = database_url_for(source_url, target_name)
+    created_target = False
+    try:
+        await _create_database(admin_url, target_name)
+        created_target = True
+        _run_tool(
+            "pg_restore",
+            [
+                "--exit-on-error",
+                "--no-owner",
+                "--no-privileges",
+                "--dbname",
+                target_name,
+                str(backup_path),
+            ],
+            libpq_environment(target_url),
+        )
+        yield target_url
+    finally:
+        if created_target:
+            await _drop_database(admin_url, target_name)
+
+
 async def rehearse_restore(
     value: str, target_name: str, *, run_id: str | None = None
 ) -> dict[str, Any]:
     source_url = normalize_postgres_url(value)
     source_name = database_name(source_url)
     validate_disposable_database_name(target_name, source_name)
-    admin_url = database_url_for(source_url, "postgres")
-    target_url = database_url_for(source_url, target_name)
-    created_target = False
 
     with tempfile.TemporaryDirectory(prefix="agentops-backup-") as temporary_directory:
         backup_path = Path(temporary_directory) / "agentops.dump"
@@ -331,21 +365,7 @@ async def rehearse_restore(
             await transaction.rollback()
             await source_connection.close()
 
-        try:
-            await _create_database(admin_url, target_name)
-            created_target = True
-            _run_tool(
-                "pg_restore",
-                [
-                    "--exit-on-error",
-                    "--no-owner",
-                    "--no-privileges",
-                    "--dbname",
-                    target_name,
-                    str(backup_path),
-                ],
-                libpq_environment(target_url),
-            )
+        async with restored_backup(source_url, target_name, backup_path) as target_url:
             target_connection = await asyncpg.connect(target_url)
             try:
                 restored_manifest = await capture_manifest(
@@ -354,9 +374,6 @@ async def rehearse_restore(
             finally:
                 await target_connection.close()
             return compare_manifests(source_manifest, restored_manifest)
-        finally:
-            if created_target:
-                await _drop_database(admin_url, target_name)
 
 
 def _database_url_from_environment(variable: str) -> str:

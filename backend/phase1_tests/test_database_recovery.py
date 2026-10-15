@@ -73,9 +73,11 @@ def test_backup_uses_libpq_environment_instead_of_command_credentials(
         capture_output: bool,
         text: bool,
         check: bool,
+        timeout: int,
     ) -> subprocess.CompletedProcess[str]:
         captured["command"] = command
         captured["environment"] = env
+        captured["timeout"] = timeout
         output = Path(command[command.index("--file") + 1])
         output.write_bytes(b"custom dump")
         return subprocess.CompletedProcess(command, 0, "", "")
@@ -90,6 +92,7 @@ def test_backup_uses_libpq_environment_instead_of_command_credentials(
     assert "p@ss" not in " ".join(command)
     assert DATABASE_URL not in " ".join(command)
     assert command[-2:] == ["--snapshot", "snapshot-1"]
+    assert captured["timeout"] == 120
     environment = captured["environment"]
     assert isinstance(environment, dict)
     assert environment["PGPASSWORD"] == "p@ss"
@@ -131,3 +134,89 @@ def test_manifest_comparison_checks_counts_foreign_keys_and_trace() -> None:
     )
     with pytest.raises(RecoveryError, match="row counts"):
         compare_manifests(manifest, mismatched)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", [None, "collision", "restore", "consumer"])
+async def test_restored_backup_only_drops_owned_target(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failure: str | None
+) -> None:
+    from app import database_recovery
+
+    operations = []
+
+    async def create(_admin_url, target):
+        operations.append(("create", target))
+        if failure == "collision":
+            raise RecoveryError("restore target already exists")
+
+    async def drop(_admin_url, target):
+        operations.append(("drop", target))
+
+    def restore(name, arguments, environment):
+        assert name == "pg_restore"
+        assert "--exit-on-error" in arguments
+        assert environment["PGDATABASE"] == "agentops_restore_owned"
+        operations.append(("restore", environment["PGDATABASE"]))
+        if failure == "restore":
+            raise RecoveryError("pg_restore failed")
+
+    monkeypatch.setattr(database_recovery, "_create_database", create)
+    monkeypatch.setattr(database_recovery, "_drop_database", drop)
+    monkeypatch.setattr(database_recovery, "_run_tool", restore)
+
+    async def exercise():
+        async with database_recovery.restored_backup(
+            DATABASE_URL, "agentops_restore_owned", tmp_path / "snapshot.dump"
+        ) as target_url:
+            assert database_name(target_url) == "agentops_restore_owned"
+            assert target_url.startswith("postgresql://")
+            operations.append(("consumer", "agentops_restore_owned"))
+            if failure == "consumer":
+                raise RecoveryError("report failed")
+
+    if failure:
+        with pytest.raises(RecoveryError):
+            await exercise()
+    else:
+        await exercise()
+    assert operations[0] == ("create", "agentops_restore_owned")
+    if failure == "collision":
+        assert operations == [("create", "agentops_restore_owned")]
+    else:
+        assert operations[-1] == ("drop", "agentops_restore_owned")
+
+
+@pytest.mark.asyncio
+async def test_restored_backup_rejects_target_before_database_creation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app import database_recovery
+
+    async def unexpected_create(*_args):
+        pytest.fail("invalid restore target must not reach database creation")
+
+    monkeypatch.setattr(database_recovery, "_create_database", unexpected_create)
+    with pytest.raises(RecoveryError, match="differ"):
+        async with database_recovery.restored_backup(
+            DATABASE_URL, "agentops", tmp_path / "snapshot.dump"
+        ):
+            pytest.fail("invalid restore target must not yield")
+
+
+def test_backup_timeout_removes_partial_file_without_exposing_tool_output(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app import database_recovery
+
+    monkeypatch.setattr(database_recovery.shutil, "which", lambda _name: "/usr/bin/pg_dump")
+
+    def interrupted(command, **_kwargs):
+        raise subprocess.TimeoutExpired(command, 120, output="sensitive tool output")
+
+    monkeypatch.setattr(database_recovery.subprocess, "run", interrupted)
+    output = tmp_path / "partial.dump"
+    with pytest.raises(RecoveryError, match="pg_dump exceeded its timeout") as error:
+        backup_database(DATABASE_URL, output)
+    assert not output.exists()
+    assert "sensitive" not in str(error.value)
