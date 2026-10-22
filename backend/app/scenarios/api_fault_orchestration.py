@@ -235,6 +235,12 @@ class ApiFaultOrchestrationEnvironment(TrajectoryEnvironment):
         if name not in TOOLS:
             raise UnknownToolError(name)
         expected, observation = _tool_contract(self._service, name)
+        if name == "retry_call" and isinstance(args, dict):
+            attempts = args.get("attempts")
+            # JSON Schema integers include 2.0; record the canonical int without
+            # changing caller-owned arguments or the legacy provider validator.
+            if type(attempts) is float and attempts == 2:
+                args = {**args, "attempts": 2}
         require_exact_arguments(name, args, expected)
         if name == "degrade_route":
             self._degraded = True

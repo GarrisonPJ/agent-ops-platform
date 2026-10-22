@@ -222,11 +222,60 @@ def test_fault_environment_schedule_degradation_reset_and_isolation() -> None:
     assert first.call("invoke_service", invoke) == OBSERVATIONS[FAULT_ID][2]
 
 
-@pytest.mark.parametrize("attempts", [True, 2.0, "2", 1, 3])
-def test_fault_environment_rejects_attempts_outside_existing_exact_contract(attempts) -> None:
+@pytest.mark.parametrize("attempts", [2, 2.0])
+def test_fault_environment_retry_accepts_json_integer_equivalents_and_records_int(
+    attempts, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    trajectories = []
+
+    def capture(assertion, trajectory):
+        trajectories.append(trajectory)
+        return evaluate_assertion(assertion, trajectory)
+
+    monkeypatch.setattr("app.scenarios._helpers.evaluate_assertion", capture)
     environment = create_environment(make_spec(FAULT_ID))
+    schema = environment.tool_definitions()[1]["function"]["parameters"]
+    assert schema["properties"]["attempts"] == {"type": "integer", "const": 2}
+    args = {"service": "payments-api", "attempts": attempts}
+    assert environment.call("retry_call", args) == OBSERVATIONS[FAULT_ID][0]
+    checked = environment.check()
+    recorded = trajectories[0]["steps"][0]["action"]["arguments"]
+    assert recorded == {"service": "payments-api", "attempts": 2}
+    assert type(recorded["attempts"]) is int
+    assert type(args["attempts"]) is type(attempts)
+    assert environment.call("invoke_service", {"service": "payments-api"}) == FAULT
+    environment.reset(123)
+    assert environment.call("retry_call", args) == OBSERVATIONS[FAULT_ID][0]
+    assert environment.check() == checked
+
+
+@pytest.mark.parametrize("attempts", [True, False, "2", 1, 3, 2.5, None, [], {}])
+def test_fault_environment_rejects_attempts_outside_json_integer_contract_atomically(attempts) -> None:
+    environment = create_environment(make_spec(FAULT_ID))
+    initial = environment.check()
     with pytest.raises(InvalidToolArgumentsError):
         environment.call("retry_call", {"service": "payments-api", "attempts": attempts})
+    assert environment.check() == initial
+    assert environment.call("invoke_service", {"service": "payments-api"}) == FAULT
+
+
+@pytest.mark.parametrize("args", [
+    None,
+    [],
+    "invalid",
+    {},
+    {"service": "payments-api"},
+    {"attempts": 2.0},
+    {"service": "wrong-service", "attempts": 2.0},
+    {"service": "payments-api", "attempts": 2.0, "extra": "invalid"},
+])
+def test_fault_environment_rejects_invalid_retry_argument_shapes_atomically(args) -> None:
+    environment = create_environment(make_spec(FAULT_ID))
+    initial = environment.check()
+    with pytest.raises(InvalidToolArgumentsError):
+        environment.call("retry_call", args)
+    assert environment.check() == initial
+    assert environment.call("invoke_service", {"service": "payments-api"}) == FAULT
 
 
 @pytest.mark.parametrize("scenario_id", [CHECKOUT_ID, RESEARCH_ID])
