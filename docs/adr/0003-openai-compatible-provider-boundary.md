@@ -3,6 +3,9 @@
 - Status: Accepted
 - Date: 2026-07-26
 - Amended: 2026-08-23 for registered Scenario-specific tool surfaces
+- Amended: 2026-10-17 by ADR-0007 — the provider loop moves out of the
+  Scenario into the registered `reference-openai-compatible.v1` agent; the
+  `AGENTOPS_PROVIDER_*` configuration and its trust rules are unchanged
 
 ## Context
 

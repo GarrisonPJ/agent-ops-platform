@@ -2,6 +2,10 @@
 
 - Status: Accepted
 - Date: 2026-08-15
+- Amended: 2026-10-17 by ADR-0007 (Scenario becomes Environment; the agent
+  loop is split out) and ADR-0009 (operator-side Agent registry). The
+  allowlist boundary and `<name>.v<N>` identity rule defined here are
+  unchanged.
 
 ## Context
 

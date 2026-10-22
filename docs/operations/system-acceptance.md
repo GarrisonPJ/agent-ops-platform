@@ -2,6 +2,12 @@
 
 Date: 2026-10-15. Status: local engineering acceptance passed with the limits below.
 
+**Later policy (2026-10-17):** this file is a dated record. The sentence below
+that independent human labels remain pending described the publication rule on
+that day. Phase 2 replaced that gate with an author-labeled agreement study.
+Current rules: `docs/evaluation-calibration.md`. Do not block Harness work on
+this paragraph.
+
 This acceptance covers the implemented single-machine/trusted-intranet system.
 It prioritizes reliable execution and correct evaluation mechanics. Independent
 human labels and adjudication remain pending and do not block engineering
@@ -21,10 +27,10 @@ The standard Web Dockerfile starts the Vite development server. Its browser
 acceptance and the isolated Linux Node 22 production-build check are separate
 evidence; production Web deployment is outside this acceptance.
 
-Local logs, source manifests and machine-readable results are retained under
-the ignored `.scratch/system-acceptance-20261015/` directory. These artifacts
-are local evidence; a fresh checkout must repeat the checks below. Historical
-acceptance records remain unchanged.
+Local logs, source manifests and machine-readable results are retained in a
+local evidence directory (not in the repository). These artifacts are local
+evidence; a fresh checkout must repeat the checks below. Historical acceptance
+records remain unchanged.
 
 The refreshed image IDs start with `sha256:5a1ac2557641` (API),
 `sha256:f05db781a723` (Runner) and `sha256:207a8ed99e43` (Web).
@@ -112,10 +118,13 @@ repeat the affected acceptance checks.
   queued/running projection until navigation or reload. Opening its replay
   shows the actual Run; activation still enforces the persisted server gate.
   Automatic card polling was not verified or added in this acceptance.
-- Hosted CI for these local commits requires a later authorized push.
+- GitHub Actions on `8bd2ef0` passed all six jobs (backend,
+  database-recovery, frontend, rust, compose, golden-e2e).
 - External Provider checks remain opt-in and were not requested here.
-- Independent representative labels, reviewer provenance and adjudication are
-  required before publishing accuracy. The controlled report must remain
-  `provisional_mechanics` with `publishable_accuracy=false` in their absence.
+- Phase 2 H5 calibration: the six-contract controlled capture remains the CI
+  regression gate (`provisional_mechanics`, `publishable_accuracy=false`). An
+  author-labeled agreement study on ~40 real Runs must publish a confusion matrix
+  with stated self-labeling limitations before accuracy claims.
 - Deployment credentials and access controls are addressed when actual
-  trusted-intranet deployment begins. No speculative Phase 1.5 is introduced.
+  trusted-intranet deployment begins. Phase 2 — Harness is defined in
+  [ROADMAP.md](../../ROADMAP.md).

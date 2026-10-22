@@ -2,6 +2,9 @@
 
 - Status: Accepted
 - Date: 2026-07-16
+- Amended: 2026-10-17 by ADR-0008. Phase 1 still supervises one Python child.
+  When H1 ships, the Runner supervises an Environment server and a separate
+  agent process. Database ownership is unchanged.
 
 ## Context
 

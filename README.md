@@ -5,9 +5,9 @@
 
 # AgentOps Workbench
 
-**An engineering-focused closed-loop evaluation workbench for tool-using agents** — run an Experiment, inspect the durable Trace, diagnose failure, replay a candidate Policy, and decide whether to activate it. The intended deployment is a single machine or trusted team network. The repo name is `agent-ops-platform`; **AgentOps Workbench** is the product qualifier so this project is not confused with the unrelated [AgentOps-AI](https://github.com/AgentOps-AI/agentops) SDK or generic “agent ops” tooling.
+**A self-hosted reliability harness for tool-using agents, built for people who run their own models.** Put an agent into a deterministic, resettable tool environment, run it repeatedly, and get back pass^k, a rule-based failure classification, and a Before/After regression comparison for any policy change — with a human gate before anything is activated. It runs on a single machine or a trusted team network; no data leaves the host. The repo name is `agent-ops-platform`; **AgentOps Workbench** is the product qualifier so this project is not confused with the unrelated [AgentOps-AI](https://github.com/AgentOps-AI/agentops) SDK.
 
-Unlike Langfuse or Phoenix, which focus on tracing and eval datasets, this workbench ships the full **policy replay + human activation gate** loop — candidates never auto-apply.
+**Why this exists when Langfuse and Phoenix are free:** they are good at storing and viewing traces and datasets, and this project deliberately does not compete there (the trace UI is frozen; traces can be exported to them, see ADR-0011). It owns the parts they leave to you: a supervised runner with lease recovery and attempt fencing, deterministic environments with fault injection, a closed failure taxonomy whose agreement with human labels is measured and published, and a gate that never auto-applies a policy.
 
 ```text
 Experiment → Baseline → Trace → Failure Analysis → Candidate Policy
@@ -19,10 +19,10 @@ flowchart LR
     UI["React workbench"] -->|"typed HTTP + SSE"| API["FastAPI control plane"]
     API -->|"single writer"| DB[("PostgreSQL")]
     Runner["Rust Runner"] -->|"lease + sequenced events"| API
-    Runner -->|"EvaluationSpec JSON"| Agent["Allowlisted Python scenario"]
+    Runner -->|"EvaluationSpec JSON"| Agent["Environment + Agent-under-test"]
 ```
 
-**Why this repo is different:** (1) **Lease recovery with attempt fencing** — a crashed Runner cannot strand a Run; a replacement claims with a new Attempt and resumes from the next event sequence. (2) **Cross-language contract v1** — Python Pydantic, TypeScript Zod, and Rust Serde validate the same golden fixtures in CI.
+**Why this repo is different:** (1) **Lease recovery with attempt fencing** — a crashed Runner cannot strand a Run; a replacement claims with a new Attempt and resumes from the next event sequence. (2) **Cross-language contract v1** — Python Pydantic, TypeScript Zod, and Rust Serde validate the same golden fixtures in CI. (3) A **deterministic failure taxonomy with a calibration gate**: the analyzer is rule-based, regression-tested in CI against six controlled fault contracts, and its agreement with human labels is reported rather than assumed.
 
 **Local quick start:**
 
@@ -35,7 +35,7 @@ The example `.env` contains a local-demo `RUNNER_TOKEN`; replace it before runni
 
 Open [http://localhost:5173](http://localhost:5173) and walk the Golden loop: create an Experiment, watch the baseline fail, review Analysis, replay the candidate Policy, then Activate or Reject.
 
-Phase 1 through **Phase 1.4 — Scenario onboarding** is complete: three registered built-in Scenarios support deterministic fixtures and narrow, scenario-specific Provider paths. The closed loop also includes deterministic failure classification, persisted Before/After comparison, and regression-case replay before human activation. See [ROADMAP.md](ROADMAP.md).
+**Status (2026-10-17):** Phase 1 — the closed loop above on three built-in Environments (formerly Scenarios) and the built-in Python agent — is complete and CI-verified (`8bd2ef0`, six jobs green). Phase 2 — Harness is in progress: it splits the Environment from the Agent-under-test so external agents (a reference agent on local Ollama/vLLM models, Claude Code, the OpenAI Agents SDK, or your own loop) can be evaluated in the same environments over MCP; adds trial groups with pass^k; and exports traces as OpenTelemetry GenAI spans for Langfuse or Phoenix. Until Phase 2 stage H1 lands, only the built-in agent runs. See [ROADMAP.md](ROADMAP.md) and ADR-0007 to ADR-0011.
 
 ## Deterministic Golden workflow
 
@@ -106,7 +106,7 @@ flowchart LR
     API -->|"single database writer"| DB[("PostgreSQL")]
     API -->|"persist, then SSE"| UI
     Runner["Rust execution plane"] -->|"claim / heartbeat / events / complete"| API
-    Runner -->|"stdin EvaluationSpec<br/>stdout JSONL"| Agent["Allowlisted Python scenario"]
+    Runner -->|"stdin EvaluationSpec<br/>stdout JSONL"| Agent["Environment + Agent-under-test"]
     Agent -->|"opt-in /chat/completions"| Provider["OpenAI-compatible provider"]
 ```
 
@@ -119,6 +119,8 @@ flowchart LR
 | Python agent | Registered Scenario handlers with deterministic fixtures and narrow, scenario-specific opt-in Provider paths |
 
 Python Pydantic models own protocol v1. Versioned JSON Schemas and Golden fixtures live in [contracts/v1](contracts/v1); Rust Serde types validate those same fixtures in CI.
+
+The [Phase 2 target architecture](docs/agentops_closed_loop_architecture.md#phase-2-target-architecture) describes how external agents attach over MCP while the control plane stays unchanged.
 
 The [closed-loop architecture](docs/agentops_closed_loop_architecture.md) explains component ownership, Runner recovery and attempt fencing, registered Scenarios, cross-language contracts, and the human activation gate. Accepted boundary decisions are recorded in [docs/adr](docs/adr).
 
@@ -166,7 +168,11 @@ runner/       Rust workspace: protocol, runner, and CLI
 contracts/    Versioned JSON Schemas and cross-language Golden fixtures
 infra/docker/ Focused local Compose stack
 scripts/      Real-stack Golden E2E
+docs/learn/     Reading path for understanding the system (Chinese)
+docs/history/   Dated verification and calibration records moved out of living docs
+docs/agents/    Contributor and agent guides, development standards
 docs/adr/     Architecture decisions
+LICENSE         MIT
 ROADMAP.md    Current engineering milestones and promotion gates
 ```
 
@@ -191,20 +197,26 @@ cd frontend && npm run e2e:recorded
 
 CI covers Python, migrations, TypeScript, frontend formatting and Recorded browser E2E, Rust protocol/process supervision, Compose validation, Golden loops, and Runner recovery. See the [local validation runbook](docs/operations/reliability-and-local-validation.md) for the WSL toolchain and proxy setup.
 
-The [current-version system acceptance](docs/operations/system-acceptance.md) records the 2026-10-15 local engineering result: 265 backend tests with PostgreSQL enabled and no skips, 34 frontend unit tests, two Recorded E2E tests, and Rust fmt/Clippy/workspace tests passed. Refreshed standard images passed all three Golden Scenarios, real checkout browser workflow and regression activation gate, interrupted-stream reconnection, cancellation, Runner recovery, stale-lease fencing and application backup/restore. Source hashes match committed code; no application source mounts were used, and Docker cache was allowed. Acceptance fixed a PostgreSQL lock-order deadlock and missing named SSE subscriptions. One non-blocking regression-card refresh limitation is documented; hosted CI for these local commits remains pending a later authorized push. Historical evidence remains in [ROADMAP.md](ROADMAP.md) and the [calibration procedure](docs/evaluation-calibration.md).
+The [current-version system acceptance](docs/operations/system-acceptance.md) records the 2026-10-15 local engineering result: 265 backend tests with PostgreSQL enabled and no skips, 34 frontend unit tests, two Recorded E2E tests, and Rust fmt/Clippy/workspace tests passed. Refreshed standard images passed all three Golden Scenarios, real checkout browser workflow and regression activation gate, interrupted-stream reconnection, cancellation, Runner recovery, stale-lease fencing and application backup/restore. Source hashes match committed code; no application source mounts were used, and Docker cache was allowed. Acceptance fixed a PostgreSQL lock-order deadlock and missing named SSE subscriptions. One non-blocking regression-card refresh limitation is documented; GitHub Actions on `8bd2ef0` subsequently passed all six jobs. Historical evidence is indexed in [docs/history/](docs/history/) ([phase 1 verification log](docs/history/phase1-verification-log.md), [calibration evidence log](docs/history/calibration-evidence-log.md)).
 
-Read-only calibration tools export analysis-blind packets from terminal Runs and compare separate labels with predictions reconstructed from persisted RunEvents. The current six-case controlled packet covers measured/unknown context and loopback Fake Provider success, timeout, and invalid response; its labels explicitly mark unknown dimensions, and its bound report exposes assessed coverage under `failure-analyzer.v2`. It remains provisional mechanics evidence with `publishable_accuracy=false`. Independent human labels and adjudication remain pending; this does not block deterministic engineering work, and no publishable precision/recall/F1 is claimed. Use the linked evidence records for current counts and remaining verification work.
+The rule-based failure analyzer is regression-tested in CI by a six-contract controlled capture (measured/unknown context pressure; fake-provider success, timeout, invalid response) that restores a real PostgreSQL dump and checks a strictly bound report; this is a mechanics gate, not an accuracy claim. Phase 2 H5 adds an agreement study: the author labels ~40 real Runs from local models and external agents and publishes the confusion matrix with its known biases (self-labeling is stated as a limitation). See the [calibration procedure](docs/evaluation-calibration.md).
 
 ## Deliberate non-goals
 
-Phase 1 has no Kubernetes executor, Docker socket, MCP server, vector memory, training export, framework adapters, user-supplied provider endpoints or credentials, arbitrary code execution, accounts, multi-tenancy, billing, or automatic policy activation.
-
-Those capabilities remain deferred until a measured requirement promotes them. Phase 1.4 and the closed-loop depth follow-up are complete; see [ROADMAP.md](ROADMAP.md).
+Not a tracing SaaS and not a general evaluation platform. No accounts, multi-tenancy or billing; no Kubernetes or Docker-socket execution; no vector memory or training export; no LLM-as-judge; no automatic policy activation; no new trace-UI features, annotation queues or dataset management. MCP is used only as the loopback transport between a supervised agent and a built-in Environment (ADR-0008); registered agents run on the Runner host within the single-machine scope (ADR-0009). See [ROADMAP.md](ROADMAP.md) for the deferred list and the safety gate.
 
 ## Project direction
 
-AgentOps is developed as a reliable closed-loop evaluation system. Work is prioritized by recoverable execution, durable state, explicit invariants, typed cross-language contracts, observable failures, and safe process supervision rather than by feature count.
+The 2026-10-17 review found trace UI, dataset versioning, replay diff and failed-run promotion to be commodity in Langfuse, Phoenix and Braintrust, while a harness that runs external agents in deterministic environments and reports calibrated failure classes is not; Phase 2 therefore invests in the runner, the environments, the taxonomy and interoperability (OTel), and freezes the UI. See [ROADMAP.md](ROADMAP.md) Phase 2.
+
+## Learning path
+
+[docs/learn/README.md](docs/learn/README.md) is the ordered reading path (Chinese).
+
+[docs/agents/development-standards.md](docs/agents/development-standards.md) defines the Phase 2 conventions.
+
+[docs/adr/](docs/adr/) holds decisions.
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE).

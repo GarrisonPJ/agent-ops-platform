@@ -7,7 +7,7 @@ Experiment → Baseline → Trace → Analysis → Candidate Policy
            → Replay → Comparison → Human Activate or Reject
 ```
 
-This file defines the shared vocabulary and invariants for the implemented Phase 1 loop. Phase 1 is complete and verified. Product and implementation changes must preserve these invariants or justify a new ADR; future milestones are tracked in [ROADMAP.md](ROADMAP.md).
+This file defines the vocabulary and invariants of the implemented Phase 1 loop. Phase 2 — Harness (ADR-0007..0011, started 2026-10-17) splits the Environment from the Agent-under-test; Phase 2 terms below are marked `(Phase 2, planned)` and become binding when their stage ships; milestones in [ROADMAP.md](ROADMAP.md).
 
 ## Domain vocabulary
 
@@ -28,7 +28,15 @@ This file defines the shared vocabulary and invariants for the implemented Phase
 | RegressionCase | A failed or timed-out Run preserved as a regression asset with its scenario, seed, parameters, execution mode, and reproducibility boundary. |
 | Policy | Experiment-scoped candidate patch derived from one failed baseline and optionally validated by one replay. |
 | PolicyPatch | Phase 1 patch with only `instruction_patch`, `tool_priority`, and `max_steps`. |
-| Scenario | A built-in, allowlisted evaluation world with stable metadata, tool surface, fixture semantics, terminal assertions, and optional bounded `scenario_params`. |
+| Scenario | Phase 1 name of an Environment (ADR-0007). Protocol v1 keeps the field `scenario_id`. A built-in, allowlisted evaluation world with stable metadata, tool surface, fixture semantics, terminal assertions, and optional bounded `scenario_params`. |
+| Environment | (Phase 2, planned) Successor of Scenario: task, tools, deterministic state/observations, seed, fault schedule, limits, terminal `check()` with trajectory + outcome assertions; identity `<name>.v<N>`. |
+| Agent-under-test | (Phase 2, planned) Registered executable receiving task prompt + Environment endpoint; kinds `fixture`, `reference`, or `external`. |
+| Agent Registry | (Phase 2, planned) Operator-side TOML; `GET /api/agents` returns metadata only; the Runner refuses unknown ids. |
+| Environment Server | (Phase 2, planned) `app.env_server`: MCP Streamable HTTP on loopback, per-Run token, env-side `step_completed` capture; reserved tools `submit_result` and `report_usage`. |
+| Trial Group | (Phase 2, planned) `k` Runs sharing one spec except `run_id` / `trial_index`; Environment seed fixed across trials. |
+| pass^k | (Phase 2, planned) Unbiased estimator `C(c,k) / C(n,k)` over completed trials in a group; published metrics state `k`. |
+| Calibration gate | (Phase 2, planned) Six controlled contracts regression-testing the analyzer in CI; mechanics, not accuracy. |
+| Agreement study | (Phase 2, planned) Author-labeled sample of real Runs vs analyzer output; published confusion matrix and stated biases. |
 | Scenario Registry | Control-plane allowlist of Scenarios exposed through `GET /api/scenarios`. Only registered Scenarios may appear on Experiments or Runs. |
 | ScenarioAssertion | Controlled terminal scoring primitive (`tool-used`, `tool-args-match`, `tool-sequence`, `step-count`, `equals`, `contains`, `json-match`) declared on a Scenario. Assertions carry `weight`, `threshold`, and combine via `all`, `weighted`, or `any`. |
 | Recorded Preview | Offline-development and regression adapter that replays Golden E2E fixtures and never implements backend business rules. |
@@ -87,6 +95,17 @@ claimed/running/cancelling -- exhausted attempts --> failed or cancelled
 21. Heartbeat, event persistence, and completion fence the RunnerJob lease with a row lock; an expired or recovered lease cannot write a later Attempt's state. A terminal RegressionCase replay is never reused as another Policy's replay gate.
 22. Activation serializes Policies for one Experiment while preserving the one-active-Policy invariant; startup and authentication resolve one Runner token snapshot, and Compose requires an explicit token.
 
+## Phase 2 planned invariants
+
+23. Clients select a registered `agent_id`; commands exist only in the operator registry. The Runner refuses unregistered ids and never receives a command from the API.
+24. For any agent, `step_completed` is emitted by the Environment Server from observed tool calls, never accepted from the agent.
+25. Agent-internal signals that are not reported are recorded as unknown dimensions, never inferred.
+26. Trials in a group share the EvaluationSpec except `run_id` and `trial_index`, with a fixed Environment seed.
+27. Group metrics use the unbiased pass^k estimator; every published number states `k`. Validation for `k > 1` requires non-decreasing pass^k and positive mean score delta (extends invariant 7).
+28. OTel export is a lossy projection; RunEvent remains the source of truth and export is never read back.
+
+These become binding when the implementing stage ships and are then merged into Core invariants.
+
 ## Built-in scenarios
 
 The Scenario registry currently ships three built-in Scenarios. Checkout remains the Golden reference path; the others extend the same closed loop without changing Control Plane / Runner separation.
@@ -133,7 +152,9 @@ SSE clients reconnect with `after=<lastSequence>`. The API replays later persist
 | React | Workflow UI and client-side presentation state | Scoring, analysis, policy compilation, run state machine |
 | Control Plane | Domain state, persistence, leases, scoring, analysis, policy decisions, and explicit operator maintenance | Child process supervision |
 | Rust Runner | Process group, JSONL transport, heartbeat, retry, cancel, timeout | Database access, scoring, policy logic |
-| Python Agent | Deterministic fixture behavior or narrow provider orchestration for the allowlisted scenario | Run lifecycle, persistence, arbitrary tools, or arbitrary execution |
+| Python Agent (Phase 1) | Deterministic fixture behavior or narrow provider orchestration for the allowlisted scenario | Run lifecycle, persistence, arbitrary tools, or arbitrary execution |
+| Environment Server (Phase 2) | Tools, deterministic observations, fault schedule, assertions, env-side capture, step budget | Run lifecycle, persistence, agent decisions |
+| Agent-under-test (Phase 2) | Decisions about which tool to call | Persistence, scoring, lifecycle, or emitting trusted events |
 | PostgreSQL | Durable system facts, including RegressionCases and their replay references | Workflow behavior |
 
 Frontend state follows the project convention:
@@ -142,15 +163,17 @@ Frontend state follows the project convention:
 - cross-route UI state → Redux slice;
 - page-local ephemeral state → `useState` or `useRef`.
 
-## Phase 1 non-goals
+## Non-goals
 
-Kubernetes, Docker socket execution, MCP, vector memory, training export, framework adapters, user-supplied provider endpoints or credentials, arbitrary command execution, accounts, multi-tenancy, billing, and automatic activation are outside the current product.
+Kubernetes, Docker socket execution, containerised agents (deferred to the safety gate), vector memory, training export, user-supplied provider endpoints or credentials via the API, arbitrary command execution, accounts, multi-tenancy, billing, automatic activation, LLM-as-judge, new trace-UI features, annotation queues, and dataset management are outside the current product scope.
+
+MCP is used only as the loopback Environment transport (ADR-0008), not as an open tool bus. Agent adapters are registered operator-side (ADR-0009).
 
 ## Current evolution boundary
 
-Runner recovery, Phase 1.3 operational hardening, Phase 1.4 Scenario onboarding, the closed-loop depth follow-up, and database-level concurrent state-transition hardening are complete. The current system includes three registered Scenario fixture/Provider paths, deterministic failure classification, persisted Before/After comparison, Policy-specific RegressionCase replay gating, durable diagnostics, migration-aware health signals, immutable expired-Attempt correlation, safe Provider fingerprints, executable backup/restore rehearsal, retention/redaction enforcement, machine-readable alert classification via `/api/operations/state`, and concurrency-safe lease fencing, RegressionCase creation, Policy replay claiming, Policy activation, and terminal completion side effects. Recorded Preview remains a testing adapter, not a separate delivery track. The intended deployment scope is a single machine or trusted team network; Provider execution remains read-only, Scenario-scoped, and opt-in. Kubernetes, MCP, vector memory, arbitrary execution, multi-tenancy, and automatic policy activation stay deferred until a measured requirement promotes them.
+Phase 1 is complete and CI-verified on `8bd2ef0`. Phase 2 — Harness started 2026-10-17. The only architecture change is the Environment/Agent split with two-process supervision (ADR-0007, ADR-0008); later Harness stages are additive. The human activation gate and all Phase 1 invariants remain. See [ROADMAP.md](ROADMAP.md).
 
-Roadmap changes do not alter these domain invariants by themselves. Update this file and add an ADR before a milestone changes state ownership, recovery semantics, trust boundaries, or activation rules. See [ROADMAP.md](ROADMAP.md).
+Roadmap changes do not alter domain invariants by themselves. Update this file and add an ADR before a milestone changes state ownership, recovery semantics, trust boundaries, or activation rules.
 
 ## ADR index
 
@@ -158,7 +181,12 @@ Roadmap changes do not alter these domain invariants by themselves. Update this 
 |---|---|---|
 | [0001](docs/adr/0001-python-control-plane-rust-execution-plane.md) | Python control plane and Rust execution plane | Accepted |
 | [0002](docs/adr/0002-runner-recovery.md) | Deterministic Runner recovery | Accepted |
-| [0003](docs/adr/0003-openai-compatible-provider-boundary.md) | Narrow OpenAI-compatible provider boundary | Accepted |
+| [0003](docs/adr/0003-openai-compatible-provider-boundary.md) | Narrow OpenAI-compatible provider boundary (amended 2026-10-17) | Accepted |
 | [0004](docs/adr/0004-data-lifecycle-retention.md) | Experiment aggregate retention in the Python Control Plane | Accepted |
 | [0005](docs/adr/0005-operational-alert-classification.md) | Machine-readable operational alert classification | Accepted |
-| [0006](docs/adr/0006-scenario-registry-boundary.md) | Scenario registry boundary | Accepted |
+| [0006](docs/adr/0006-scenario-registry-boundary.md) | Scenario registry boundary (amended 2026-10-17) | Accepted |
+| [0007](docs/adr/0007-environment-agent-split.md) | Environment / Agent-under-test split | Accepted |
+| [0008](docs/adr/0008-environment-mcp-server-and-env-side-capture.md) | Environment MCP server and env-side capture | Accepted |
+| [0009](docs/adr/0009-agent-registry-trust-boundary.md) | Agent registry trust boundary | Accepted |
+| [0010](docs/adr/0010-trial-groups-and-pass-k.md) | Trial groups and pass^k | Accepted |
+| [0011](docs/adr/0011-otel-genai-export.md) | OpenTelemetry GenAI export | Accepted |

@@ -1,6 +1,8 @@
 # Operations runbooks
 
-Repeatable control-plane procedures for AgentOps Phase 1.
+Repeatable control-plane procedures for the Phase 1 stack. They stay in
+force until a Phase 2 task says a procedure changed. Harness decisions are
+in `docs/adr/0007`–`0011`; these runbooks do not restate them.
 
 | Topic | Document |
 |---|---|

@@ -173,7 +173,7 @@ environment blocker. Do not claim `make test` or `make fmt` from a partial
 WSL run; use CI or a Linux Node 22 installation.
 
 Verification on 2026-09-25 with verified Linux Node `v22.23.3` in an isolated frontend copy: `npm ci`,
-format checking, typecheck, 27 unit tests, production build, and two Recorded
+format checking, typecheck, 27 unit tests (historical), production build, and two Recorded
 browser E2E tests passed after `make fmt` normalized the prior 24-file format
 baseline. The repository worktree had root-owned Vite cache files, so dependency installation was kept out of the worktree. The frontend CI job now runs `format:check`. The Recorded E2E uses
 Playwright Chromium, which must be installed locally before running it.
@@ -208,10 +208,10 @@ sources matched the final checkout and neither container had a source bind
 mount. Base images and API/Web dependency layers used local Docker cache; this
 is standard local build/runtime evidence, not a clean hosted CI run.
 The build logs, source hashes, image identities, package check, recovery result,
-and database dump are preserved under
-`.scratch/evaluation-calibration/20261015-standard-runner-closeout/`, with the
-final acceptance artifacts in `final/`. The isolated project's containers were
-removed after verification; its image and database volume were retained.
+and database dump are preserved in a local evidence directory (not in the
+repository) for the 20261015 standard-runner closeout, with the final acceptance
+artifacts in `final/`. The isolated project's containers were removed after
+verification; its image and database volume were retained.
 
 Provider fake-server tests must not be sent through an inherited corporate
 proxy. On 2026-10-05 the isolated command below completed the full backend
@@ -251,8 +251,11 @@ choose an output directory that does not exist:
 
 ```sh
 PYTHONPATH=. VIRTUAL_ENV= uv run python ../scripts/controlled_calibration_e2e.py \
-  --output ../.scratch/calibration-postgres-NEW
+  --output /path/to/local-evidence/calibration-postgres-NEW
 ```
+
+Use a writable path outside the repository (local evidence directory, not in
+the repository).
 
 The harness generates a temporary Runner token in memory by default, creates
 unique capture and restore databases, and runs migrations plus the six-case
@@ -281,27 +284,28 @@ verification, the sanitized summary identifies `cleanup_restore` or
 leftover owned databases.
 
 The `database-recovery` CI job runs the same harness after the PostgreSQL
-retention checks, with a five-minute step timeout and the fresh workspace path
-`.scratch/calibration-postgres-ci/`. Its artifact upload retains only that
-directory for seven days on success or failure. The CI wiring is ready for
-the next authorized push; it is not a hosted CI result. See the
+retention checks, with a five-minute step timeout and output under a fresh path
+in the CI workspace (local evidence directory semantics; not committed to the
+repository). Its artifact upload retains only that directory for seven days on
+success or failure. GitHub Actions on `8bd2ef0` passed this job with the other
+five workflow jobs. See the
 [calibration procedure](../evaluation-calibration.md) for the controlled cases
 and retained evidence.
 
-At the earlier 2026-10-15 checkpoint, the host-run gate passed under
-`.scratch/roadmap-closeout-20261015/postgres-calibration-e2e/capture-run-verified/`.
+At the earlier 2026-10-15 checkpoint, the host-run gate passed with artifacts in
+a local evidence directory (not in the repository).
 The evidence directory's `local-verification.json` records zero remaining harness
 UUID databases and zero credential matches across 29 artifact files.
 `backend-full.log` records `256 passed in 31.89s`, with no skips. The existing
 backup/restore compatibility rehearsal also passed; `legacy-recovery.log` and
 `legacy-cleanup.json` record its result, owned database cleanup, and preservation
-of pre-existing databases. These local checks cover that checkpoint; the earlier
-standard-image acceptance remains tied to its earlier source snapshot, and
-hosted CI is still pending.
+of pre-existing databases. These local checks cover that checkpoint; the earlier standard-image acceptance
+remains tied to its earlier source snapshot. GitHub Actions on `8bd2ef0`
+subsequently passed all six jobs.
 
-The later encoded-credential gate and final full-suite evidence are indexed in
-`.scratch/roadmap-closeout-20261015/ci-sequence-followup/`, alongside separate
-local reproductions of the backend and recovery CI steps. The backend job leaves
+The later encoded-credential gate and final full-suite evidence are indexed in a
+local evidence directory (not in the repository), alongside separate local
+reproductions of the backend and recovery CI steps. The backend job leaves
 `RETENTION_POSTGRES_URL` unset and skips two PostgreSQL modules; the recovery job
 enables and passes their ten tests. See the
 [dated follow-up](../evaluation-calibration.md#encoded-credentials-and-ci-step-follow-up-2026-10-15)

@@ -2,6 +2,10 @@
 
 Issues and PRDs for this repo live as markdown files in `.scratch/`.
 
+`.scratch/` is git-ignored. Phase 2 executable tasks are tracked in
+`docs/agents/phase2-tasks.md` so a fresh clone can continue the work. Use
+`.scratch/` for local evidence only. Do not cite it from tracked docs.
+
 ## Conventions
 
 - One feature per directory: `.scratch/<feature-slug>/`

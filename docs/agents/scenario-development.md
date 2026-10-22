@@ -1,5 +1,7 @@
 # Adding a built-in Scenario
 
+> **Status (2026-10-17):** This guide documents the Phase 1 `ScenarioHandler` protocol and remains valid for the fixture path until Phase 2 H1 ships. Under [ADR-0007](../adr/0007-environment-agent-split.md) a Scenario becomes an **Environment**. What will change: `run_fixture` becomes a scripted trajectory executed by `fixture-agent.v1`; `run_provider` is removed in favour of `reference-openai-compatible.v1`; the Environment gains `reset`, `tool_definitions`, `call_tool`, `check`; tools are served over MCP by `app.env_server` ([ADR-0008](../adr/0008-environment-mcp-server-and-env-side-capture.md)). This file will be replaced by `environment-development.md` in H1.
+
 This guide describes how to register a new allowlisted Scenario in Phase 1.4+. It follows [ADR-0006](../adr/0006-scenario-registry-boundary.md): explicit Python registration, no arbitrary code execution, and Runner passthrough via `EvaluationSpec` only.
 
 ## Prerequisites
@@ -91,7 +93,7 @@ Params are stored on `experiments.scenario_params` (Alembic revision `0007`). No
 ## 6. Document the change
 
 - Add the Scenario row to **Built-in scenarios** in `CONTEXT.md`.
-- Keep `ROADMAP.md` honest: Phase 1.4 is complete, so record a new Scenario as a bounded follow-up and do not redefine the milestone without new acceptance evidence.
+- Keep `ROADMAP.md` honest: record a new Scenario as a bounded follow-up; Phase 2 — Harness milestones and acceptance live in [ROADMAP.md](../../ROADMAP.md) (do not redefine them here).
 
 ## Toy Scenario walkthrough
 

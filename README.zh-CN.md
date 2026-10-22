@@ -5,9 +5,9 @@
 
 # AgentOps Workbench
 
-**面向工具型 Agent 的工程化闭环评估工作台** — 创建 Experiment、审查持久化 Trace、诊断失败、回放候选 Policy，并决定是否激活。目标部署范围是单机或可信团队内网。仓库名为 `agent-ops-platform`；对外使用 **AgentOps Workbench** 作为产品限定名，避免与无关的 [AgentOps-AI](https://github.com/AgentOps-AI/agentops) SDK 或泛称 “agent ops” 混淆。
+**面向自托管场景的工具型 Agent 可靠性 Harness（harness），为自行运行模型的人而建。** 将 Agent 放入可确定、可重置的工具环境，反复运行，得到 pass^k、基于规则的失败分类，以及任意策略变更的 Before/After 回归对比——在任何东西被激活之前都有人工门禁。运行于单机或可信团队内网；数据不离开主机。仓库名为 `agent-ops-platform`；对外使用 **AgentOps Workbench** 作为产品限定名，避免与无关的 [AgentOps-AI](https://github.com/AgentOps-AI/agentops) SDK 混淆。
 
-与 Langfuse、Phoenix 等不同，本工作台强调完整的 **策略回放 + 人工激活门禁** 闭环——候选策略不会自动生效。
+**Langfuse 与 Phoenix 免费时为何还需要本项目：** 它们擅长存储与查看 trace 与 dataset，本项目刻意不在此竞争（Trace UI 已冻结；trace 可导出到它们，见 ADR-0011）。本项目负责它们留给你的部分：带租约恢复与 Attempt 隔离的监督 Runner、可注入故障的确定性 Environment（环境）、封闭失败分类体系（其与人工标签的一致性会被测量并公开），以及从不自动应用策略的门禁。
 
 ```text
 Experiment → Baseline → Trace → Failure Analysis → Candidate Policy
@@ -19,10 +19,10 @@ flowchart LR
     UI["React 工作台"] -->|"类型化 HTTP + SSE"| API["FastAPI 控制面"]
     API -->|"单一写入者"| DB[("PostgreSQL")]
     Runner["Rust Runner"] -->|"租约 + 有序事件"| API
-    Runner -->|"EvaluationSpec JSON"| Agent["白名单 Python 场景"]
+    Runner -->|"EvaluationSpec JSON"| Agent["Environment + Agent-under-test（环境与被测 Agent）"]
 ```
 
-**本仓库的两个差异点：** (1) **带 Attempt 隔离的租约恢复** — Runner 崩溃不会让 Run 永久卡住；替换 Runner 以新 Attempt 领取并从下一事件序列继续。(2) **跨语言 contract v1** — Python Pydantic、TypeScript Zod 与 Rust Serde 在 CI 中校验同一套 golden fixtures。
+**本仓库的差异点：** (1) **带 Attempt 隔离的租约恢复** — Runner 崩溃不会让 Run 永久卡住；替换 Runner 以新 Attempt 领取并从下一事件序列继续。(2) **跨语言 contract v1** — Python Pydantic、TypeScript Zod 与 Rust Serde 在 CI 中校验同一套 golden fixtures。(3) **确定性失败分类与校准门禁**：分析器为规则驱动，在 CI 中针对六个受控故障 contract 做回归测试；其与人工标签的一致性以报告形式公开，而非默认假定。
 
 **本地快速启动：**
 
@@ -35,7 +35,7 @@ make demo
 
 打开 [http://localhost:5173](http://localhost:5173)，走完 Golden 闭环：创建 Experiment、观察 baseline 失败、查看 Analysis、回放候选 Policy，然后 Activate 或 Reject。
 
-Phase 1 至 **Phase 1.4 — 场景接入** 已完成：三个注册内置 Scenario 均支持确定性 Fixture 与窄边界、场景专属的 Provider 路径。闭环同时具备确定性失败归类、持久化 Before/After 对比，以及人工激活前的回归用例重放。详见 [ROADMAP.zh-CN.md](ROADMAP.zh-CN.md)。
+**状态（2026-10-17）：** Phase 1 — 上文闭环在三个内置 Environment（原 Scenario）与内置 Python Agent 上 — 已完成并经 CI 验证（`8bd2ef0`，六项 job 全绿）。Phase 2 — Harness 进行中：将 Environment 与 Agent-under-test（被测 Agent）分离，使外部 Agent（本地 Ollama/vLLM 上的参考 Agent、Claude Code、OpenAI Agents SDK 或自有循环）可通过 MCP 在同一环境中评测；增加带 pass^k 的 trial group；并以 OpenTelemetry GenAI span 导出 trace 供 Langfuse 或 Phoenix 使用。在 Phase 2 阶段 H1 落地前，仅内置 Agent 可运行。见 [ROADMAP.zh-CN.md](ROADMAP.zh-CN.md) 与 ADR-0007 至 ADR-0011。
 
 ## 确定性 Golden 流程
 
@@ -106,7 +106,7 @@ flowchart LR
     API -->|"唯一数据库访问者"| DB[("PostgreSQL")]
     API -->|"先持久化，再 SSE"| UI
     Runner["Rust Execution Plane"] -->|"claim / heartbeat / events / complete"| API
-    Runner -->|"stdin EvaluationSpec<br/>stdout JSONL"| Agent["Allowlisted Python Scenario"]
+    Runner -->|"stdin EvaluationSpec<br/>stdout JSONL"| Agent["Environment + Agent-under-test（环境与被测 Agent）"]
     Agent -->|"显式启用 /chat/completions"| Provider["OpenAI-compatible Provider"]
 ```
 
@@ -119,6 +119,8 @@ flowchart LR
 | Python Agent | 注册 Scenario Handler，提供确定性 Fixture 与窄边界、场景专属的 Provider 路径 |
 
 Python Pydantic 类型是协议 v1 的事实来源。版本化 JSON Schema 与 Golden fixtures 位于 [contracts/v1](contracts/v1)，Rust Serde 类型在 CI 中验证同一批 fixtures。
+
+[Phase 2 目标架构](docs/agentops_closed_loop_architecture.md#phase-2-target-architecture)说明外部 Agent 如何通过 MCP 接入且控制面保持不变。
 
 [闭环架构文档](docs/agentops_closed_loop_architecture.md)解释组件职责、Runner 租约恢复与 Attempt 隔离、注册 Scenario、跨语言 contract，以及人工激活门禁。已接受的边界决策见 [docs/adr](docs/adr)。
 
@@ -166,7 +168,11 @@ runner/       Rust workspace：protocol、runner、CLI
 contracts/    版本化 JSON Schema 与跨语言 Golden fixtures
 infra/docker/ 聚焦后的本地 Compose 环境
 scripts/      真实环境 Golden E2E
+docs/learn/     理解系统的阅读路径（中文）
+docs/history/   从活文档迁出的按日验证与校准记录
+docs/agents/    贡献者与 Agent 指南、开发规范
 docs/adr/     架构决策
+LICENSE         MIT
 ROADMAP.zh-CN.md 当前工程里程碑与能力提升门槛
 ```
 
@@ -191,20 +197,26 @@ cd frontend && npm run e2e:recorded
 
 CI 覆盖 Python、数据库迁移、TypeScript、前端格式与 Recorded 浏览器 E2E、Rust 协议与进程监督、Compose 配置、Golden 闭环及 Runner 恢复。WSL 工具链与代理设置见[本地验证 runbook](docs/operations/reliability-and-local-validation.md)。
 
-按日期记录的验证证据见 [ROADMAP.zh-CN.md](ROADMAP.zh-CN.md)和[校准流程](docs/evaluation-calibration.md)。2026-10-15 此前标准镜像验收时，标准 Runner 构建及隔离标准四服务 Compose 栈通过全部三个 Golden Scenario 和 Runner 终止/替换恢复；API/Runner 的 Python 源码摘要与该次验收记录的源码快照一致，没有源码挂载。基础镜像和 API/Web 层使用 Docker 缓存；Runner 已完成 Rust 编译与锁定 Python 依赖安装，最终源码刷新复用了该次依赖层。当前后端通过 262 项测试，无跳过，宿主机上的 PostgreSQL 校准采集/恢复 gate 也已通过。此前前端证据包括 27 项单测及 2 项 Recorded E2E。此前源码快照的 backend 与 recovery CI 步骤也已在本地复现。这些宿主机检查不将此前镜像验收扩展到当前源码快照，当前提交尚无新的托管 CI 结果。
+[当前版本系统验收](docs/operations/system-acceptance.md)记录 2026-10-15 本地工程结果：启用 PostgreSQL、无跳过的 265 项后端测试，34 项前端单测，两项 Recorded E2E，以及 Rust fmt/Clippy/workspace 测试通过。刷新后的标准镜像通过全部三个 Golden Scenario、真实 checkout 浏览器流程与回归激活门禁、中断流重连、取消、Runner 恢复、过期租约隔离与应用备份/恢复。源码摘要与提交代码一致；未使用应用源码挂载，允许 Docker 缓存。验收修复了 PostgreSQL 锁顺序死锁与缺失的命名 SSE 订阅。一项非阻塞的回归卡片刷新限制已记录；GitHub Actions 在 `8bd2ef0` 上随后通过全部六项 job。历史证据索引见 [docs/history/](docs/history/)（[Phase 1 验证日志](docs/history/phase1-verification-log.md)、[校准证据日志](docs/history/calibration-evidence-log.md)）。
 
-只读校准工具从终态 Run 导出分析盲审 packet，并将单独标注的标签与根据持久化 RunEvent 重建的预测进行比较。当前六案例受控 packet 覆盖已测量/未知 context 及回环 Fake Provider 的成功、超时和无效响应；标签显式标记未知维度，绑定报告采用 `failure-analyzer.v2` 并展示已评估覆盖率。它仍仅是临时工程机制证据，`publishable_accuracy=false`。独立人评与争议裁决仍待完成；这不阻塞确定性工程开发，也不构成可发布的 precision/recall/F1。最新计数和验证待办以链接中的证据记录为准。
+基于规则的失败分析器在 CI 中通过六 contract 受控采集（已测量/未知 context 压力；fake-provider 成功、超时、无效响应）回归测试：恢复真实 PostgreSQL dump 并校验严格绑定报告；这是机制门禁，不是精度声明。Phase 2 H5 增加一致性研究：作者对来自本地模型与外部 Agent 的约 40 个真实 Run 打标并公开混淆矩阵及已知偏差（自述自标局限）。见[校准流程](docs/evaluation-calibration.md)。
 
 ## 明确不做
 
-Phase 1 不包含 Kubernetes Executor、Docker Socket、MCP Server、向量记忆、Training Export、多框架适配、用户提供的 Provider endpoint 或凭证、任意代码执行、账户、多租户、计费或自动激活 Policy。
-
-这些能力继续暂缓，只有可量化需求才能将其提升到主线。Phase 1.4 与闭环深化后续均已完成，详见 [ROADMAP.zh-CN.md](ROADMAP.zh-CN.md)。
+不是 tracing SaaS，也不是通用评测平台。无账户、多租户或计费；无 Kubernetes 或 Docker socket 执行；无向量记忆或训练导出；无 LLM-as-judge；无自动策略激活；无新的 Trace UI 功能、标注队列或 dataset 管理。MCP 仅作为监督 Agent 与内置 Environment 之间的回环传输（ADR-0008）；注册 Agent 在 Runner 主机上运行，限于单机范围（ADR-0009）。暂缓清单与安全门禁见 [ROADMAP.zh-CN.md](ROADMAP.zh-CN.md)。
 
 ## 项目方向
 
-AgentOps 将持续打磨为可靠的闭环评测系统。工程优先级由可恢复执行、持久状态、明确不变量、跨语言类型契约、可观测故障和安全进程监督决定，而不是由功能数量决定。
+2026-10-17 评审认为 Trace UI、dataset 版本化、replay diff 与失败 Run 提升在 Langfuse、Phoenix 与 Braintrust 中已属 commodity，而在确定性环境中运行外部 Agent 并报告经校准的失败类别则不是；因此 Phase 2 投入 Runner、Environment、分类体系与互操作（OTel），并冻结 UI。见 [ROADMAP.zh-CN.md](ROADMAP.zh-CN.md) Phase 2。
+
+## 学习路径
+
+[docs/learn/README.md](docs/learn/README.md) 为有序阅读路径（中文）。
+
+[docs/agents/development-standards.md](docs/agents/development-standards.md) 定义 Phase 2 约定。
+
+[docs/adr/](docs/adr/) 收录架构决策。
 
 ## License
 
-MIT
+MIT — 见 [LICENSE](LICENSE)。

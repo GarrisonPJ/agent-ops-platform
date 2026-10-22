@@ -1,7 +1,7 @@
 # AgentOps Closed-Loop Architecture
 
-Status: current for Phase 1
-Last reviewed: 2026-10-15
+Status: Phase 1 complete; Phase 2 — Harness in progress
+Last reviewed: 2026-10-17
 
 ## System goal
 
@@ -12,7 +12,7 @@ Experiment → Baseline → Persisted Trace → Failure Analysis
            → Candidate Policy → Replay → Comparison → Human Activate or Reject
 ```
 
-The current system is a focused evaluation control plane, not a generic orchestration platform. `backend/app/main.py` exports the Phase 1 application from `phase1_main.py`. Pre-Phase 1 executor, auto-replay, MCP, memory, and export modules have been removed from the tree. Future work is tracked in [ROADMAP.md](../ROADMAP.md).
+The current system is a focused evaluation control plane, not a generic orchestration platform. `backend/app/main.py` exports the Phase 1 application from `phase1_main.py`. Pre-Phase 1 executor, auto-replay, memory, and export modules have been removed from the tree. An earlier open MCP tool bus was removed with them. Phase 2 brings MCP back only as a loopback Environment transport ([ADR-0008](adr/0008-environment-mcp-server-and-env-side-capture.md)), which is a different boundary. Future work is tracked in [ROADMAP.md](../ROADMAP.md).
 
 ## Implemented Phase 1
 
@@ -26,7 +26,7 @@ The current system is a focused evaluation control plane, not a generic orchestr
 | Python agent | Registered Scenario handlers with deterministic fixture and narrow Provider paths | `backend/app/scenarios/`, `backend/app/phase1_provider.py` |
 | Product workflow | Experiments, Trace, deterministic Analysis, persisted comparisons, regression replay, activate/reject | `frontend/src/Phase1App.tsx` |
 | Offline regression adapter | Recorded persisted facts validated through the frontend contract | `frontend/src/services/recorded/` |
-| Evaluation calibration | Read-only analysis-blind packets and bound reports over persisted terminal RunEvents; independent human-label accuracy remains gated | `backend/app/calibration_review.py`, `backend/app/calibration_report.py` |
+| Evaluation calibration | Read-only analysis-blind packets and a six-contract mechanics gate. Not an accuracy claim. Agreement-study rules are in the calibration doc | `backend/app/calibration_review.py`, `backend/app/calibration_report.py`, `docs/evaluation-calibration.md` |
 | End-to-end verification | Real Compose stack, Golden loop, and Runner recovery fault test | `infra/docker/docker-compose.phase1.yml`, `scripts/golden_e2e.py`, `scripts/recovery_e2e.py` |
 
 ## Component ownership
@@ -91,7 +91,7 @@ versioning and assertion contract; `scripts/golden_e2e.py` covers all three.
 
 Runner recovery, registered Scenarios, and the narrow Provider boundary are implemented. Provider mode remains deliberately constrained: endpoint, model, and credential are Runner-only operator configuration; the model can choose only the selected Scenario's explicit tool definitions; live calls are opt-in; and CI uses deterministic fixtures plus local fake compatible servers.
 
-The next milestone targets a single machine or trusted team network. It prioritizes state-machine reliability and evaluation accuracy; throughput and multi-user collaboration remain deferred. See [ROADMAP.md](../ROADMAP.md) for the promotion gates.
+Deployment stays a single machine or trusted team network. Phase 2 (below) splits Environment from Agent-under-test; it does not add throughput or multi-user collaboration. Tasks: [phase2-tasks.md](agents/phase2-tasks.md).
 
 The [roadmap](../ROADMAP.md) and [calibration procedure](evaluation-calibration.md)
 record dated verification evidence. At the earlier standard-image acceptance on
@@ -100,15 +100,12 @@ four-service stack passed all three Golden
 Scenarios and Runner kill/replacement recovery. Runner/API Python hashes matched
 the recorded source snapshot for that acceptance run, with no source mounts. Base images and API/Web layers used
 Docker cache; Runner Rust compilation and pinned Python dependency installation
-completed before the final source refresh reused those layers. Current backend
-verification passes 262 tests including PostgreSQL checks, with no skips. The
-host-run PostgreSQL calibration gate also passes real dump restoration and
-strict-report comparison, normalizing only the two binding file-digest prefixes.
-Earlier Linux Node 22 evidence includes formatting, typecheck, 27 unit tests,
-build, production dependency audit, and two Recorded E2E tests. The new host
-checks do not extend the earlier image acceptance to the current source snapshot.
-Backend and recovery CI steps were also reproduced locally on the earlier
-source snapshot, with no new hosted CI result. The [local validation runbook](operations/reliability-and-local-validation.md)
+completed before the final source refresh reused those layers. On commit `8bd2ef0`,
+GitHub Actions passed all six jobs: 265 backend tests (including PostgreSQL
+checks, no skips), 34 frontend unit tests, 2 recorded E2E tests, and 15 Rust
+runner tests. The host-run PostgreSQL calibration gate also passes real dump
+restoration and strict-report comparison, normalizing only the two binding
+file-digest prefixes. The [local validation runbook](operations/reliability-and-local-validation.md)
 records toolchain, cache, proxy, and build boundaries.
 
 The current six-case controlled capture supplements the fixture sample with
@@ -125,11 +122,46 @@ The bound report remains provisional engineering evidence with
 fixtures cannot establish general accuracy; missing context measurements are
 not confirmed negatives. Calibration labels can explicitly mark
 `unknown_dimensions`; report counts and disagreements use assessed Run/dimension
-pairs, with separate coverage counts. The publication gate still describes
-reviewer, adjudication, and binding requirements; it does not establish complete
-coverage. Independent human labels and adjudication remain a separate gate and
-do not block deterministic engineering work.
+pairs, with separate coverage counts. Publication no longer waits on an
+independent labeler. The CI gate stays a mechanics check
+(`publishable_accuracy=false`). The agreement study is author-labeled and
+says so. Rules: [evaluation-calibration.md](evaluation-calibration.md).
+Self-labeling is a documented limitation, not a blocker for Harness work.
 
 ## Deliberately deferred
 
-Kubernetes execution, Docker socket access, MCP transport, vector memory, training export, framework adapters, arbitrary code execution, accounts, multi-tenancy, billing, side-effecting tools, and automatic policy activation are not part of the active architecture. Promotion requires a measured need, a roadmap update, and an ADR when trust boundaries change.
+Kubernetes, Docker socket execution, containerised agents, vector memory, training export, arbitrary code execution, LLM-as-judge, multi-tenancy, billing, and automatic activation remain outside the active architecture. MCP as loopback Environment transport and operator-side agent adapters left this list on 2026-10-17 (ADR-0008, ADR-0009). Promotion of remaining items requires a measured need, a roadmap update, and an ADR when trust boundaries change.
+
+## Phase 2 target architecture
+
+Phase 2 — Harness (ADR-0007..0011) keeps the Control Plane as the sole database writer and preserves lease fencing, recovery, and the human activation gate. Execution becomes a supervised pair: the Environment Server hosts deterministic tools over MCP; the Agent-under-test connects on loopback and decides tool calls.
+
+```mermaid
+flowchart LR
+    UI["React workbench"] -->|"typed HTTP / SSE"| API["FastAPI control plane"]
+    API -->|"single writer"| DB[("PostgreSQL")]
+    Runner["Rust Runner"] -->|"claim / heartbeat / events"| API
+    Runner -->|"EvaluationSpec stdin"| EnvSrv["Environment Server"]
+    Runner -->|"registered argv"| AgentUAT["Agent-under-test"]
+    AgentUAT -->|"MCP Streamable HTTP"| EnvSrv
+    EnvSrv -->|"JSONL child events"| Runner
+    AgentUAT -.->|"reference agents"| Provider["OpenAI-compatible endpoint"]
+```
+
+| Component | Phase 1 | Phase 2 change | ADR |
+|---|---|---|---|
+| Control Plane | Experiments, Runs, leases, scoring, analysis, policies | Adds `agent_id` validation, trial groups, group metrics projection; still no child supervision | 0009, 0010 |
+| Rust Runner | One Python child, JSONL transport | Two-process supervision: `env_server` then registered agent; waits for `env_ready` | 0007, 0008, 0009 |
+| Python agent / Environment Server | `demo_agent` + `ScenarioHandler` in one process | Environment logic in `app.env_server` (MCP); fixture/reference/external agents are separate registered processes | 0007, 0008 |
+| Agent-under-test | Implicit (`demo_agent` only) | First-class registry entry (`fixture`, `reference`, `external`); receives task + MCP URL via env | 0007, 0009 |
+| Frontend | Full Experiment / Trace / Improve workflow | Agent dropdown on Experiment; trial group summary on Experiment page; Trace UI frozen | 0010 |
+| Contracts | `scenario_id`, `execution_mode` | Adds `agent_id`, `trial_index`; child protocol adds `env_ready` | 0008, 0009, 0010 |
+| Analyzer | Deterministic dimensions from persisted events | Unobserved agent internals → unknown dimensions, not inference | 0007, 0008 |
+| Export | None | Optional OTel GenAI projection after terminal state; RunEvent remains canonical | 0011 |
+
+What does not change:
+
+- Human activation gate — policies never auto-apply.
+- Lease, fencing, and recovery semantics (ADR-0002).
+- Single database writer — only FastAPI mutates PostgreSQL.
+- Protocol v1 field compatibility — `scenario_id` and existing event types remain; new fields and `env_ready` are additive.
