@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable, Protocol
 
+from app.environment import Environment, EnvironmentFactory
 from app.phase1_schemas import (
     EvaluationSpec,
     ExecutionMode,
@@ -50,15 +51,22 @@ class ScenarioMetadata:
 class RegisteredScenario:
     metadata: ScenarioMetadata
     handler: ScenarioHandler
+    environment_factory: EnvironmentFactory
 
 
 _REGISTRY: dict[str, RegisteredScenario] = {}
 
 
-def register_scenario(metadata: ScenarioMetadata, handler: ScenarioHandler) -> None:
+def register_scenario(
+    metadata: ScenarioMetadata,
+    handler: ScenarioHandler,
+    environment_factory: EnvironmentFactory,
+) -> None:
     if metadata.id in _REGISTRY:
         raise ValueError(f"scenario already registered: {metadata.id}")
-    _REGISTRY[metadata.id] = RegisteredScenario(metadata=metadata, handler=handler)
+    _REGISTRY[metadata.id] = RegisteredScenario(
+        metadata=metadata, handler=handler, environment_factory=environment_factory
+    )
 
 
 def list_scenarios() -> list[ScenarioMetadata]:
@@ -111,6 +119,18 @@ def ensure_registered_scenario(
     """Validate versioned scenario identity, registry membership, and params."""
     validate_scenario_id(scenario_id)
     return validate_registered_scenario_params(scenario_id, params)
+
+
+def create_environment(spec: EvaluationSpec) -> Environment:
+    """Build a fresh world, passing only validated params and the initial seed.
+
+    This is not routed through run_scenario yet: legacy fixture/provider worlds
+    disagree in places. Promotion needs the ADR-0006/0007 versioning decision.
+    """
+    params = ensure_registered_scenario(spec.scenario_id, spec.scenario_params)
+    environment = require_scenario(spec.scenario_id).environment_factory(params)
+    environment.reset(spec.seed)
+    return environment
 
 
 async def run_scenario(spec: EvaluationSpec, emit: EmitFn) -> int:

@@ -2,17 +2,17 @@
 
 from __future__ import annotations
 
+from app.environment import InjectedFault, ToolDefinition, UnknownToolError
 from app.phase1_provider import ProviderError, run_provider_agent
 from app.phase1_schemas import EvaluationSpec, PolicyPatch
-from app.scenario_assertions import AssertionCombination, ScenarioAssertion
+from app.scenario_assertions import AssertionCombination, AssertionSuite, ScenarioAssertion
 from app.scenario_registry import (
     EmitFn,
-    ScenarioHandler,
     ScenarioMetadata,
     ScenarioParamDef,
     register_scenario,
 )
-from app.scenarios._helpers import emit_step
+from app.scenarios._helpers import TrajectoryEnvironment, emit_step, require_exact_arguments
 
 from app.scenario_ids import API_FAULT_ORCHESTRATION_SCENARIO_ID as SCENARIO_ID
 TOOLS = ("invoke_service", "retry_call", "degrade_route")
@@ -23,7 +23,7 @@ FAULT_PROVIDER_INSTRUCTIONS = (
 )
 
 
-def _provider_tool_definitions() -> list[dict[str, object]]:
+def _provider_tool_definitions() -> list[ToolDefinition]:
     return [
         {
             "type": "function",
@@ -74,7 +74,10 @@ def _provider_tool_definitions() -> list[dict[str, object]]:
 
 
 def _provider_tool_result(spec: EvaluationSpec, name: str) -> tuple[dict[str, object], str]:
-    service = _target_service(spec)
+    return _tool_contract(_target_service(spec), name)
+
+
+def _tool_contract(service: str, name: str) -> tuple[dict[str, object], str]:
     if name == "retry_call":
         return (
             {"service": service, "attempts": 2},
@@ -192,6 +195,56 @@ FAULT_ASSERTIONS = (
 )
 
 
+UPSTREAM_FAULT = InjectedFault(
+    tool="invoke_service",
+    condition="until degrade_route enables the cached-read fallback",
+    observation="HTTP 503 Service Unavailable: upstream connection pool saturated.",
+)
+
+
+class ApiFaultOrchestrationEnvironment(TrajectoryEnvironment):
+    def __init__(self, params: dict[str, str]) -> None:
+        self._service = params.get("service", "payments-api")
+        super().__init__(AssertionSuite(AssertionCombination.WEIGHTED, FAULT_ASSERTIONS))
+
+    @property
+    def fault_schedule(self) -> tuple[InjectedFault, ...]:
+        return (
+            UPSTREAM_FAULT,
+            InjectedFault(
+                tool="retry_call",
+                condition="first internal attempt fails; second internal attempt succeeds",
+                observation=UPSTREAM_FAULT.observation,
+            ),
+        )
+
+    def reset(self, seed: int) -> None:
+        super().reset(seed)
+        self._degraded = False
+
+    def tool_definitions(self) -> list[ToolDefinition]:
+        definitions = _provider_tool_definitions()
+        for definition in definitions:
+            function = definition["function"]
+            expected, _ = _tool_contract(self._service, function["name"])
+            for key, value in expected.items():
+                function["parameters"]["properties"][key]["const"] = value
+        return definitions
+
+    def call(self, name: str, args: dict[str, object]) -> str:
+        if name not in TOOLS:
+            raise UnknownToolError(name)
+        expected, observation = _tool_contract(self._service, name)
+        require_exact_arguments(name, args, expected)
+        if name == "degrade_route":
+            self._degraded = True
+        elif name == "invoke_service" and not self._degraded:
+            # Legacy provider invoke always returns 200, even before degradation.
+            # Keep that adapter untouched until the promotion/version decision.
+            observation = self.fault_schedule[0].observation
+        return self._record(name, args, observation)
+
+
 register_scenario(
     ScenarioMetadata(
         id=SCENARIO_ID,
@@ -213,4 +266,5 @@ register_scenario(
         assertion_combination=AssertionCombination.WEIGHTED,
     ),
     ApiFaultOrchestrationScenario(),
+    ApiFaultOrchestrationEnvironment,
 )

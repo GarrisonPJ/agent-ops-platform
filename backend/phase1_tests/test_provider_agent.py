@@ -882,3 +882,88 @@ async def test_provider_agent_rejects_a_tool_outside_the_allowlist_once(
     )
     assert process_output["kind"] == "provider"
     assert "content" not in process_output
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("scenario_id", "tool", "arguments", "observation"),
+    [
+        (
+            "checkout-api-latency.v1",
+            "check_service_health",
+            {"service": "checkout-api"},
+            "Service is healthy but checkout latency is elevated.",
+        ),
+        (
+            RESEARCH_SCENARIO_ID,
+            "search_documents",
+            {"query": "checkout latency"},
+            "Found two relevant documents about dependency latency.",
+        ),
+        (
+            FAULT_SCENARIO_ID,
+            "invoke_service",
+            {"service": "payments-api"},
+            "Service responded 200 OK through the degraded route.",
+        ),
+    ],
+)
+async def test_legacy_provider_observations_are_not_promoted_to_environment(
+    monkeypatch, fake_provider_server, scenario_id, tool, arguments, observation
+) -> None:
+    from app.scenario_registry import require_scenario
+
+    def forbidden(*_args, **_kwargs):
+        pytest.fail("legacy provider execution must not call the new world in H1-1")
+
+    monkeypatch.setattr(require_scenario(scenario_id).environment_factory, "call", forbidden)
+    spec = {
+        "checkout-api-latency.v1": provider_spec,
+        RESEARCH_SCENARIO_ID: research_provider_spec,
+        FAULT_SCENARIO_ID: fault_provider_spec,
+    }[scenario_id]()
+    server = fake_provider_server([
+        FakeReply(200, completion(content=None, tool_calls=[{
+            "id": "call-legacy",
+            "type": "function",
+            "function": {"name": tool, "arguments": json.dumps(arguments)},
+        }])),
+        FakeReply(200, completion(content="Done.")),
+    ])
+    configure_provider(monkeypatch, server)
+    events = []
+    assert await run_scenario(spec, lambda kind, payload: events.append((kind, payload))) == 0
+    steps = [payload for kind, payload in events if kind == "step_completed"]
+    assert len(steps) == 1
+    assert steps[0]["tool_call"] == {"name": tool, "arguments": arguments}
+    assert steps[0]["observation"] == observation
+
+
+@pytest.mark.asyncio
+async def test_legacy_checkout_provider_still_rejects_fixture_log_arguments(
+    monkeypatch, fake_provider_server
+) -> None:
+    server = fake_provider_server([
+        FakeReply(200, completion(content=None, tool_calls=[{
+            "id": "call-broad-logs",
+            "type": "function",
+            "function": {
+                "name": "fetch_service_logs",
+                "arguments": '{"service":"checkout-api","window":"5m"}',
+            },
+        }])),
+    ])
+    configure_provider(monkeypatch, server)
+    events = []
+    assert await run_scenario(
+        provider_spec(), lambda kind, payload: events.append((kind, payload))
+    ) == 1
+    assert not any(kind == "step_completed" for kind, _ in events)
+    error = next(payload["provider_error"] for _, payload in events if "provider_error" in payload)
+    assert error["code"] == "PROVIDER_INVALID_RESPONSE"
+    assert server.requests[0]["json"]["tools"][2]["function"]["parameters"] == {
+        "type": "object",
+        "properties": {"service": {"type": "string"}, "query": {"type": "string"}},
+        "required": ["service", "query"],
+        "additionalProperties": False,
+    }

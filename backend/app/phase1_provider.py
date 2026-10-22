@@ -17,6 +17,7 @@ from app.durable_events import (
     normalize_provider_failure_kind,
     provider_failure_message,
 )
+from app.environment import ToolDefinition
 from app.phase1_schemas import EvaluationSpec
 
 
@@ -151,7 +152,7 @@ class OpenAICompatibleProvider:
     async def chat(
         self,
         messages: list[dict[str, object]],
-        tools: list[dict[str, object]],
+        tools: list[ToolDefinition],
     ) -> ProviderResponse:
         if self._client is not None:
             return await self._chat_with_client(self._client, messages, tools)
@@ -163,7 +164,7 @@ class OpenAICompatibleProvider:
         self,
         client: httpx.AsyncClient,
         messages: list[dict[str, object]],
-        tools: list[dict[str, object]],
+        tools: list[ToolDefinition],
     ) -> ProviderResponse:
         started_at = perf_counter()
         for attempt in range(1, self.settings.max_retries + 2):
@@ -226,61 +227,18 @@ class OpenAICompatibleProvider:
         raise AssertionError("provider retry loop must return or raise")
 
 
-def provider_tool_definitions() -> list[dict[str, object]]:
-    return [
-        {
-            "type": "function",
-            "function": {
-                "name": "check_service_health",
-                "description": "Check checkout-api health in the deterministic scenario.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {"service": {"type": "string"}},
-                    "required": ["service"],
-                    "additionalProperties": False,
-                },
-            },
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "query_service_metrics",
-                "description": "Read checkout-api dependency latency metrics.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "service": {"type": "string"},
-                        "metric": {"type": "string"},
-                    },
-                    "required": ["service", "metric"],
-                    "additionalProperties": False,
-                },
-            },
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": "fetch_service_logs",
-                "description": "Read the evidence-backed checkout-api logs.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "service": {"type": "string"},
-                        "query": {"type": "string"},
-                    },
-                    "required": ["service", "query"],
-                    "additionalProperties": False,
-                },
-            },
-        },
-    ]
+def provider_tool_definitions() -> list[ToolDefinition]:
+    # Compatibility entry point; the deterministic tool world lives with checkout.
+    from app.scenarios.checkout import _provider_tool_definitions
+
+    return _provider_tool_definitions()
 
 
 async def run_provider_agent(
     spec: EvaluationSpec,
     emit: Callable[[str, dict[str, object]], None],
     *,
-    tool_definitions: Callable[[], list[dict[str, object]]] | None = None,
+    tool_definitions: Callable[[], list[ToolDefinition]] | None = None,
     tool_result: Callable[[EvaluationSpec, str], tuple[dict[str, object], str]] | None = None,
     instructions: tuple[str, ...] | None = None,
     scenario_label: str = "checkout",
@@ -587,27 +545,9 @@ def _parse_tool_call(item: object, attempts: int, latency_ms: int) -> ProviderTo
 
 
 def _fixture_tool_result(name: str) -> tuple[dict[str, object], str]:
-    if name == "check_service_health":
-        return (
-            {"service": "checkout-api"},
-            "Service is healthy but checkout latency is elevated.",
-        )
-    if name == "query_service_metrics":
-        return (
-            {"service": "checkout-api", "metric": "dependency_latency"},
-            "Payment dependency p95 increased from 110ms to 1.8s.",
-        )
-    if name == "fetch_service_logs":
-        return (
-            {"service": "checkout-api", "query": "payment dependency timeout"},
-            "Requests are delayed by payment-gateway connection pool saturation.",
-        )
-    raise ProviderError(
-        "PROVIDER_UNSUPPORTED_TOOL",
-        "Provider selected a tool outside the allowlist",
-        retryable=False,
-        attempts=1,
-    )
+    from app.scenarios.checkout import _tool_contract
+
+    return _tool_contract(name)
 
 
 def _emit_provider_error(

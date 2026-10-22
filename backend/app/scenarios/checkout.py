@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from app.phase1_provider import run_provider_agent
+from app.environment import ToolDefinition, UnknownToolError
+from app.phase1_provider import ProviderError, run_provider_agent
 from app.phase1_schemas import EvaluationSpec, PolicyPatch
-from app.scenario_assertions import AssertionCombination, ScenarioAssertion
-from app.scenario_registry import EmitFn, ScenarioHandler, ScenarioMetadata, register_scenario
-from app.scenarios._helpers import emit_step
+from app.scenario_assertions import AssertionCombination, AssertionSuite, ScenarioAssertion
+from app.scenario_registry import EmitFn, ScenarioMetadata, register_scenario
+from app.scenarios._helpers import TrajectoryEnvironment, emit_step, require_exact_arguments
 
 from app.scenario_ids import CHECKOUT_SCENARIO_ID
 CHECKOUT_TOOLS = (
@@ -14,6 +15,80 @@ CHECKOUT_TOOLS = (
     "query_service_metrics",
     "fetch_service_logs",
 )
+
+
+def _provider_tool_definitions() -> list[ToolDefinition]:
+    return [
+        {
+            "type": "function",
+            "function": {
+                "name": "check_service_health",
+                "description": "Check checkout-api health in the deterministic scenario.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {"service": {"type": "string"}},
+                    "required": ["service"],
+                    "additionalProperties": False,
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "query_service_metrics",
+                "description": "Read checkout-api dependency latency metrics.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "service": {"type": "string"},
+                        "metric": {"type": "string"},
+                    },
+                    "required": ["service", "metric"],
+                    "additionalProperties": False,
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "fetch_service_logs",
+                "description": "Read the evidence-backed checkout-api logs.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "service": {"type": "string"},
+                        "query": {"type": "string"},
+                    },
+                    "required": ["service", "query"],
+                    "additionalProperties": False,
+                },
+            },
+        },
+    ]
+
+
+def _tool_contract(name: str) -> tuple[dict[str, object], str]:
+    if name == "check_service_health":
+        return (
+            {"service": "checkout-api"},
+            "Service is healthy but checkout latency is elevated.",
+        )
+    if name == "query_service_metrics":
+        return (
+            {"service": "checkout-api", "metric": "dependency_latency"},
+            "Payment dependency p95 increased from 110ms to 1.8s.",
+        )
+    if name == "fetch_service_logs":
+        return (
+            {"service": "checkout-api", "query": "payment dependency timeout"},
+            "Requests are delayed by payment-gateway connection pool saturation.",
+        )
+    raise ProviderError(
+        "PROVIDER_UNSUPPORTED_TOOL",
+        "Provider selected a tool outside the allowlist",
+        retryable=False,
+        attempts=1,
+    )
 
 
 def _baseline(emit: EmitFn) -> int:
@@ -101,6 +176,49 @@ CHECKOUT_ASSERTIONS = (
 )
 
 
+class CheckoutEnvironment(TrajectoryEnvironment):
+    def __init__(self, params: dict[str, str]) -> None:
+        super().__init__(AssertionSuite(AssertionCombination.WEIGHTED, CHECKOUT_ASSERTIONS))
+
+    def tool_definitions(self) -> list[ToolDefinition]:
+        definitions = _provider_tool_definitions()
+        for definition in definitions:
+            parameters = definition["function"]["parameters"]
+            parameters["properties"]["service"]["const"] = "checkout-api"
+        definitions[1]["function"]["parameters"]["properties"]["metric"]["const"] = (
+            "dependency_latency"
+        )
+        # Both fixture and provider forms exist today. Do not route this expanded
+        # schema into v1 provider execution before the promotion/version decision.
+        definitions[2]["function"]["parameters"] = {
+            "type": "object",
+            "properties": {
+                "service": {"type": "string", "const": "checkout-api"},
+                "query": {"type": "string", "const": "payment dependency timeout"},
+                "window": {"type": "string", "const": "5m"},
+            },
+            "required": ["service"],
+            "additionalProperties": False,
+            "oneOf": [{"required": ["query"]}, {"required": ["window"]}],
+        }
+        return definitions
+
+    def call(self, name: str, args: dict[str, object]) -> str:
+        if name not in CHECKOUT_TOOLS:
+            raise UnknownToolError(name)
+        expected, observation = _tool_contract(name)
+        if name == "fetch_service_logs":
+            broad_logs = {"service": "checkout-api", "window": "5m"}
+            require_exact_arguments(name, args, expected, broad_logs)
+            if args == broad_logs:
+                observation = (
+                    "The same noisy request samples are returned; the cause is still inconclusive."
+                )
+        else:
+            require_exact_arguments(name, args, expected)
+        return self._record(name, args, observation)
+
+
 register_scenario(
     ScenarioMetadata(
         id=CHECKOUT_SCENARIO_ID,
@@ -115,4 +233,5 @@ register_scenario(
         assertion_combination=AssertionCombination.WEIGHTED,
     ),
     CheckoutScenario(),
+    CheckoutEnvironment,
 )

@@ -2,17 +2,17 @@
 
 from __future__ import annotations
 
+from app.environment import ToolDefinition, UnknownToolError
 from app.phase1_provider import ProviderError, run_provider_agent
 from app.phase1_schemas import EvaluationSpec, PolicyPatch
-from app.scenario_assertions import AssertionCombination, ScenarioAssertion
+from app.scenario_assertions import AssertionCombination, AssertionSuite, ScenarioAssertion
 from app.scenario_registry import (
     EmitFn,
-    ScenarioHandler,
     ScenarioMetadata,
     ScenarioParamDef,
     register_scenario,
 )
-from app.scenarios._helpers import emit_step
+from app.scenarios._helpers import TrajectoryEnvironment, emit_step, require_exact_arguments
 
 from app.scenario_ids import MULTI_STEP_RESEARCH_SCENARIO_ID as SCENARIO_ID
 TOOLS = ("search_documents", "fetch_document", "submit_answer")
@@ -23,7 +23,7 @@ RESEARCH_PROVIDER_INSTRUCTIONS = (
 )
 
 
-def _provider_tool_definitions() -> list[dict[str, object]]:
+def _provider_tool_definitions() -> list[ToolDefinition]:
     return [
         {
             "type": "function",
@@ -72,9 +72,13 @@ def _topic(spec: EvaluationSpec) -> str:
 
 
 def _provider_tool_result(spec: EvaluationSpec, name: str) -> tuple[dict[str, object], str]:
+    return _tool_contract(_topic(spec), name)
+
+
+def _tool_contract(topic: str, name: str) -> tuple[dict[str, object], str]:
     if name == "search_documents":
         return (
-            {"query": _topic(spec)},
+            {"query": topic},
             "Found two relevant documents about dependency latency.",
         )
     if name == "fetch_document":
@@ -186,6 +190,30 @@ RESEARCH_ASSERTIONS = (
 )
 
 
+class MultiStepResearchEnvironment(TrajectoryEnvironment):
+    def __init__(self, params: dict[str, str]) -> None:
+        self._topic = params["topic"]
+        super().__init__(AssertionSuite(AssertionCombination.WEIGHTED, RESEARCH_ASSERTIONS))
+
+    def tool_definitions(self) -> list[ToolDefinition]:
+        definitions = _provider_tool_definitions()
+        for definition in definitions:
+            function = definition["function"]
+            expected, _ = _tool_contract(self._topic, function["name"])
+            for key, value in expected.items():
+                function["parameters"]["properties"][key]["const"] = value
+        return definitions
+
+    def call(self, name: str, args: dict[str, object]) -> str:
+        if name not in TOOLS:
+            raise UnknownToolError(name)
+        expected, observation = _tool_contract(self._topic, name)
+        require_exact_arguments(name, args, expected)
+        # Legacy fixture baseline searches have a different observation for the
+        # same args. This world is mode/policy-independent; promotion is gated.
+        return self._record(name, args, observation)
+
+
 register_scenario(
     ScenarioMetadata(
         id=SCENARIO_ID,
@@ -207,4 +235,5 @@ register_scenario(
         assertion_combination=AssertionCombination.WEIGHTED,
     ),
     MultiStepResearchScenario(),
+    MultiStepResearchEnvironment,
 )
