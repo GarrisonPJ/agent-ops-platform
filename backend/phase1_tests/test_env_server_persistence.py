@@ -403,3 +403,105 @@ async def test_env_server_latest_attempt_source_selects_unknown_or_legacy_zero(
         assert metrics["agent_usage"]["context_window"] is None
     else:
         assert "environment" not in metrics and "agent_usage" not in metrics
+
+
+@pytest.mark.asyncio
+async def test_env_server_many_safe_rejected_arguments_persist_every_world_attempt(api):
+    from sqlalchemy import func, select
+    from app.phase1_models import RunEvent
+
+    client, factory = api
+    run, claim = await create_claim(client)
+    output = io.StringIO()
+    session = EnvironmentSession(
+        EvaluationSpec.model_validate(run["evaluation_spec"]),
+        "f123456789abcdef" * 4,
+        jsonl_emitter(output),
+    )
+    invalid = {
+        "name": "check_service_health",
+        "arguments": {
+            "service": "checkout-api",
+            "metric": "dependency_latency",
+            "window": "5m",
+            "query": "checkout latency",
+            "document_id": "doc-dependency-latency",
+        },
+    }
+    for _ in range(session.max_steps + 1):
+        assert (await session.dispatch(invalid)).is_error
+    await session.dispatch({"name": "submit_result"})
+    assert (await session.dispatch(invalid)).is_error
+    captured = [json.loads(line) for line in output.getvalue().splitlines()]
+    for event in captured:
+        assert (
+            normalize_event_payload(event["type"], event["payload"]) == event["payload"]
+        )
+    events = [
+        {"type": "run_started", "payload": {"attempt": 1, "source": "environment"}},
+        *captured,
+    ]
+    await persist(client, run, claim, events)
+    await persist(
+        client, run, claim, events
+    )  # Same facts converge on existing sequences.
+    async with factory() as db:
+        stored = await db.get(Run, run["id"])
+        trajectory, metrics = await _trajectory_from_events(db, stored)
+        count = await db.scalar(
+            select(func.count())
+            .select_from(RunEvent)
+            .where(RunEvent.run_id == run["id"])
+        )
+    assert count == len(events)
+    assert metrics["steps"] == len(trajectory["steps"]) == session.world_attempts == 8
+    assert [step["index"] for step in trajectory["steps"]] == [*range(7), 8]
+    assert [step["rejection"] for step in trajectory["steps"]] == [
+        "invalid_arguments"
+    ] * 6 + ["max_steps", "finalized"]
+    assert all(
+        step["action"]["name"] == "rejected_tool" for step in trajectory["steps"]
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("controls", ["prepended", "interleaved"])
+async def test_env_server_reducer_budget_evidence_uses_final_world_index(api, controls):
+    from app.failure_analyzer import analyze_trajectory
+
+    client, factory = api
+    run, claim = await create_claim(client)
+    output = io.StringIO()
+    session = EnvironmentSession(
+        EvaluationSpec.model_validate(run["evaluation_spec"]),
+        "f123456789abcdef" * 4,
+        jsonl_emitter(output),
+    )
+    if controls == "prepended":
+        for _ in range(6):
+            await session.dispatch({"name": "report_usage"})
+    for _ in range(6):
+        if controls == "interleaved":
+            await session.dispatch({"name": "report_usage"})
+        await session.dispatch(HEALTH)
+    captured = [json.loads(line) for line in output.getvalue().splitlines()]
+    await persist(
+        client,
+        run,
+        claim,
+        [
+            {"type": "run_started", "payload": {"attempt": 1, "source": "environment"}},
+            *captured,
+        ],
+    )
+    async with factory() as db:
+        stored = await db.get(Run, run["id"])
+        trajectory, metrics = await _trajectory_from_events(db, stored)
+    assert metrics["steps"] == 6
+    assert trajectory["steps"][-1]["index"] == 11
+    report = analyze_trajectory(trajectory)
+    budget = [item for item in report.evidence if item.dimension == "budget"]
+    assert len(budget) == 1
+    assert budget[0].step_index == trajectory["steps"][-1]["index"]
+    assert budget[0].severity == 1.0
+    assert budget[0].details == {"step_count": 6, "max_steps": 6}

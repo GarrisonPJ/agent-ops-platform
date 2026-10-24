@@ -169,13 +169,17 @@ class EnvironmentSession:
                 provenance["control"] = control
             if usage is not None:
                 provenance["usage"] = usage
-            # Raw names, args, ids, _meta, Agent summaries and scoring inputs never
-            # cross this seam. The existing allowlist retains only safe tool args.
+            # Rejected Agent arguments are diagnostic only: omit them before the
+            # durable projection so arbitrary invalid input cannot overflow its cap.
+            # Successful calls retain the existing allowlisted argument semantics.
             payload = normalize_event_payload(
                 "step_completed",
                 {
                     "index": self._index,
-                    "tool_call": {"name": name, "arguments": arguments},
+                    "tool_call": {
+                        "name": name,
+                        "arguments": arguments if result == "ok" else {},
+                    },
                     "observation": observation,
                     "environment": provenance,
                 },

@@ -224,7 +224,7 @@ def _detect_budget(steps: list[dict], trajectory: dict) -> list[FailureEvidence]
         return [
             FailureEvidence(
                 dimension="budget",
-                step_index=step_count - 1,
+                step_index=steps[-1].get("index", step_count - 1),
                 reason=(
                     f"Budget exhausted: {step_count} steps reached "
                     f"the maximum of {max_steps} without success"

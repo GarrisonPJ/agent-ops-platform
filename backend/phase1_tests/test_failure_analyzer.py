@@ -102,3 +102,17 @@ def test_legacy_trajectory_analysis_still_uses_existing_dimensions() -> None:
 
     assert "execution" in report.dimensions
     assert report.evidence[0].dimension == "execution"
+
+
+def test_budget_evidence_retains_legacy_index_and_positional_fallback() -> None:
+    for indexed in (True, False):
+        steps = [step(index) for index in range(6)]
+        if not indexed:
+            for item in steps:
+                item.pop("index")
+        report = analyze_trajectory({"status": "failed", "max_steps": 6, "steps": steps})
+        budget = [item for item in report.evidence if item.dimension == "budget"]
+        assert len(budget) == 1
+        assert budget[0].step_index == 5
+        assert budget[0].severity == 1.0
+        assert budget[0].details == {"step_count": 6, "max_steps": 6}

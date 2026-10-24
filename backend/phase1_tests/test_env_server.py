@@ -501,3 +501,75 @@ async def test_env_server_sdk_client_tools_and_direct_controls(mode):
         assert not (await client.call_tool("report_usage", {})).is_error
         assert not (await client.call_tool("submit_result", {})).is_error
     assert len(records(output)) == 3
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("transport", ["direct", "http"])
+@pytest.mark.parametrize("state", ["under_budget", "exhausted", "finalized"])
+async def test_env_server_rejected_many_safe_arguments_capture_once(transport, state):
+    session, output = make_session(policy=PolicyPatch(max_steps=3))
+    session.environment.call = Mock(wraps=session.environment.call)
+    original_check = session.environment.check
+    session.environment.check = Mock(wraps=original_check)
+    if state == "exhausted":
+        for _ in range(3):
+            await session.dispatch(HEALTH)
+    elif state == "finalized":
+        await session.dispatch({"name": "submit_result"})
+    before = len(records(output))
+    world_before = session.world_attempts
+    calls_before = session.environment.call.call_count
+    checks_before = session.environment.check.call_count
+    snapshot = original_check()
+    params = {
+        "name": "check_service_health",
+        "arguments": {
+            "service": "checkout-api",
+            "metric": "dependency_latency",
+            "window": "5m",
+            "query": "checkout latency",
+            "document_id": "doc-dependency-latency",
+            "secret": TOKEN,
+        },
+    }
+    if transport == "direct":
+        result = await session.dispatch(params)
+        assert result.is_error
+    else:
+        app, http_app = create_mcp_app(session, TOKEN)
+        async with http_app.router.lifespan_context(http_app):
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(app),
+                base_url="http://127.0.0.1:12345",
+                headers={
+                    "Authorization": "Bearer " + TOKEN,
+                    "Accept": "application/json, text/event-stream",
+                },
+            ) as client:
+                response = await rpc(client, "tools/call", params)
+                assert response.status_code == 200, response.text
+                assert response.json()["result"]["isError"] is True
+                assert TOKEN not in response.text
+    captured = records(output)
+    assert len(captured) == before + 1
+    assert [item["payload"]["index"] for item in captured] == list(range(before + 1))
+    payload = captured[-1]["payload"]
+    expected = {
+        "under_budget": "invalid_arguments",
+        "exhausted": "max_steps",
+        "finalized": "finalized",
+    }[state]
+    assert payload["environment"]["result"] == expected
+    assert payload["observation"] == f"Error: {expected}."
+    assert payload["tool_call"] == {"name": "check_service_health", "arguments": {}}
+    assert len(json.dumps(payload)) < 500
+    assert TOKEN not in output.getvalue()
+    assert session.world_attempts == world_before + 1
+    assert session.environment.call.call_count == calls_before + (
+        state == "under_budget"
+    )
+    assert session.environment.check.call_count == checks_before
+    assert original_check() == snapshot
+    if state == "finalized":
+        assert (await session.dispatch({"name": "submit_result"})).is_error
+        assert session.environment.check.call_count == 1
