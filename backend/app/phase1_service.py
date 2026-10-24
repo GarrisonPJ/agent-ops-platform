@@ -1093,21 +1093,66 @@ async def _trajectory_from_events(db: AsyncSession, run: Run) -> tuple[dict, dic
         and isinstance(event.payload.get("provider_error"), dict)
         for event in latest_events
     )
+    environment_seen = bool(
+        latest_events
+        and latest_events[0].event_type == "run_started"
+        and latest_events[0].payload.get("source") == "environment"
+    )
+    environment_finalized = False
+    environment_check_called = False
+    agent_usage: dict[str, object] = {
+        "source": "agent_reported",
+        "token_prompt": None,
+        "token_completion": None,
+        "context_window": None,
+    }
     for event in latest_events:
         if event.event_type != "step_completed":
             continue
         payload = event.payload
-        steps.append(
-            {
-                "index": payload.get("index", len(steps)),
-                "action": payload.get("tool_call"),
-                "observation": payload.get("observation", ""),
-                "latency_ms": payload.get("latency_ms", 0),
-                "context_window": payload.get("context_window"),
-                "token_prompt": payload.get("token_prompt", 0),
-                "token_completion": payload.get("token_completion", 0),
-            }
+        environment = normalize_event_payload(event.event_type, payload).get(
+            "environment"
         )
+        if isinstance(environment, dict):
+            environment_seen = True
+            environment_finalized |= environment.get("finalized") is True
+            environment_check_called |= environment.get("check_called") is True
+            if environment.get("kind") == "control":
+                usage = environment.get("usage")
+                if isinstance(usage, dict):
+                    # A report replaces cumulative totals, never sums per step.
+                    agent_usage = {key: usage.get(key) for key in agent_usage}
+                continue
+            rejected = environment.get("result") != "ok"
+            steps.append(
+                {
+                    "index": payload.get("index", len(steps)),
+                    "action": (
+                        {"name": "rejected_tool", "arguments": {}}
+                        if rejected
+                        else payload.get("tool_call")
+                    ),
+                    "status": "failed" if rejected else "success",
+                    "rejection": environment.get("result") if rejected else None,
+                    "observation": payload.get("observation", ""),
+                    "latency_ms": payload.get("latency_ms", 0),
+                    "context_window": None,
+                    "token_prompt": None,
+                    "token_completion": None,
+                }
+            )
+        else:
+            steps.append(
+                {
+                    "index": payload.get("index", len(steps)),
+                    "action": payload.get("tool_call"),
+                    "observation": payload.get("observation", ""),
+                    "latency_ms": payload.get("latency_ms", 0),
+                    "context_window": payload.get("context_window"),
+                    "token_prompt": payload.get("token_prompt", 0),
+                    "token_completion": payload.get("token_completion", 0),
+                }
+            )
     prompt_tokens = sum(int(item.get("token_prompt") or 0) for item in steps)
     completion_tokens = sum(int(item.get("token_completion") or 0) for item in steps)
     total_latency = sum(int(item.get("latency_ms") or 0) for item in steps)
@@ -1131,6 +1176,28 @@ async def _trajectory_from_events(db: AsyncSession, run: Run) -> tuple[dict, dic
         "token_completion": completion_tokens,
         "total_tokens": prompt_tokens + completion_tokens,
     }
+    if environment_seen:
+        prompt = agent_usage.get("token_prompt")
+        completion = agent_usage.get("token_completion")
+        total = (
+            prompt + completion
+            if isinstance(prompt, int) and isinstance(completion, int)
+            else None
+        )
+        trajectory["total_tokens"] = total
+        trajectory["agent_usage"] = agent_usage
+        metrics.update(
+            {
+                "token_prompt": prompt,
+                "token_completion": completion,
+                "total_tokens": total,
+                "agent_usage": agent_usage,
+                "environment": {
+                    "finalized": environment_finalized,
+                    "check_called": environment_check_called,
+                },
+            }
+        )
     metrics.update(_provider_metrics(latest_events))
     return trajectory, metrics
 

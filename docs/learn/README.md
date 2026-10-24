@@ -7,7 +7,7 @@
 | 0 | [仓库地图与一次 Run](00-map.md) | 现在 |
 | — | [术语表](glossary.md) | 现在 |
 | 1 | `01-run-lifecycle.md` | H1 完成时 |
-| 2 | `02-environment-and-mcp.md` | H1 完成时 |
+| 2 | [02-environment-and-mcp.md](02-environment-and-mcp.md) | H1-2；Runner 接线待 H1-3 |
 | 3 | `03-plug-in-your-agent.md` | H2-1 完成时 |
 | 4 | `04-runner-lease-fencing.md` | H1 完成时 |
 | 5 | `05-analyzer-and-calibration.md` | H5 完成时 |

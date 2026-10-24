@@ -7,7 +7,7 @@ from collections.abc import Callable, Mapping
 from enum import StrEnum
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 
 MAX_PROVIDER_LATENCY_MS = 86_400_000
@@ -105,6 +105,36 @@ class ToolCallSummary(DurableModel):
 class ContextWindowSummary(DurableModel):
     used: int = Field(ge=0, le=MAX_CONTEXT_WINDOW_TOKENS)
     limit: int = Field(ge=0, le=MAX_CONTEXT_WINDOW_TOKENS)
+
+
+class AgentReportedUsage(DurableModel):
+    """Cumulative Agent claims, not measured provider telemetry; null is unknown."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+    source: Literal["agent_reported"] = "agent_reported"
+    token_prompt: int | None = Field(default=None, ge=0, le=MAX_PROVIDER_TOKENS)
+    token_completion: int | None = Field(default=None, ge=0, le=MAX_PROVIDER_TOKENS)
+    context_window: ContextWindowSummary | None = None
+
+
+class EnvironmentStepProvenance(DurableModel):
+    """Trusted only on the Environment pipe, never on Agent stdout (ADR-0008)."""
+
+    kind: Literal["world", "control"]
+    result: Literal[
+        "ok",
+        "invalid_arguments",
+        "unknown_tool",
+        "max_steps",
+        "finalized",
+        "duplicate_submit",
+        "timed_out",
+        "internal_error",
+    ]
+    control: Literal["submit_result", "report_usage"] | None = None
+    finalized: bool = False
+    check_called: bool = False
+    usage: AgentReportedUsage | None = None
 
 
 _PROVIDER_FAILURE_MESSAGES = {
@@ -393,6 +423,46 @@ def _normalize_context_window(value: object) -> dict[str, object] | None:
     )
 
 
+def _normalize_environment_step(value: object) -> dict[str, object] | None:
+    if not isinstance(value, Mapping):
+        return None
+    # Explicitly sieve fields: Agent-authored score/status/check evaluations are
+    # never an operand at the durable seam, even when nested under provenance.
+    fields = {
+        key: value[key]
+        for key in (
+            "kind",
+            "result",
+            "control",
+            "finalized",
+            "check_called",
+        )
+        if key in value
+    }
+    try:
+        parsed = EnvironmentStepProvenance.model_validate(fields, strict=True)
+    except ValidationError:
+        return None
+    if (parsed.kind == "control") != (parsed.control is not None):
+        return None
+    parsed.check_called = (
+        parsed.control == "submit_result"
+        and parsed.result in {"ok", "internal_error"}
+        and parsed.finalized
+        and parsed.check_called
+    )
+    if parsed.control == "report_usage" and parsed.result == "ok":
+        usage = value.get("usage")
+        if isinstance(usage, Mapping):
+            try:
+                parsed.usage = AgentReportedUsage.model_validate(
+                    dict(usage), strict=True
+                )
+            except ValidationError:
+                pass
+    return parsed.model_dump(mode="json", exclude_none=True)
+
+
 def _normalize_step_completed(payload: Mapping[str, object]) -> dict[str, object]:
     normalized: dict[str, object] = {}
     for key, maximum in (
@@ -411,6 +481,9 @@ def _normalize_step_completed(payload: Mapping[str, object]) -> dict[str, object
     tool_call = _normalize_tool_call(payload.get("tool_call"))
     if tool_call is not None:
         normalized["tool_call"] = tool_call
+    environment = _normalize_environment_step(payload.get("environment"))
+    if environment is not None:
+        normalized["environment"] = environment
     context_window = _normalize_context_window(payload.get("context_window"))
     if context_window is not None:
         normalized["context_window"] = context_window
@@ -446,10 +519,13 @@ def _normalize_terminal_event(payload: Mapping[str, object]) -> dict[str, object
 
 
 def _normalize_run_started(payload: Mapping[str, object]) -> dict[str, object]:
+    normalized: dict[str, object] = {}
     attempt = _bounded_nonnegative_int(payload.get("attempt"), MAX_ATTEMPT)
     if attempt is not None and attempt >= 1:
-        return {"attempt": attempt}
-    return {}
+        normalized["attempt"] = attempt
+    if payload.get("source") == "environment":
+        normalized["source"] = "environment"
+    return normalized
 
 
 def _normalize_run_completed(payload: Mapping[str, object]) -> dict[str, object]:
