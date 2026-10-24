@@ -51,12 +51,20 @@ authoritative score, Run state, and database writes. A Run can succeed only with
 2. Sufficient valid required trusted evidence, including every required operand.
 3. The registered suite aggregate **>= 1.0**, with the success threshold fixed
    at 1.0 for that Environment version.
-4. No abnormal execution failure; abnormal or nonzero process exit cannot succeed.
+4. No abnormal execution failure: Agent abnormal/nonzero exit or unexpected
+   Environment failure before terminal completion prevents success.
 
-Missing/invalid required evidence, failed check, or no valid submission cannot
-succeed, even if a partial trajectory appears to score fully. Cancellation,
-timeout, and lease fencing still dominate completion. Terminal events and the
-Control Plane completion result must agree. Exit zero, EOF, readiness, and
+Runner-requested teardown of a healthy Environment after valid submission,
+successful check, and necessary evidence capture is planned lifecycle, not an
+abnormal execution failure, including SIGTERM then SIGKILL after the shared
+two-second grace. H1-3 distinguishes this cleanup from unexpected failure;
+neither child is required to exit naturally with zero.
+
+This exception does not make missing/invalid required evidence, failed check,
+no valid submission, or Agent abnormal/nonzero exit succeed, even if a partial
+trajectory appears to score fully. Cancellation, timeout, output-limit failure,
+and lease fencing still dominate completion. Terminal events and the Control
+Plane completion result must agree. Exit zero, EOF, readiness, and
 submission/check markers alone are not success.
 
 Preserve assertion combination semantics: `ALL` is the minimum, `ANY` the

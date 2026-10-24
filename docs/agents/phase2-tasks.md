@@ -70,7 +70,7 @@ H0 剩余只有 H0-1 的 GitHub 点击和 H0-2 的命名。命名未定不阻塞
 
 - 遵循 [ADR-0012](../adr/0012-h1-canonical-cutover-and-control-plane-success.md)：一次性不兼容升级，三个规范 ID 为 `checkout-api-latency.v2`、`multi-step-research.v2`、`api-fault-orchestration.v2`；API 省略 ID、UI 默认、quickstart 均走规范 v2（checkout 默认 `.v2`）。退休对应三个 v1 执行注册与耦合 fixture/provider 循环，不保留双路径。`order-support.v1` 与通用语义版本身份规则不变。
 - 不做旧 v1 兼容、迁移、别名、重评分、历史 replay 保留或跨版本可比性工作；保留准确的 Phase 1 历史说明。旧记录可丢弃不等于允许访问或删除现有数据：不做自动 reset、破坏性迁移、删表或数据库/文件/volume 删除。另行请求的运维 reset 独立处理；实现验证使用全新隔离数据。
-- Python Control Plane 独占权威评估、Run 状态与数据库。成功必须同时满足：有效 submit、check 成功、必需可信证据充分有效、注册 suite aggregate >= 该版本固定的 1.0、没有异常执行失败。缺失/无效必需证据、check 失败、未有效 submit、异常或非零退出均不能成功；取消、超时与 lease fencing 优先。终态事件与 CP completion 必须一致，不信任 Agent/check 自报分数或状态。
+- Python Control Plane 独占权威评估、Run 状态与数据库。成功必须同时满足：有效 submit、check 成功、必需可信证据充分有效、注册 suite aggregate >= 该版本固定的 1.0、没有异常执行失败。缺失/无效必需证据、check 失败、未有效 submit、Agent 异常/非零退出或终态完成前 Environment 意外失败均不能成功。有效 submit、check 成功并捕获必要证据后，Runner 请求终止健康 Environment（含 SIGTERM 后共享两秒宽限期届满再 SIGKILL）属于计划内生命周期，不是异常执行失败；不要求两个子进程都自然零退出。该例外不覆盖前述失败、取消、超时、output-limit 或 lease failure；终态事件与 CP completion 必须一致，不信任 Agent/check 自报分数或状态。
 - 保留 ALL=min、ANY=max、WEIGHTED=加权均值与每条断言的 threshold；不得替换成通用 `all(item.passed)`，也不以含惩罚的 quality score 判定任务成功。人工 Policy 验证与激活规则不变。
 - CP 轨迹断言读取最新 Attempt 持久化的所有 world attempts（含拒绝），排除保留控制调用。拒绝投影为 `rejected_tool`、status `failed`，不能满足请求工具名的 used/args/sequence 断言；Environment 仅有效调用的内部 history 不能覆盖它。
 - 最终状态断言读取有界、可信、Environment 所有的 final-check 事实，由 CP 校验必需 operands 与注册 expectations；不采信 Agent 提供的期望值或分数。订单恰好一次的证明来自最终 ledger。usage 缺失保持 unknown，有报告也只是 Agent-reported。精确的 additive wire 字段/类型留给后续独立审查，不在此发明。
@@ -101,7 +101,7 @@ H0 剩余只有 H0-1 的 GitHub 点击和 H0-2 的命名。命名未定不阻塞
 - 依赖：H1-2 的 `env_ready` 约定。
 - 先写 `runner/crates/agentops-runner` 的测试，再改实现：先拉起 env，读到 `env_ready`，再拉起 agent；取消时进程组一起收到 SIGTERM，两秒后 SIGKILL。
 - 协议 crate 增加本地监督消息 `env_ready`。它不是 RunEvent，持久化事件里不得出现原始 token。
-- 只转发 Environment 可信事实；Agent stdout 不得升级为可信事件。监督启动/退出/取消/超时与 lease fencing；提交、check 标记、EOF 或 exit 0 均不是成功。异常/非零退出不得变成成功，终态事件须与 CP completion 一致。CP 评分策略不在 H1-3 实现，Rust 不新增评分器；证据/completion 接线由 H1-5/集成负责。
+- 只转发 Environment 可信事实；Agent stdout 不得升级为可信事件。监督启动/退出/取消/超时与 lease fencing；提交、check 标记、EOF 或 exit 0 均不是成功。Agent 异常/非零退出或终态完成前 Environment 意外失败不得变成成功；H1-3 必须将意外失败与有效 submit、check 成功、必要证据捕获后 Runner 请求对健康 Environment 的计划内清理区分，后者含 SIGTERM 后共享两秒宽限期届满再 SIGKILL，不算异常失败，也不要求两个子进程自然零退出。该例外不得放过缺失证据、check 失败、Agent 异常/非零退出、取消、超时、output-limit 或 lease failure。终态事件须与 CP completion 一致。CP 评分策略不在 H1-3 实现，Rust 不新增评分器；证据/completion 接线由 H1-5/集成负责。
 - 验收：`cargo test` 覆盖“env 已死则 agent 不被留存”“取消杀两个子进程”。不要用真实 MCP 端口做 flaky 测试；用假子进程打印 `env_ready`。
 
 ### H1-4 `agent_id`、注册表、前端下拉
@@ -121,7 +121,7 @@ H0 剩余只有 H0-1 的 GitHub 点击和 H0-2 的命名。命名未定不阻塞
 - 依赖：H1-2、H1-4。
 - `reference-openai-compatible.v1`：独立进程，通过 MCP 发现工具，用现有 `AGENTOPS_PROVIDER_*` 调 `/chat/completions`。
 - `fixture-agent.v1`：在规范 Environment 上跑确定性轨迹，不要求复现旧 v1 结果；退休三套旧注册和耦合 fixture/provider 循环，不留双路径。
-- 本任务/集成负责 ADR-0012 的可信轨迹/final-check 证据与 Python CP completion 接线、aggregate >= 1.0 成功门和终态一致性。精确 additive wire 另行审查；测试覆盖无 submit、check 失败、必需证据无效/缺失、拒绝轨迹、异常/非零退出，以及 ANY/ALL/WEIGHTED 语义，不能用 quality score 或通用 all(passed) 替代。
+- 本任务/集成负责 ADR-0012 的可信轨迹/final-check 证据与 Python CP completion 接线、aggregate >= 1.0 成功门和终态一致性。精确 additive wire 另行审查；测试覆盖无 submit、check 失败、必需证据无效/缺失、拒绝轨迹、Agent 异常/非零退出、Environment 意外失败与上述计划内清理的区别，以及 ANY/ALL/WEIGHTED 语义，不能用 quality score 或通用 all(passed) 替代。
 - README quickstart 使用规范 v2（checkout 默认 `checkout-api-latency.v2`），增加 Ollama 小节：默认 `qwen3:8b`；`qwen3:14b` 标为 16 GB 上的可选项，不写“保证放得下”。vLLM 启动参数写 `--enable-auto-tool-choice --tool-call-parser hermes`（Qwen3-Coder 用 `qwen3_xml`，不要混用）。
 - 验收：Golden E2E 用 fixture agent 全绿。本地有 Ollama 时，参考 agent 能跑出一条带分析的 trace；没有 GPU 的 CI 不跑这一条。
 

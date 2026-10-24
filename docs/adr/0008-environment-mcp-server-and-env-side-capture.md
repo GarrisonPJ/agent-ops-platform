@@ -56,11 +56,17 @@ child, then starts the agent.
   reserved controls are excluded. Valid-only Environment history is not the
   scoring trajectory. ADR-0012 defines rejection projection and the registered
   aggregate >= 1.0 success gate, distinct from quality penalties. Missing or
-  invalid required evidence, failed check, no valid submit, or abnormal/nonzero
-  exit cannot succeed. Cancellation, timeout, and lease fencing dominate.
+  invalid required evidence, failed check, no valid submit, Agent abnormal/nonzero
+  exit, or unexpected Environment failure before terminal completion cannot
+  succeed. Cancellation, timeout, output-limit failure, and lease fencing dominate.
 - Rust only supervises/relays; it never scores or trusts Agent/check-reported
   status. Terminal events and Control Plane completion must agree. Submission,
-  exit zero, and EOF are not success signals. H1-3 owns supervision;
+  exit zero, and EOF are not success signals. H1-3 owns supervision and
+  distinguishes unexpected failure from Runner-requested teardown of a healthy
+  Environment after valid submission, successful check, and necessary evidence
+  capture. Such planned teardown, including SIGTERM then SIGKILL after the shared
+  two-second grace, is not abnormal execution failure; neither child must exit
+  naturally with zero. This exception cannot override the failure gates above.
   H1-5/integration owns evidence and Control Plane completion wiring. The exact
   additive evidence wire remains a later reviewed seam.
 - The Environment enforces `max_steps` and the run timeout. Calls past the
