@@ -96,6 +96,10 @@ class ToolCallSummary(DurableModel):
         "invoke_service",
         "retry_call",
         "degrade_route",
+        "inspect_order",
+        "authorize_payment",
+        "ship_order",
+        "request_refund",
     ]
     arguments: dict[str, str | int] = Field(
         default_factory=dict, max_length=MAX_TOOL_ARGUMENTS
@@ -372,6 +376,20 @@ def _normalize_tool_call(value: object) -> dict[str, object] | None:
     name = value.get("name")
     if not isinstance(name, str):
         return None
+    if name in {"inspect_order", "authorize_payment", "ship_order", "request_refund"}:
+        raw_arguments = value.get("arguments", {})
+        if not isinstance(raw_arguments, Mapping):
+            return None
+        # This fixed order-only projection must not broaden the legacy nine-tool
+        # argument surface or retain agent-supplied customer data.
+        order_arguments: dict[str, str | int] = {}
+        if raw_arguments.get("order_id") == "order-1001":
+            order_arguments["order_id"] = "order-1001"
+        if name == "request_refund" and raw_arguments.get("reason") == "shipping_failed":
+            order_arguments["reason"] = "shipping_failed"
+        return ToolCallSummary(name=name, arguments=order_arguments).model_dump(
+            mode="json", exclude_none=True
+        )
     if name not in {
         "check_service_health",
         "query_service_metrics",

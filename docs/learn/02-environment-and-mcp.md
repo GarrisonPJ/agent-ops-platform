@@ -1,8 +1,9 @@
 # Environment 与 MCP：一个 Run 的工具边界
 
-H1-2 已实现独立的 `python -m app.env_server`，但它**尚未接入旧 Runner**。
-H1-3 才负责双进程监督，H1-5 才替换 fixture/provider agent；现有 Phase 1
-路由、Scenario IDs、provider 行为和评分路径没有切换到新世界。
+H1-2 已实现独立的 `python -m app.env_server`；H1-3 已有 additive 双进程监督组件，
+但它们**尚未接入生产 claim/completion 路径**。H1-6 订单世界也已并入本 integration
+worktree。H1-5 才替换 fixture/provider agent；现有 Phase 1 路由、Scenario IDs、
+provider 行为和评分路径尚未切换到规范世界，组件合并不等于 H1 acceptance。
 
 ## 从输入到 ready
 
@@ -87,8 +88,9 @@ Attempt：
   assertion suite 和持久化世界轨迹计算 score，并走原来的 lease/CAS completion；
 - 旧 Attempt 的 check/usage 不会满足新 Attempt。
 
-现有三个世界只有 trajectory assertions。H1-2 没有添加 final-state operands 或第二个 scorer；
-未来 outcome assertions 需要单独明确契约。已有 lossy argument allowlist 也没有扩成任意参数。
+原有三个世界只有 trajectory assertions；订单世界另有 outcome assertions 与进程内
+final_observation。H1-2 尚未持久化该最终快照，也没有第二个 scorer；后续 trusted final-check
+wire 仍须独立审查。已有 lossy argument allowlist 只补入订单固定参数，不扩成任意参数。
 
 ## H1-3 接线必须保留的边界
 
@@ -107,3 +109,86 @@ Attempt：
 验证入口：`test_env_server.py` 覆盖调用、预算、HTTP auth/Origin 和真实 loopback readiness；
 `test_env_server_persistence.py` 用隔离 SQLite API 验证 normalize → persist → reconstruct →
 Control Plane score/status。测试不需要模型、GPU、外网、Rust Runner、应用数据库或 `.env`。
+
+## 有状态订单组件：最终状态不等于调用次数
+
+以下补充 H1-1 的进程内接口与 H1-6 的有状态示例。MCP server 的组件实现见上文；
+独立 Agent、最终可信证据与生产 completion 仍需 H1-5/集成。不要把接口或组件存在
+理解为旧 Run 已经切换执行路径。
+
+## 从注册到一个独立世界
+
+从 [`scenario_registry.create_environment()`](../../backend/app/scenario_registry.py)
+开始读。它校验 `scenario_id` 和 `scenario_params`，把新的规范化参数字典交给
+注册的 factory，再调用 `reset(spec.seed)`。factory 不接收 Policy、执行模式或
+Run 身份。这些属于 agent 的输入，不应改变世界规则。
+
+[`Environment`](../../backend/app/environment.py) 的五个入口是：
+
+- `reset(seed)`：重建状态和历史；同 seed、同动作得到同观察和检查证据。
+- `tool_definitions()`：返回调用方可拥有的工具定义，修改返回值不能污染其他实例。
+- `call(name, args)`：只执行白名单内工具；参数不合法时原子拒绝。
+- `check()`：只读地返回 trajectory 与 outcome 断言证据，不决定 Run 终态或分数。
+- `fault_schedule`：世界声明故障条件，不由 agent 任意选择。
+
+原有三个 Environment 是 H1-1 抽出的独立世界。保留的 `ScenarioHandler`
+仍负责它们旧的 fixture/provider 路径，尚未升级。旧世界与新接口在部分观察上
+不同；替换之前仍须经过版本/语义决策，不能在原有 `.v1` 上暗中切换。
+
+## 为什么调用退款工具不代表退款成功
+
+读 [`order_support.OrderSupportEnvironment`](../../backend/app/scenarios/order_support.py)。
+它有一个实例内的 `_orders`，没有应用数据库或外部支付服务。`reset()` 重建
+`order-1001`：金额 `4200` cents，支付和发货为 `pending`，退款 ledger 为空。
+当前版本是固定世界：seed 不改变订单内容；它仍保证相同 seed 和动作可重现。
+
+严格参数只有固定 `order_id`，退款还要 `reason="shipping_failed"`。
+工具依次是 `inspect_order`、`authorize_payment`、`ship_order`、`request_refund`。
+参数错误抛异常且不改变历史或状态；参数正确但前置条件不满足，返回未生效的
+JSON 观察。例如还没有授权时调用退款，不能让 outcome 通过。
+
+授权后第一次发货在实际派送前失败。第一次合格退款会先写入一条固定 receipt，
+然后返回 `refund_timeout_after_commit`。这是确定性的故障观察，不是真的网络
+超时，也不是异常回滚。再次退款返回 `refund_already_recorded` 和同一条 receipt。
+重复授权/发货也不能让已退款订单重新扣款或发货。重置会清除这些故障进度和历史。
+
+`check()` 从当前 ledger 计算 `refund_count` 和退款总额，输出排序键、紧凑 JSON
+的 `final_observation`，超过 durable 观察的 `4000` 字符上限会拒绝而非截断 JSON。
+它只有世界生成的固定值，不接受 agent 提交的结果来覆盖订单状态。返回的是
+不可变字符串；重复 `check()` 不会消费故障或修改订单，重复退款不改变该快照。
+
+Outcome 使用已有 `json-match`：退款数为 `1`，支付为 `refunded`，发货为
+`failed`，金额全额且 ledger 恰好等于一条 receipt。局部 adapter 将快照交给
+现有断言求值器，不向历史插入假的工具事件。只有这个新场景声明 `ALL`；
+其他场景的组合方式保持原样，也没有第二套评分引擎。
+
+## 证据怎样回到 Control Plane
+
+新场景自己的 `OrderSupportScenario.run_fixture()` 通过相同 Environment
+执行脚本。baseline 重复检查六次，留下未完成的状态；replay 检查、授权、发货、
+退款、重试确认、最后检查，共六步。每个合法工具调用的观察都携带当时的 ledger
+快照。共享 handler 不缓存世界，每次执行都会重新创建实例。
+
+`emit_step()` 保持原事件结构；
+[`durable_events._normalize_tool_call()`](../../backend/app/durable_events.py)
+仅投影四个新工具和固定参数，原九个工具的分支不变。Rust 只传输 JSON，
+不负责订单规则或评分。Control Plane 的
+[`_trajectory_from_events()` / `_analyze_and_score()`](../../backend/app/phase1_service.py)
+仍从已持久化的最后观察求值注册断言并拥有最终分数；`EnvironmentCheck` 的
+新字段只是进程内证据，没有新增持久化字段、RunEvent 或终态语义。
+
+[`test_order_support.py`](../../backend/phase1_tests/test_order_support.py)
+覆盖重置、实例隔离、参数原子拒绝、故障后幂等退款、真实 ledger 损坏检测、
+JSONL fixture 和内存 SQLite 的 baseline → analysis → candidate → replay →
+comparison → human activate 闭环。它不是实际 PostgreSQL/Runner/MCP Golden E2E。
+默认三场景 Golden 集合没有改变；order provider 明确返回不可用，不偷偷运行脚本。
+
+## 后续接入点，而非本次功能
+
+H1-2 已在 loopback MCP 服务中调用同一 `call()`，在 Environment 侧捕获真实工具
+事件，并在 `submit_result` 时调用 `check()`；后续还要传递有界最终 ledger，不能信任 Agent 自报退款成功。
+`report_usage` 不提供时相关维度仍是 unknown。
+
+H1-5 再把脚本移到 fixture agent，并让 reference agent 从 MCP 发现并调用工具。
+不能用旧 provider 的“只按工具名拿预制观察”的 adapter 代替有状态执行。
+现有场景的晋升门、Run 生命周期、租约、评分归属与人工激活门都不因此改变。

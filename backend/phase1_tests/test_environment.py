@@ -163,7 +163,8 @@ def test_environment_check_reuses_registered_assertions_without_scoring(
     assert checked.combination.value == expected["combination"]
     assert [asdict(item) for item in checked.trajectory] == expected["assertions"]
     assert environment.check() == checked  # Read-only; no completion side effects.
-    assert set(asdict(checked)) == {"combination", "trajectory", "outcome"}
+    assert checked.final_observation is None  # Existing v1 worlds remain trajectory-only.
+    assert set(asdict(checked)) == {"combination", "trajectory", "outcome", "final_observation"}
 
 
 @pytest.mark.parametrize("scenario_id", PARAMS)

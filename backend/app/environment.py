@@ -42,11 +42,14 @@ class EnvironmentCheck:
     Existing worlds declare trajectory assertions only. Stateful worlds may also
     report outcome assertions using the same ScenarioAssertion vocabulary.
     The control plane still scores persisted events with the registered suite.
+    A stateful world may supply a bounded, canonical final_observation snapshot;
+    it is in-process evidence only, not a new persisted event or terminal status.
     """
 
     combination: AssertionCombination
     trajectory: tuple[AssertionEvaluation, ...]
     outcome: tuple[AssertionEvaluation, ...] = ()
+    final_observation: str | None = None
 
 
 class Environment(Protocol):

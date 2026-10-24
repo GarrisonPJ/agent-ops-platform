@@ -111,17 +111,14 @@ These become binding when the implementing stage ships and are then merged into 
 
 ## Built-in scenarios
 
-The Scenario registry at this base ships three built-in Scenarios. These v1
-descriptions record Phase 1 behavior; the planned H1 replacement IDs are
-`checkout-api-latency.v2`, `multi-step-research.v2`, and
-`api-fault-orchestration.v2` ([ADR-0012](docs/adr/0012-h1-canonical-cutover-and-control-plane-success.md)),
-not yet integrated defaults. Checkout remains the Golden reference path; the others extend the same closed loop without changing Control Plane / Runner separation.
+The registry currently includes three legacy built-ins and the component-accepted H1-6 `order-support.v1` Environment. The v1 descriptions below record Phase 1 behavior; their planned H1 replacement IDs are `checkout-api-latency.v2`, `multi-step-research.v2`, and `api-fault-orchestration.v2` ([ADR-0012](docs/adr/0012-h1-canonical-cutover-and-control-plane-success.md)), not yet integrated defaults. Checkout remains the Golden reference path. The order fixture compatibility handler uses its stateful world; its provider path is unavailable pending the independent Agent integration. This component merge does not establish integrated H1 acceptance.
 
 | Scenario ID | Purpose |
 |---|---|
 | `checkout-api-latency.v1` | Golden checkout latency investigation (health → metrics → logs). |
 | `multi-step-research.v1` | Search, fetch, and answer loop with deliberate baseline repetition. |
 | `api-fault-orchestration.v1` | Retry and degrade around injected upstream 503 faults. |
+| `order-support.v1` | Stateful in-memory order support; refund exactly once after shipping fails (fixture compatibility only). |
 
 Scenario metadata, tool allowlists, and contributor steps live in [docs/agents/scenario-development.md](docs/agents/scenario-development.md).
 
@@ -178,7 +175,7 @@ MCP is used only as the loopback Environment transport (ADR-0008), not as an ope
 
 ## Current evolution boundary
 
-Phase 1 is complete and CI-verified on `8bd2ef0`. Phase 2 — Harness started 2026-10-17. H1 plans the Environment/Agent split with two-process supervision (ADR-0007, ADR-0008) and the explicitly approved breaking canonical cutover and Control Plane success contract ([ADR-0012](docs/adr/0012-h1-canonical-cutover-and-control-plane-success.md)); later Harness stages remain additive. H1-1 is accepted at this base; the separate H1-2 component is under independent review and H1-6 is component-accepted with E2E deferred, neither integrated here. Human Policy validation/activation and generic semantic-version identity remain unchanged. Disposable old records do not authorize existing-data access, reset, or deletion; later implementation validates with fresh isolated data. H1-3 owns supervision, while H1-5/integration wires trusted evidence and Control Plane completion. H1 is not shipped; no integrated Golden, PostgreSQL, or live-model acceptance is claimed. See [ROADMAP.md](ROADMAP.md).
+Phase 1 is complete and CI-verified on `8bd2ef0`. Phase 2 — Harness started 2026-10-17. H1 plans the Environment/Agent split with two-process supervision (ADR-0007, ADR-0008) and the explicitly approved breaking canonical cutover and Control Plane success contract ([ADR-0012](docs/adr/0012-h1-canonical-cutover-and-control-plane-success.md)); later Harness stages remain additive. H1-1, H1-2, the additive H1-3 supervisor, and H1-6 are component-accepted and included in this integration worktree; production claim/completion still uses the Phase 1 path, and H1-6 E2E is deferred. Human Policy validation/activation and generic semantic-version identity remain unchanged. Disposable old records do not authorize existing-data access, reset, or deletion; later implementation validates with fresh isolated data. H1-3 owns supervision, while H1-5/integration wires trusted evidence and Control Plane completion. H1 is not shipped; no integrated Golden, PostgreSQL, or live-model acceptance is claimed. See [ROADMAP.md](ROADMAP.md).
 
 Roadmap changes do not alter domain invariants by themselves. Update this file and add an ADR before a milestone changes state ownership, recovery semantics, trust boundaries, or activation rules.
 

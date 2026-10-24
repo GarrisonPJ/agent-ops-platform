@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "run_id": "00000000-0000-4000-8000-000000000007",
+  "experiment_id": "00000000-0000-4000-8000-000000000008",
+  "scenario_id": "order-support.v1",
+  "task": "Resolve order-1001: inspect it, authorize payment, attempt shipment, then refund the failed shipment exactly once and verify the final ledger.",
+  "seed": 42,
+  "execution_mode": "fixture",
+  "policy": null,
+  "scenario_params": {},
+  "limits": {
+    "timeout_ms": 60000,
+    "max_output_bytes": 1048576
+  }
+}

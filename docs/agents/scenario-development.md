@@ -8,7 +8,7 @@ This guide describes the current allowlisted registration seam and retained Phas
 
 - Choose a **versioned** id: `<name>.v<N>` (for example `inventory-restock.v1`). Semantic changes require a new version; never mutate an existing id in place.
 - Only Runs that share the same `scenario_id` are score-comparable.
-- Study the three shipped examples under `backend/app/scenarios/`: checkout (Golden reference), multi-step research, and API fault orchestration.
+- Study the three legacy examples under `backend/app/scenarios/`: checkout (Golden reference), multi-step research, and API fault orchestration. `order_support.py` is the additive H1-6 stateful example; only its fixture compatibility handler uses the new world, and its provider path deliberately returns failure without making a request until H1-5 integration.
 
 ## 1. Implement the Scenario module
 
@@ -67,7 +67,48 @@ policy, execution mode, or Run identity. `reset` must rebuild all per-Run state
 and history; the same seed and action sequence must reproduce observations.
 Use `create_environment(spec)` for the isolated world rather than caching a world
 on the registry or bypassing its validation/reset. This does not reroute the
-retained `run_fixture` / `run_provider` paths.
+three legacy `run_fixture` / `run_provider` paths.
+
+### Stateful outcome evidence (`order-support.v1`)
+
+`OrderSupportEnvironment.reset()` rebuilds an instance-local single-order store
+and clears history. Its fixed tools accept only `order_id="order-1001"`;
+`request_refund` also requires `reason="shipping_failed"`. Argument rejection
+changes neither state nor history. Valid but ineligible operations return JSON
+observations without changing the order. Payment authorization is idempotent;
+the first authorized shipment fails before dispatch. The first eligible refund
+writes one receipt and returns a simulated timeout-after-commit observation.
+Retries return the same receipt, never a second refund. There are no clocks,
+network calls, customer inputs, or real payment operations.
+
+`check()` separates trajectory evidence from outcome evidence and returns a
+canonical, bounded `final_observation` snapshot of the current ledger (the three
+legacy worlds leave that optional field `None`). The order-only outcome adapter
+reuses `json-match` against this snapshot; it does not append a synthetic step.
+Every valid order call also emits its current JSON snapshot, so the existing
+Control Plane reconstruction and registered assertion suite can inspect the
+last persisted observation without a new persistence field or scorer. Python
+`durable_events.py` projects only the four fixed tool names and arguments into
+the trace. Rust transports these event payloads without scoring them.
+
+The order suite deliberately declares `ALL`, requiring the initial
+inspect/authorize/ship sequence, at most six steps, one ledger receipt, full
+refund amount, refunded payment, and failed shipment. This does not change the
+other suites' `WEIGHTED`/`ANY` semantics. `EnvironmentCheck` is evidence only;
+the Control Plane still owns scores, Run status, and human Policy activation.
+The candidate is instruction-only (`tool_priority={}`), preserving the existing
+policy-tool allowlists. The retained order fixture baseline repeats inspection
+six times and fails; replay resolves the fault and verifies the ledger in six
+steps. Focused acceptance is `phase1_tests/test_order_support.py`, including an
+isolated SQLite closed loop; the default three-scenario Golden script remains
+unchanged until the independent fixture-agent path exists.
+
+For H1-2, serve these exact definitions/calls and preserve the canonical final
+snapshot when capturing tools and running `check()`. For H1-5, move the order
+script to the fixture agent and connect reference/provider execution to the
+Environment; do not use the legacy name-only provider adapter for stateful
+mutations. Neither handoff waives the existing three-world promotion/version
+gate. See [the Environment chapter](../learn/02-environment-and-mcp.md).
 
 Register at module import time and import the module from `backend/app/scenarios/__init__.py`.
 
@@ -85,7 +126,7 @@ Params are stored on `experiments.scenario_params` (Alembic revision `0007`). No
 1. Add a golden fixture under `contracts/v1/fixtures/evaluation-spec.<scenario-id>.json`.
 2. Extend `backend/phase1_tests/test_protocol_contract.py` to load it.
 3. Run `make contracts` from the repo root.
-4. If new policy tools are introduced, extend `ALLOWED_POLICY_TOOLS` in `phase1_schemas.py` and `ALLOWED_TOOLS` in `runner/crates/agentops-protocol/src/lib.rs`.
+4. If new policy tools are introduced, extend `ALLOWED_POLICY_TOOLS` in `phase1_schemas.py` and `ALLOWED_TOOLS` in `runner/crates/agentops-protocol/src/lib.rs`. An instruction-only patch need not expand them. Also check the independent durable event tool/argument projection in `backend/app/durable_events.py`; new tools require a bounded allowlisted projection to survive persisted trajectory reconstruction.
 
 ## 4. Expose the Scenario in the workbench
 
