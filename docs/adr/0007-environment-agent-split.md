@@ -4,6 +4,8 @@
 - Date: 2026-10-17
 - Implementation: Phase 2 H1. Not in code at `8bd2ef0`. Invariants 23–25 in
   `CONTEXT.md` become binding when H1 ships.
+- Amended: 2026-10-24 by [ADR-0012](0012-h1-canonical-cutover-and-control-plane-success.md)
+  (breaking canonical cutover and Control Plane success contract).
 - Amends: [ADR-0003](0003-openai-compatible-provider-boundary.md),
   [ADR-0006](0006-scenario-registry-boundary.md)
 
@@ -52,9 +54,12 @@ Three kinds:
 | `reference` | `reference-openai-compatible.v1` | OpenAI-compatible tool loop. Successor of `run_provider`. Default local model is Ollama `qwen3:8b`. |
 | `external` | registered per adapter | Claude Code, Agents SDK, Codex, or the operator's own loop. |
 
-`execution_mode` stays `fixture` or `provider` so existing Experiments keep
-their meaning. Omitting `agent_id` selects `fixture-agent.v1` in fixture mode
-and `reference-openai-compatible.v1` in provider mode. An explicit registered
+`execution_mode` stays `fixture` or `provider`; these modes retain their
+roles, not old-v1 execution compatibility. ADR-0012 approves a one-time H1
+cutover to the three canonical v2 identities and retires their v1 registrations
+and coupled loops. `order-support.v1` is unchanged. Omitting `agent_id` selects
+`fixture-agent.v1` in fixture mode and `reference-openai-compatible.v1` in
+provider mode. An explicit registered
 `agent_id` overrides that default. There is no third execution mode.
 
 Agent-internal facts the Environment did not observe (context window, hidden
@@ -70,6 +75,8 @@ Replay still re-executes; it does not play back recorded tool outputs.
   export, and adapters on top of this split.
 - Phase 1 `ScenarioHandler` remains the code path until H1 replaces it. The
   contributor guide states that explicitly.
+- Canonical defaults (including omitted IDs) follow ADR-0012; no aliases,
+  historical replay preservation, or data cleanup are included.
 - Golden E2E keeps using the fixture agent. Live models stay out of CI
   (ADR-0003).
 - A custom agent that cannot speak MCP still cannot be plugged in until it

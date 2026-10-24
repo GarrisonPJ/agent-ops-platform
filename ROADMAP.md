@@ -101,6 +101,7 @@ Environments are MCP servers; tool traces are captured on the environment side s
 - [ADR-0009](docs/adr/0009-agent-registry-trust-boundary.md) — Operator TOML agent registry, `GET /api/agents`, `EvaluationSpec.agent_id`; Runner executes only registered argv commands.
 - [ADR-0010](docs/adr/0010-trial-groups-and-pass-k.md) — Trial groups, fixed environment seed per group, pass^k via tau-bench estimator, group-aware policy validation.
 - [ADR-0011](docs/adr/0011-otel-genai-export.md) — Post-terminal OTel GenAI span export (`AGENTOPS_OTEL_EXPORT=1`), `RunEvent` store remains source of truth.
+- [ADR-0012](docs/adr/0012-h1-canonical-cutover-and-control-plane-success.md) (2026-10-24) — Approved one-time incompatible H1 cutover to the three canonical v2 defaults, retiring their v1 registrations/loops; Control Plane-only trusted-evidence success with registered aggregate >= version-fixed 1.0. `order-support.v1`, semantic identity, and human Policy gates remain unchanged. No migration, compatibility path, or data reset/deletion is authorized; validation uses fresh isolated data. H1-3 owns supervision; H1-5/integration wires evidence and completion. This records the contract, not shipped H1 or Golden/PostgreSQL/live-model acceptance.
 
 ### Stages
 

@@ -4,6 +4,8 @@
 - Date: 2026-10-17
 - Implementation: Phase 2 H1 for the registry; H2 for external adapters.
   Not in code at `8bd2ef0`.
+- Amended: 2026-10-24 by [ADR-0012](0012-h1-canonical-cutover-and-control-plane-success.md)
+  (canonical defaults and Control Plane-only task success).
 - Depends on: [ADR-0006](0006-scenario-registry-boundary.md),
   [ADR-0007](0007-environment-agent-split.md)
 
@@ -52,10 +54,16 @@ Provider URL, API key, and model for the reference agent stay in
 quickstart points those variables at Ollama (`http://127.0.0.1:11434/v1`,
 model `qwen3:8b`). `qwen3:14b` is documented as optional for machines that
 can spare the weights plus KV cache; it is not the default on 16 GB GPUs.
+Environment defaults and quickstart examples use ADR-0012's canonical v2 IDs,
+not the retired three v1 IDs. Missing `agent_id` still selects the fixture or
+reference agent by `execution_mode` (ADR-0007); this does not preserve old-v1
+world execution.
 
 Adapters are thin: they translate environment variables into the upstream
 CLI or SDK call, attach the MCP URL, and may forward upstream stdout as
 `process_output`. They do not score, and they do not emit `step_completed`.
+Agent-reported success and exit zero cannot determine Run success; Control Plane
+alone applies ADR-0012's trusted-evidence and aggregate gate.
 
 Replay passes the same `agent_id` as the baseline. A PolicyPatch does not
 switch agents.

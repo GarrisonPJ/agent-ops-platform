@@ -3,6 +3,8 @@
 - Status: Accepted
 - Date: 2026-10-17
 - Implementation: Phase 2 H1. Not in code at `8bd2ef0`.
+- Amended: 2026-10-24 by [ADR-0012](0012-h1-canonical-cutover-and-control-plane-success.md)
+  (authoritative success, trusted evidence, and terminal agreement).
 - Depends on: [ADR-0007](0007-environment-agent-split.md)
 - Amends: [ADR-0001](0001-python-control-plane-rust-execution-plane.md) (one
   child process becomes two when H1 ships)
@@ -44,9 +46,23 @@ child, then starts the agent.
 - Reserved tools, hidden from the model's normal tool list where the SDK
   allows it, and rejected if the model calls anything outside
   `tool_definitions()` plus these two:
-  - `submit_result` — the agent is done; the Environment runs `check()`.
+  - `submit_result` — the agent submits; the Environment runs `check()`. This
+    produces facts, not authoritative score or Run status. A valid submission
+    and successful check are necessary but not sufficient for success.
   - `report_usage` — optional context/token report. Absence leaves those
-    dimensions unknown.
+    dimensions unknown; reported values remain Agent-reported.
+- Control Plane evaluates the latest-Attempt persisted all-world-attempt
+  trajectory, including refusals, plus required trusted final-check facts;
+  reserved controls are excluded. Valid-only Environment history is not the
+  scoring trajectory. ADR-0012 defines rejection projection and the registered
+  aggregate >= 1.0 success gate, distinct from quality penalties. Missing or
+  invalid required evidence, failed check, no valid submit, or abnormal/nonzero
+  exit cannot succeed. Cancellation, timeout, and lease fencing dominate.
+- Rust only supervises/relays; it never scores or trusts Agent/check-reported
+  status. Terminal events and Control Plane completion must agree. Submission,
+  exit zero, and EOF are not success signals. H1-3 owns supervision;
+  H1-5/integration owns evidence and Control Plane completion wiring. The exact
+  additive evidence wire remains a later reviewed seam.
 - The Environment enforces `max_steps` and the run timeout. Calls past the
   budget return an error observation and are still recorded.
 - Both children share the Runner's process group. Cancel and timeout SIGTERM

@@ -7,7 +7,7 @@ Experiment → Baseline → Trace → Analysis → Candidate Policy
            → Replay → Comparison → Human Activate or Reject
 ```
 
-This file defines the vocabulary and invariants of the implemented Phase 1 loop. Phase 2 — Harness (ADR-0007..0011, started 2026-10-17) splits the Environment from the Agent-under-test; Phase 2 terms below are marked `(Phase 2, planned)` and become binding when their stage ships; milestones in [ROADMAP.md](ROADMAP.md).
+This file defines the vocabulary and invariants of the implemented Phase 1 loop. Phase 2 — Harness (ADR-0007..0012, started 2026-10-17) splits the Environment from the Agent-under-test; Phase 2 terms below are marked `(Phase 2, planned)` and become binding when their stage ships; milestones in [ROADMAP.md](ROADMAP.md).
 
 ## Domain vocabulary
 
@@ -103,12 +103,19 @@ claimed/running/cancelling -- exhausted attempts --> failed or cancelled
 26. Trials in a group share the EvaluationSpec except `run_id` and `trial_index`, with a fixed Environment seed.
 27. Group metrics use the unbiased pass^k estimator; every published number states `k`. Validation for `k > 1` requires non-decreasing pass^k and positive mean score delta (extends invariant 7).
 28. OTel export is a lossy projection; RunEvent remains the source of truth and export is never read back.
+29. H1 makes the one-time incompatible canonical cutover in ADR-0012: the three legacy worlds become v2 defaults, including omitted-ID API/UI/quickstart paths; their v1 execution registrations and coupled loops retire. `order-support.v1` and the generic semantic-version identity rule remain unchanged. No aliases, migration, rescoring, historical replay preservation, cross-version comparison, or automatic data cleanup are included.
+30. Control Plane alone determines task success: valid submission, successful check, sufficient valid required trusted evidence, registered suite aggregate >= version-fixed 1.0, and no abnormal execution failure. Missing evidence, failed check, no valid submit, or abnormal/nonzero exit cannot succeed. Cancellation, timeout, and lease fencing dominate; terminal events and completion agree. Preserve ALL=min, ANY=max, WEIGHTED=weighted mean and per-assertion thresholds; neither universal `all(item.passed)` nor penalized quality score is the success gate. Agent/check-reported scores or status are not authoritative; Rust only supervises/relays.
+31. Control Plane scores latest-Attempt persisted world attempts including refusals, excluding reserved controls. Rejections project as `rejected_tool`/`failed` and cannot satisfy named used/args/sequence assertions; valid-only Environment history is not the scoring trajectory. Final outcomes use bounded trusted Environment-owned final-check facts, validated against registered expectations, never Agent-supplied expectations or scores. Exactly-once order proof comes from the final ledger; missing usage stays unknown and reports remain Agent-reported. Exact additive wire details require later review.
 
 These become binding when the implementing stage ships and are then merged into Core invariants.
 
 ## Built-in scenarios
 
-The Scenario registry currently ships three built-in Scenarios. Checkout remains the Golden reference path; the others extend the same closed loop without changing Control Plane / Runner separation.
+The Scenario registry at this base ships three built-in Scenarios. These v1
+descriptions record Phase 1 behavior; the planned H1 replacement IDs are
+`checkout-api-latency.v2`, `multi-step-research.v2`, and
+`api-fault-orchestration.v2` ([ADR-0012](docs/adr/0012-h1-canonical-cutover-and-control-plane-success.md)),
+not yet integrated defaults. Checkout remains the Golden reference path; the others extend the same closed loop without changing Control Plane / Runner separation.
 
 | Scenario ID | Purpose |
 |---|---|
@@ -171,7 +178,7 @@ MCP is used only as the loopback Environment transport (ADR-0008), not as an ope
 
 ## Current evolution boundary
 
-Phase 1 is complete and CI-verified on `8bd2ef0`. Phase 2 — Harness started 2026-10-17. The only architecture change is the Environment/Agent split with two-process supervision (ADR-0007, ADR-0008); later Harness stages are additive. The human activation gate and all Phase 1 invariants remain. See [ROADMAP.md](ROADMAP.md).
+Phase 1 is complete and CI-verified on `8bd2ef0`. Phase 2 — Harness started 2026-10-17. H1 plans the Environment/Agent split with two-process supervision (ADR-0007, ADR-0008) and the explicitly approved breaking canonical cutover and Control Plane success contract ([ADR-0012](docs/adr/0012-h1-canonical-cutover-and-control-plane-success.md)); later Harness stages remain additive. H1-1 is accepted at this base; the separate H1-2 component is under independent review and H1-6 is component-accepted with E2E deferred, neither integrated here. Human Policy validation/activation and generic semantic-version identity remain unchanged. Disposable old records do not authorize existing-data access, reset, or deletion; later implementation validates with fresh isolated data. H1-3 owns supervision, while H1-5/integration wires trusted evidence and Control Plane completion. H1 is not shipped; no integrated Golden, PostgreSQL, or live-model acceptance is claimed. See [ROADMAP.md](ROADMAP.md).
 
 Roadmap changes do not alter domain invariants by themselves. Update this file and add an ADR before a milestone changes state ownership, recovery semantics, trust boundaries, or activation rules.
 
@@ -190,3 +197,4 @@ Roadmap changes do not alter domain invariants by themselves. Update this file a
 | [0009](docs/adr/0009-agent-registry-trust-boundary.md) | Agent registry trust boundary | Accepted |
 | [0010](docs/adr/0010-trial-groups-and-pass-k.md) | Trial groups and pass^k | Accepted |
 | [0011](docs/adr/0011-otel-genai-export.md) | OpenTelemetry GenAI export | Accepted |
+| [0012](docs/adr/0012-h1-canonical-cutover-and-control-plane-success.md) | H1 canonical cutover and Control Plane success contract | Accepted |
