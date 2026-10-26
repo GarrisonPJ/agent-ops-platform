@@ -6,14 +6,14 @@
 |---|---|---|
 | 0 | [仓库地图与一次 Run](00-map.md) | 现在 |
 | — | [术语表](glossary.md) | 现在 |
-| 1 | `01-run-lifecycle.md` | H1 完成时 |
+| 1 | [01-run-lifecycle.md](01-run-lifecycle.md) | H1-3 文档草稿（H1 集成前） |
 | 2 | [02-environment-and-mcp.md](02-environment-and-mcp.md) | H1-2；Runner 接线待 H1-3 |
 | 3 | `03-plug-in-your-agent.md` | H2-1 完成时 |
-| 4 | `04-runner-lease-fencing.md` | H1 完成时 |
+| 4 | [04-runner-lease-fencing.md](04-runner-lease-fencing.md) | H1-3 文档草稿（H1 集成前） |
 | 5 | `05-analyzer-and-calibration.md` | H5 完成时 |
 | 6 | `06-pass-k.md` | H3 完成时 |
 | 7 | `07-otel-mapping.md` | H4 完成时 |
 
-还没写的章节不要找，它们尚未落地。当前代码仍是 Phase 1：一个 Python 子进程同时扮演环境与 agent。Phase 2 的目标形状在 `docs/agentops_closed_loop_architecture.md` 的 “Phase 2 target architecture”。
+还没写的章节不要找，它们尚未落地。当前代码仍是 Phase 1：一个 Python 子进程同时扮演环境与 agent。`01` 与 `04` 是 H1-3 的学习草稿，明确区分当前基线和计划接线，不代表 H1 已验收。Phase 2 的目标形状在 `docs/agentops_closed_loop_architecture.md` 的 “Phase 2 target architecture”。
 
 建议第一遍只读 `00-map.md`，并沿其中的函数打开代码。不要从 `docs/history/` 读起，那里是带日期的验收记录。

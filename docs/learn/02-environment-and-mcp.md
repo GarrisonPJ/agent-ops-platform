@@ -95,8 +95,10 @@ Attempt：
 - Environment stdout 和 Agent stdout 分开；只把前者解析成可信事实。
   即使 Agent 输出格式完美的 `step_completed` 或 `env_ready`，也不能提升为事实。
 - `env_ready` 只启动一次 Agent，不上传 PostgreSQL。验证 loopback URL，不接受 token/query。
-- `run_started` 带 `attempt` 和 `source: "environment"`；重启 Attempt 要新世界、新 endpoint、
-  新 capability，同 seed/spec，不让旧事实跨 Attempt。
+- `run_started` 带 `attempt` 和 `source: "environment"`；每个 recovery Attempt 都重新启动一个新的
+  Environment 并获得新的 loopback endpoint，但同一 logical Run 继续使用按 Run 生成的单个
+  capability token；只有新的 logical Run 才生成新 token，除非先修改 ADR-0008。相同 seed/spec
+  不意味着可以把旧 Attempt 的事实接到新 Attempt；旧事实不跨 Attempt。
 - submit 会先返回 MCP response，Environment 保持冻结服务直到 Runner teardown 或 deadline；
   不以 server EOF/exit 0/`check_called` 推断 terminal success。H1-2 没有改变全局 terminal rule。
 - Runner 负责 deadline/cancel/lease 失效与两进程清理；本章不实现 H1-3 的 process group。
