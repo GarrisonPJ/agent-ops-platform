@@ -5,6 +5,52 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 pub const SCHEMA_VERSION: u16 = 1;
+
+/// Local stdout-only readiness message; this is deliberately not a RunEvent.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct EnvironmentReadyMessage {
+    #[serde(rename = "type")]
+    pub message_type: String,
+    pub payload: EnvironmentReadyPayload,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct EnvironmentReadyPayload {
+    pub mcp_url: String,
+}
+
+impl EnvironmentReadyMessage {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.message_type != "env_ready" {
+            return Err("local message is not env_ready".into());
+        }
+        validate_loopback_mcp_url(&self.payload.mcp_url)
+    }
+}
+
+/// Validate the exact loopback endpoint emitted by the Environment server.
+pub fn validate_loopback_mcp_url(value: &str) -> Result<(), String> {
+    let prefix = "http://127.0.0.1:";
+    let rest = value
+        .strip_prefix(prefix)
+        .ok_or_else(|| "mcp_url must use http://127.0.0.1".to_string())?;
+    let port = rest
+        .strip_suffix("/mcp")
+        .ok_or_else(|| "mcp_url path must be /mcp".to_string())?;
+    if port.is_empty() || !port.bytes().all(|byte| byte.is_ascii_digit()) {
+        return Err("mcp_url port must be a non-zero decimal port".into());
+    }
+    let port = port
+        .parse::<u16>()
+        .map_err(|_| "mcp_url port is invalid".to_string())?;
+    if port == 0 {
+        return Err("mcp_url port must be non-zero".into());
+    }
+    Ok(())
+}
+
 const MAX_SCENARIO_PARAM_KEYS: usize = 20;
 const MAX_SCENARIO_PARAM_VALUE_LENGTH: usize = 200;
 
@@ -395,6 +441,30 @@ mod tests {
             Some("checkout latency")
         );
         assert!(decoded.validate().is_ok());
+    }
+
+    #[test]
+    fn validates_environment_ready_as_local_message_only() {
+        let ready: EnvironmentReadyMessage = serde_json::from_value(json!({
+            "type": "env_ready",
+            "payload": {"mcp_url": "http://127.0.0.1:43123/mcp"}
+        }))
+        .unwrap();
+        assert!(ready.validate().is_ok());
+        for url in [
+            "http://127.0.0.1:0/mcp",
+            "https://127.0.0.1:43123/mcp",
+            "http://localhost:43123/mcp",
+            "http://127.0.0.1:43123/mcp?token=secret",
+            "http://127.0.0.1:43123/other",
+        ] {
+            let ready: EnvironmentReadyMessage = serde_json::from_value(json!({
+                "type": "env_ready",
+                "payload": {"mcp_url": url}
+            }))
+            .unwrap();
+            assert!(ready.validate().is_err(), "accepted invalid URL {url}");
+        }
     }
 
     #[test]

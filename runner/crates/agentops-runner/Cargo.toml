@@ -8,6 +8,7 @@ license.workspace = true
 agentops-protocol = { path = "../agentops-protocol" }
 anyhow.workspace = true
 chrono.workspace = true
+getrandom = "0.2"
 nix.workspace = true
 reqwest.workspace = true
 serde_json.workspace = true
