@@ -1210,7 +1210,7 @@ signal.pause()
 }
 
 #[tokio::test]
-async fn dual_supervision_marks_valid_submit_check_as_execution_eligible_and_cleans_environment() {
+async fn dual_supervision_eligible_attempt_retains_token_until_terminal_ack() {
     let server = TestServer::start("continue", 0).await;
     let env_code = r#"
 import json, time
@@ -1219,6 +1219,9 @@ print(json.dumps({"type":"step_completed", "payload":{"index":0,"tool_call":{"na
 time.sleep(30)
 "#;
     let runner = worker(&server, "pass".to_string());
+    let original_lease = runner.environment_token_handoff.acquire("run-1").unwrap();
+    let original_token = original_lease.token.clone();
+    drop(original_lease);
     let outcome = runner
         .supervise_attempt(
             &claim(10_000),
@@ -1233,6 +1236,63 @@ time.sleep(30)
     assert!(outcome.check_succeeded);
     assert!(outcome.planned_environment_teardown);
     assert_eq!(outcome.failure, None);
+
+    // Eligibility is not Control Plane terminal-completion acknowledgement:
+    // a replacement handoff before that acknowledgement must reuse the record.
+    let handoff_dir = runner.environment_token_handoff.directory.clone();
+    let record_path = handoff_dir.join(format!(
+        "{}{}",
+        super::run_id_file_key("run-1"),
+        super::ENV_TOKEN_RECORD_SUFFIX
+    ));
+    assert!(
+        record_path.exists(),
+        "eligible attempt removed its token record"
+    );
+    let token = super::read_token_record(&record_path, "run-1")
+        .unwrap()
+        .expect("eligible attempt did not retain a token record");
+    assert_eq!(token, original_token);
+    let replacement = Worker::new(runner.config.clone()).unwrap();
+    let replacement_lease = replacement
+        .environment_token_handoff
+        .acquire("run-1")
+        .unwrap();
+    assert_eq!(replacement_lease.token, original_token);
+    drop(replacement_lease);
+    let mut recovery_claim = claim(10_000);
+    recovery_claim.attempt = 2;
+    recovery_claim.next_sequence = outcome.next_sequence;
+    let recovered = replacement
+        .supervise_attempt(
+            &recovery_claim,
+            TrustedCommand::new("/usr/bin/python3", vec!["-c", env_code]),
+            TrustedCommand::new("/usr/bin/python3", vec!["-c", "pass"]),
+        )
+        .await
+        .unwrap();
+    assert!(recovered.eligible);
+    assert_eq!(recovered.failure, None);
+    assert_eq!(
+        super::read_token_record(&record_path, "run-1").unwrap(),
+        Some(original_token)
+    );
+    // This seam emits no terminal completion. The explicit cleanup invocation
+    // below models the future caller's acknowledged-terminal precondition only.
+    assert!(server.state.completed.lock().await.is_empty());
+    assert!(runner
+        .cleanup_environment_token_after_terminal_ack("run-1")
+        .unwrap());
+    assert!(!handoff_dir
+        .join(format!(
+            "{}{}",
+            super::run_id_file_key("run-1"),
+            super::ENV_TOKEN_RECORD_SUFFIX
+        ))
+        .exists());
+    assert!(!runner
+        .cleanup_environment_token_after_terminal_ack("run-1")
+        .unwrap());
 }
 
 #[tokio::test]

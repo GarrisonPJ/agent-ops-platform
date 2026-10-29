@@ -108,7 +108,6 @@ impl Drop for LockedFile {
 }
 
 struct TokenLease {
-    record_path: PathBuf,
     _lock_file: LockedFile,
     token: String,
 }
@@ -149,19 +148,37 @@ impl TokenHandoff {
         };
         drop(capacity_lock);
         Ok(TokenLease {
-            record_path,
             _lock_file: lock_file,
             token,
         })
     }
-}
 
-impl TokenLease {
-    fn remove_record(&self) -> Result<()> {
-        // The per-run OS lock remains held for the whole attempt, including
-        // this removal, so a replacement Runner cannot rotate a live token.
-        fs::remove_file(&self.record_path)
-            .with_context(|| "failed to remove Environment token handoff record")
+    /// Remove a logical Run's token record after authoritative Control Plane
+    /// terminal-completion acknowledgement. The caller must establish that
+    /// acknowledgement; this local API does not contact or infer it. The
+    /// capacity and per-run locks are held while the record is inspected and
+    /// removed. A missing record is a successful no-op and never creates a
+    /// replacement token.
+    fn cleanup_after_terminal_ack(&self, run_id: &str) -> Result<bool> {
+        if run_id.is_empty() || run_id.len() > 256 {
+            bail!("logical Run identifier is invalid for token handoff");
+        }
+        ensure_secure_handoff_directory(&self.directory)?;
+        let key = run_id_file_key(run_id);
+        let record_path = self
+            .directory
+            .join(format!("{key}{ENV_TOKEN_RECORD_SUFFIX}"));
+        let lock_path = self.directory.join(format!("{key}{ENV_TOKEN_LOCK_SUFFIX}"));
+        let capacity_path = self.directory.join(".capacity.lock");
+        let _capacity_lock = open_locked_file(&capacity_path)?;
+        let _run_lock = open_locked_file(&lock_path)?;
+
+        if read_token_record(&record_path, run_id)?.is_none() {
+            return Ok(false);
+        }
+        fs::remove_file(&record_path)
+            .with_context(|| "failed to remove Environment token handoff record")?;
+        Ok(true)
     }
 }
 
@@ -627,6 +644,16 @@ impl Worker {
             }),
         )
         .await
+    }
+
+    /// Remove a logical Run's handoff record after authoritative Control Plane
+    /// terminal-completion acknowledgement. The caller is responsible for
+    /// establishing that acknowledgement; this method does not contact or infer
+    /// it. It is a successful no-op when no record exists and never creates a
+    /// replacement token.
+    pub fn cleanup_environment_token_after_terminal_ack(&self, run_id: &str) -> Result<bool> {
+        self.environment_token_handoff
+            .cleanup_after_terminal_ack(run_id)
     }
 
     /// Additive H1-3 seam: supervise one trusted Environment and Agent attempt.
@@ -1418,11 +1445,9 @@ impl Worker {
             facts.planned_environment_teardown = false;
             facts.failure = Some(ExecutionFailure::OutputLimitExceeded);
         }
-        if facts.eligible {
-            // Eligibility is the terminal success handoff. The lease is still
-            // held, so record removal cannot race another same-run Attempt.
-            token_lease.remove_record()?;
-        }
+        // Eligibility is local execution evidence only. Retain the handoff
+        // record until the Control Plane has authoritatively acknowledged
+        // terminal completion through cleanup_environment_token_after_terminal_ack.
         facts.event_retries = event_retries;
         Ok(facts)
     }
@@ -2495,7 +2520,7 @@ mod tests {
     }
 
     #[test]
-    fn environment_token_handoff_reuses_replacement_worker_token_and_cleans_success() {
+    fn environment_token_handoff_reuses_token_and_cleans_only_after_terminal_ack() {
         let directory = unique_test_handoff_directory("agentops-token-handoff-test");
         let first = TokenHandoff::new(Some(directory.clone())).unwrap();
         let lease = first.acquire("run-1").unwrap();
@@ -2508,15 +2533,52 @@ mod tests {
         let unrelated_lease = replacement.acquire("run-2").unwrap();
         assert_ne!(unrelated_lease.token, token);
         drop(unrelated_lease);
-        let cleanup_lease = replacement.acquire("run-1").unwrap();
-        cleanup_lease.remove_record().unwrap();
-        drop(cleanup_lease);
+        assert!(!replacement
+            .cleanup_after_terminal_ack("missing-run")
+            .unwrap());
+        assert!(!directory
+            .join(format!(
+                "{}{ENV_TOKEN_RECORD_SUFFIX}",
+                run_id_file_key("missing-run")
+            ))
+            .exists());
+        let active_lease = replacement.acquire("run-1").unwrap();
+        assert!(replacement.cleanup_after_terminal_ack("run-1").is_err());
+        assert!(directory
+            .join(format!(
+                "{}{ENV_TOKEN_RECORD_SUFFIX}",
+                run_id_file_key("run-1")
+            ))
+            .exists());
+        drop(active_lease);
+        assert!(replacement.cleanup_after_terminal_ack("run-1").unwrap());
         assert!(!directory
             .join(format!(
                 "{}{ENV_TOKEN_RECORD_SUFFIX}",
                 run_id_file_key("run-1")
             ))
             .exists());
+
+        // A post-ack reacquisition is a new handoff only because the explicit
+        // cleanup removed the old record; cleanup itself never creates one.
+        let reacquired = replacement.acquire("run-1").unwrap();
+        assert_ne!(reacquired.token, token);
+        drop(reacquired);
+        assert!(replacement.cleanup_after_terminal_ack("run-1").unwrap());
+        assert!(!replacement.cleanup_after_terminal_ack("run-1").unwrap());
+
+        let malformed_path = directory.join(format!(
+            "{}{ENV_TOKEN_RECORD_SUFFIX}",
+            run_id_file_key("malformed-cleanup")
+        ));
+        write_token_record(&malformed_path, "different-run", &token).unwrap();
+        assert!(replacement
+            .cleanup_after_terminal_ack("malformed-cleanup")
+            .is_err());
+        assert!(
+            malformed_path.exists(),
+            "cleanup removed a mismatched record"
+        );
         let _ = fs::remove_dir_all(directory);
     }
 

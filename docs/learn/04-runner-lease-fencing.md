@@ -1,6 +1,6 @@
 # Runner 的 Lease、Attempt 与 fencing
 
-> **状态：Draft / H1-3 组件交接。** 代码引用以本 worktree 当前 HEAD 为准；H1-3 双进程监督仍是计划中的接线，不是已发布功能，也不声称 H1 acceptance。
+> **状态：Draft / H1-3 组件交接。** 当前已有 `supervise_attempt` 双进程监督组件及假子进程测试；生产 claim/completion 接线仍未完成，不是已发布功能，也不声称 H1 acceptance。
 
 ## 本章的四个定位
 
@@ -126,7 +126,7 @@ next claim → fresh lease, next_sequence, new Attempt marker
 
 ### H1-3 的双进程变化
 
-当前 HEAD 只有一个 Runner-supervised Agent。H1-3 计划把监督顺序变为：
+当前生产 `execute_claim` 仍只有一个 Runner-supervised Agent；`supervise_attempt` 已提供 Environment/Agent 的 additive 双进程监督 seam，但尚未接入生产 claim/completion 路径。H1-3 目标监督顺序为：
 
 ```text
 claim → start outer deadline
@@ -138,7 +138,7 @@ claim → start outer deadline
   → cancel/timeout/lease failure: terminate shared process group
 ```
 
-Environment 与 Agent 必须属于同一个 shared process group，取消或 timeout 时一起收到 `SIGTERM`，共享 2 秒 grace 到期再一起 `SIGKILL`。这条双进程实现、`env_ready` protocol message 和假子进程测试在当前 HEAD 还没有；不要把当前 `terminate_child` 的单 Agent 语义写成已交付 H1。
+Environment 与 Agent 必须属于同一个 shared process group，取消或 timeout 时一起收到 `SIGTERM`，共享 2 秒 grace 到期再一起 `SIGKILL`。`supervise_attempt` 已覆盖这条双进程监督 seam、`EnvironmentReadyMessage` 校验和假子进程测试，但生产 claim/completion 接线仍未完成；不要把它写成已交付 H1。
 
 Environment 的 stdin 读取本身只需要一行 spec，并不要求 Runner 关闭 stdin 才返回；Runner 仍必须监督写入过程与启动 deadline。Agent 的现有 stdin 写入则在写完后关闭。无论哪一侧，启动/写入/读取都不得无限等待。
 
@@ -181,7 +181,7 @@ ADR-0012 的规则是“失败门先于健康清理例外”：
 | stdout 行过长或 stdout live output 超限；child/drain 完成后 combined output 超限 | `failed / output_limit_exceeded` | stdout 有 live 行长/字节 enforcement；stderr 持续 drain/count 但无 live byte cap。child 与 drain 完成后检查 stdout+stderr 合计；final check 不覆盖 `cancelled`/`timed_out`，所以 live stderr-limit 仍是 residual gap。 |
 | Agent 非零退出 | `failed / agent_exit` | 当前结构化 Provider failure signal 可优先映射 `provider_failure`；H1 成功门仍不接受 Agent abnormal。 |
 | lease 过期/不属于 runner | API 拒绝 heartbeat/event/complete | 不是“再试一次同 lease”；等待下一 Attempt recovery。 |
-| healthy Environment planned teardown | 当前不存在双进程路径 | H1 目标中是清理动作，不是 failure；但不能覆盖上面任一失败门。 |
+| healthy Environment planned teardown | 生产单 Agent 路径不适用；additive seam 已有直接 Environment leader signal 与共享组清理 | 是清理动作，不是 authoritative success；不能覆盖失败门。 |
 
 当前 `tokio::select!` 中 EOF、heartbeat、deadline、child exit 和 output-limit 可能在边界同时就绪；当前代码的局部竞争顺序不能当作跨平台的完整 precedence proof。**exit-boundary framing P2** 仍需明确 partial final line、terminal event、child exit 和 teardown 的排序。H1 文档能确定的是：失败门不得被 planned teardown 盖掉，旧 lease 不得完成；不能替实现凭空指定尚未审查的 wire 字段或新的失败排序。
 
@@ -199,7 +199,7 @@ Agent stdout ──────────────> 诊断/受限 relay；�
 
 `env_ready` 只是本地监督消息，不是 RunEvent。它不占 durable sequence、不能含 raw token、不能建立成功。Environment 的 `submit_result` 会使世界只执行一次 `check()` 并冻结；`report_usage` 的值是 Agent-reported，null/省略仍是 unknown。Reserved controls 不进入世界轨迹。Control Plane 已按 ADR-0012 决定：评分使用最新 Attempt 的持久化 all-world-attempt projection，包含 refusals/rejections，排除 reserved controls；rejection 投影为 `rejected_tool`、status `failed`，不能满足 named tool assertions。Valid-only Environment history 不能覆盖这条投影；后续只留下 additive trusted final-check evidence 与 Control Plane completion wiring 这两个 H1-5/集成 seam，Rust 不自行评分。
 
-每个 recovery Attempt 都应获得新的 Environment 和 endpoint，但同一 logical Run 按 ADR-0008 只生成一个 capability token，并由该 Run 的 recovery Attempts 继续使用；只有新的 logical Run 才生成新 token，除非先修改 ADR。相同 seed/spec 不意味着可以把旧 Attempt 的事实接到新 Attempt。RunEvent 的 durable `attempt` 与 `run_started` marker 让 Control Plane 能选择最新 Attempt；当前 Runner 的 marker 还只有 `attempt`，所以 H1 的 `source: "environment"` 尚未是现有代码事实。
+每个 recovery Attempt 都应获得新的 Environment 和 endpoint，但同一 logical Run 按 ADR-0008 只生成一个 capability token，并由该 Run 的 recovery Attempts 继续使用；只有新的 logical Run 才生成新 token，除非先修改 ADR。`supervise_attempt` 即使返回 `eligible` 也必须保留 protected handoff record；eligibility 不是 Control Plane terminal completion acknowledgment。只有已经获得该权威确认的调用方才可调用 `cleanup_environment_token_after_terminal_ack`；该 API 在 per-run lock 内校验并删除 record，缺失时幂等 no-op，不创建新 token，也不自行验证或推断远端确认。当前 seam 不调用 completion，因此清理 API 仍未接入生产路径。相同 seed/spec 不意味着可以把旧 Attempt 的事实接到新 Attempt。RunEvent 的 durable `attempt` 与 `run_started` marker 让 Control Plane 能选择最新 Attempt；生产路径 marker 只有 `attempt`，additive seam 已额外标记 `source: "environment"`。
 
 ## 7. 健康 teardown 与 unexpected failure 的分界
 
@@ -213,7 +213,7 @@ Agent stdout ──────────────> 诊断/受限 relay；�
 | 取消、timeout、output-limit 或 lease 已失效 | 任意 | 对应失败/取消路径优先；planned teardown 例外不适用。 |
 | 只有 Agent 自报 score/status、exit 0、EOF、ready 或 check marker | 任意 | 证据不足；不是 authoritative success。 |
 
-当前 HEAD 没有可证明“Agent exit 之后 Environment 健康且最终 evidence 已完整捕获”的 post-Agent-exit proof。H1-3 不能通过一个 `wait()` 或 exit code 补造该证明；后续 seam 仅是 additive trusted final-check evidence 与 Control Plane completion wiring。
+additive seam 已在 Agent exit 后保留有界读取、heartbeat/upload 监督，并在直接向 Environment leader 发 teardown signal 前检查失败门；这只是本地执行证据，不是最终可信证据完整性或 Control Plane terminal agreement 的证明。后续仍需 additive trusted final-check evidence 与 completion wiring，不能通过一个 `wait()` 或 exit code 补造。
 
 ## 8. 学习用 recovery 例子
 
@@ -243,11 +243,11 @@ Agent stdout ──────────────> 诊断/受限 relay；�
 
 ## 9. 已知缺口与测试边界
 
-- 本章的 lease/attempt/fencing 描述来自当前 Phase 1 Control Plane，已实现；H1-3 的双进程 supervision、shared process group、Environment stdout source separation 和 `env_ready` 接线尚未在当前 HEAD 集成。
-- 当前 output accounting 是 stdout/stderr 字节统计，不是 token accounting：stdout 对行长和 stdout 字节数做 live enforcement；stderr 持续 drain/count 但没有 live byte cap；child 与 stderr drain 完成后才检查 combined stdout+stderr，且 final check 不覆盖 cancellation/timeout。live stderr-limit gap 仍是 residual gap。Environment usage 缺失时保持 unknown，Agent 报告也不是 measured truth。
-- post-exit proof 尚未实现；不能声称 Agent exit 之后 Environment final-check、trusted evidence 与 CP completion 已一致。
+- 本章的 lease/attempt/fencing 描述来自当前 Phase 1 Control Plane，已实现；`supervise_attempt` 已有双进程 supervision/shared process group、Environment stdout source separation 和严格 `env_ready` 校验，但未接入生产 claim/completion 路径。
+- 生产单 Agent 路径仍有前述 live stderr-limit gap；additive seam 则把双子进程的四条 stdout/stderr 合并到一个 live bounded total，并在 cleanup drains 后以 overflow 清除 eligibility。二者都只是字节统计，不是 Provider token accounting；usage 缺失保持 unknown，Agent 报告也不是 measured truth。
+- 已有局部 post-Agent-exit 监督与 token retention 回归；仍不能声称 Environment final-check、trusted evidence 与 CP completion 已一致。
 - JSONL framing 的 exit-boundary P2 仍未封闭，尤其是 partial final line、EOF 与 terminal event 的先后；`read_bounded_line` 的有界性不等于完整终态证明。
-- H1 integrated Golden、PostgreSQL-specific validation、live-model/reference-agent acceptance 尚未由 H1-3 组件文档提供；当前单 Agent Rust tests 不能替代这些验收。
+- H1 integrated Golden、PostgreSQL-specific validation、live-model/reference-agent acceptance 尚未由 H1-3 组件文档提供；现有单 Agent 与 additive 双进程 Rust tests 都不能替代这些验收。
 - 不写 v1 alias，不把 H2 外部 Agent registry/adapter 扩进 H1-3；canonical v2 defaults 和旧 v1 execution retirement 由 H1-4/H1-5/集成按 ADR-0012 处理。
 
 继续阅读：[`01-run-lifecycle.md`](01-run-lifecycle.md)、[`02-environment-and-mcp.md`](02-environment-and-mcp.md)、[`ADR-0002`](../adr/0002-runner-recovery.md)、[`ADR-0008`](../adr/0008-environment-mcp-server-and-env-side-capture.md)。
