@@ -1,5 +1,20 @@
-import { recordedJourneySchema } from "../../schemas/phase1";
+import { agentMetadataSchema, recordedJourneySchema } from "../../schemas/phase1";
 import rawJourney from "./goldenJourney.json";
+
+export const registeredAgents = [
+  {
+    id: "fixture-agent.v1",
+    name: "Deterministic fixture agent",
+    kind: "fixture",
+    description: "Deterministic MCP agent for local Golden validation.",
+  },
+  {
+    id: "reference-openai-compatible.v1",
+    name: "OpenAI-compatible reference agent",
+    kind: "reference",
+    description: "MCP reference loop using Runner-side provider configuration.",
+  },
+].map((agent) => agentMetadataSchema.parse(agent));
 
 export const goldenJourney = recordedJourneySchema.parse(rawJourney);
 export const goldenExperiment = goldenJourney.experiment;

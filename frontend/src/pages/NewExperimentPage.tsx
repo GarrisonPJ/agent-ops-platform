@@ -3,7 +3,11 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import ErrorBanner from "../components/ErrorBanner";
 import { getApiErrorMessage } from "../lib/phase1Format";
-import { useCreateExperimentMutation, useGetScenariosQuery } from "../services/experimentsApi";
+import {
+  useCreateExperimentMutation,
+  useGetAgentsQuery,
+  useGetScenariosQuery,
+} from "../services/experimentsApi";
 import type { ExecutionMode, Scenario } from "../types/phase1";
 
 const FALLBACK_SCENARIO: Scenario = {
@@ -27,6 +31,7 @@ export default function NewExperimentPage() {
     isLoading: scenariosLoading,
     error: scenariosError,
   } = useGetScenariosQuery();
+  const { data: agents = [], isLoading: agentsLoading, error: agentsError } = useGetAgentsQuery();
   const availableScenarios = scenarios.length > 0 ? scenarios : [FALLBACK_SCENARIO];
   const [selectedScenarioId, setSelectedScenarioId] = useState(
     availableScenarios[0]?.id ?? FALLBACK_SCENARIO.id,
@@ -44,6 +49,12 @@ export default function NewExperimentPage() {
     emptyScenarioParams(FALLBACK_SCENARIO),
   );
   const [executionMode, setExecutionMode] = useState<ExecutionMode>("fixture");
+  const [selectedAgentId, setSelectedAgentId] = useState("");
+  const defaultAgentId =
+    executionMode === "provider" ? "reference-openai-compatible.v1" : "fixture-agent.v1";
+  const effectiveAgent = agents.find((agent) => agent.id === (selectedAgentId || defaultAgentId));
+  const agentsReady = !agentsLoading && !agentsError && agents.length > 0;
+  const canSubmitAgent = agentsReady && !!effectiveAgent;
   const [formError, setFormError] = useState<string | null>(null);
   const [createExperiment, { isLoading }] = useCreateExperimentMutation();
 
@@ -67,6 +78,10 @@ export default function NewExperimentPage() {
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setFormError(null);
+    if (!canSubmitAgent) {
+      setFormError("Choose an available registered Agent before creating an experiment.");
+      return;
+    }
     if (!name.trim() || !task.trim()) {
       setFormError("Name and task are required.");
       return;
@@ -88,6 +103,7 @@ export default function NewExperimentPage() {
         task: task.trim(),
         scenario_id: selectedScenario.id,
         execution_mode: executionMode,
+        ...(selectedAgentId ? { agent_id: selectedAgentId } : {}),
         scenario_params: Object.keys(normalizedParams).length > 0 ? normalizedParams : undefined,
       }).unwrap();
       navigate(`/experiments/${experiment.id}`);
@@ -252,6 +268,61 @@ export default function NewExperimentPage() {
           </div>
         </fieldset>
 
+        <div className="rounded-md border border-border bg-bg-card p-5 shadow-inner-glow">
+          <label htmlFor="agent" className="text-sm font-semibold">
+            Agent
+          </label>
+          <p id="agent-help" className="mt-2 text-sm leading-6 text-fg-muted">
+            Automatic omits agent_id: fixture mode defaults to fixture-agent.v1; provider mode
+            defaults to reference-openai-compatible.v1. An explicit registered Agent takes
+            precedence and stays selected when execution mode changes.
+          </p>
+          <select
+            id="agent"
+            value={selectedAgentId}
+            onChange={(event) => setSelectedAgentId(event.target.value)}
+            disabled={!agentsReady}
+            aria-describedby="agent-help agent-status"
+            className="mt-3 w-full rounded-md border border-border bg-bg-root px-4 py-3 text-sm text-fg-primary"
+          >
+            <option value="">Automatic (execution mode default)</option>
+            {agentsReady
+              ? agents.map((agent) => (
+                  <option key={agent.id} value={agent.id}>
+                    {agent.name} — {agent.id} ({agent.kind})
+                  </option>
+                ))
+              : null}
+          </select>
+          <div
+            id="agent-status"
+            className="mt-3 text-sm leading-6 text-fg-muted"
+            aria-live="polite"
+          >
+            {agentsLoading ? (
+              <p role="status">Loading registered Agents…</p>
+            ) : agentsError ? (
+              <ErrorBanner
+                title="Agents unavailable"
+                message="The Agent registry could not be loaded. Creation is disabled until it is available."
+              />
+            ) : agents.length === 0 ? (
+              <p role="alert">
+                No registered Agents are available. Experiment creation is disabled.
+              </p>
+            ) : effectiveAgent ? (
+              <p>
+                {effectiveAgent.name} · {effectiveAgent.id} · {effectiveAgent.kind}:{" "}
+                {effectiveAgent.description}
+              </p>
+            ) : (
+              <p role="alert">
+                The selected Agent or mode default is not registered. Choose an available Agent.
+              </p>
+            )}
+          </div>
+        </div>
+
         <label className="block">
           <span className="text-sm font-semibold">Experiment name</span>
           <input
@@ -286,7 +357,7 @@ export default function NewExperimentPage() {
           </Link>
           <button
             type="submit"
-            disabled={isLoading || scenariosLoading}
+            disabled={isLoading || scenariosLoading || !canSubmitAgent}
             className="inline-flex items-center justify-center gap-2 rounded-md bg-accent px-5 py-2.5 text-sm font-semibold text-white shadow-inner-glow-accent transition-colors hover:bg-accent/90 disabled:cursor-wait disabled:opacity-60"
           >
             {isLoading ? "Creating…" : "Create experiment"}

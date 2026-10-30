@@ -36,6 +36,32 @@ export const scenarioIdSchema = z
   .max(64)
   .regex(/^[a-z0-9][a-z0-9-]+\.v[0-9]+$/);
 
+export const agentIdSchema = z
+  .string()
+  .min(4)
+  .max(64)
+  .regex(/^[a-z0-9][a-z0-9-]+\.v[0-9]+$/);
+
+// Registry metadata bounds count Unicode code points in Python and Rust,
+// not JavaScript UTF-16 code units. Keep the same public four-field boundary.
+const agentTextSchema = (maximum: number) =>
+  z
+    .string()
+    .min(1)
+    .refine((value) => Array.from(value).length <= maximum, {
+      message: `Expected at most ${maximum} Unicode characters`,
+    })
+    .refine((value) => !value.includes("\u0000"), { message: "NUL is not allowed" });
+
+export const agentMetadataSchema = z
+  .object({
+    id: agentIdSchema,
+    name: agentTextSchema(200),
+    kind: z.enum(["fixture", "reference"]),
+    description: agentTextSchema(1000),
+  })
+  .strict();
+
 export const scenarioParamKeySchema = z
   .string()
   .min(1)
@@ -57,6 +83,7 @@ export const evaluationSpecSchema = z
     task: z.string().min(1).max(4_000),
     seed: z.number().int().min(0).max(2_147_483_647),
     execution_mode: executionModeSchema.optional(),
+    agent_id: agentIdSchema.nullable().optional(),
     policy: policyPatchSchema.nullable(),
     limits: z
       .object({
@@ -160,6 +187,7 @@ export const experimentSchema = z
     scenario_id: scenarioIdSchema,
     scenario_params: scenarioParamsSchema.optional(),
     execution_mode: executionModeSchema.optional(),
+    agent_id: agentIdSchema.nullable().optional(),
     created_at: z.string().min(1),
     runs: z.array(runSchema),
     regression_cases: z.array(regressionCaseSchema).optional().default([]),
@@ -228,6 +256,7 @@ export type RunMetrics = z.infer<typeof runMetricsSchema>;
 export type Run = z.infer<typeof runSchema>;
 export type Policy = z.infer<typeof policySchema>;
 export type RegressionCase = z.infer<typeof regressionCaseSchema>;
+export type AgentMetadata = z.infer<typeof agentMetadataSchema>;
 export type Scenario = z.infer<typeof scenarioSummarySchema>;
 export type Experiment = z.infer<typeof experimentSchema>;
 export type FailureEvidence = z.infer<typeof failureEvidenceSchema>;

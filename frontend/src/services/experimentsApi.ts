@@ -1,6 +1,7 @@
 import { createApi, fetchBaseQuery } from "@reduxjs/toolkit/query/react";
 import { z } from "zod";
 import {
+  agentMetadataSchema,
   experimentSchema,
   policySchema,
   regressionCaseSchema,
@@ -9,6 +10,7 @@ import {
   scenarioSummarySchema,
 } from "../schemas/phase1";
 import type {
+  AgentMetadata,
   CreateExperimentRequest,
   Experiment,
   Policy,
@@ -21,13 +23,19 @@ import { recordedBaseQuery } from "./recorded/handlers";
 
 const IS_RECORDED_DEMO = import.meta.env.VITE_MOCK_API === "true";
 const experimentListSchema = z.array(experimentSchema);
+const agentListSchema = z.array(agentMetadataSchema).max(32);
 const scenarioListSchema = z.array(scenarioSummarySchema);
 
 export const experimentsApi = createApi({
   reducerPath: "experimentsApi",
   baseQuery: IS_RECORDED_DEMO ? recordedBaseQuery : fetchBaseQuery({ baseUrl: "/api" }),
-  tagTypes: ["Experiments", "Experiment", "Run", "Analysis", "Scenarios"],
+  tagTypes: ["Experiments", "Experiment", "Run", "Analysis", "Scenarios", "Agents"],
   endpoints: (builder) => ({
+    getAgents: builder.query<AgentMetadata[], void>({
+      query: () => "/agents",
+      transformResponse: (response) => agentListSchema.parse(response),
+      providesTags: [{ type: "Agents", id: "LIST" }],
+    }),
     getScenarios: builder.query<Scenario[], void>({
       query: () => "/scenarios",
       transformResponse: (response) => scenarioListSchema.parse(response),
@@ -111,6 +119,7 @@ export const experimentsApi = createApi({
 });
 
 export const {
+  useGetAgentsQuery,
   useGetScenariosQuery,
   useGetExperimentsQuery,
   useCreateExperimentMutation,

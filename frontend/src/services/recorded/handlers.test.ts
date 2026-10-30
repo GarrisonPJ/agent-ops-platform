@@ -1,9 +1,70 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { agentMetadataSchema, experimentSchema, runSchema } from "../../schemas/phase1";
 import { BASELINE_RUN_ID, GOLDEN_EXPERIMENT_ID, candidatePolicy } from "./fixtures";
 import { recordedHandler, resetRecordedDemo } from "./handlers";
 
 describe("recorded demo handlers", () => {
   beforeEach(() => resetRecordedDemo());
+
+  it("serves only registered public Agent metadata and returns independent copies", async () => {
+    const response = await recordedHandler("GET", "/api/agents");
+    if (!("data" in response)) throw new Error("Expected Agent metadata");
+    const agents = (response.data as unknown[]).map((agent) => agentMetadataSchema.parse(agent));
+    expect(agents.map((agent) => agent.id)).toEqual([
+      "fixture-agent.v1",
+      "reference-openai-compatible.v1",
+    ]);
+    for (const agent of agents)
+      expect(Object.keys(agent).sort()).toEqual(["description", "id", "kind", "name"]);
+    (response.data as { name: string }[])[0].name = "Changed locally";
+    expect(await recordedHandler("GET", "/agents")).toEqual({ data: agents });
+  });
+
+  it.each([
+    { mode: "fixture", agentId: undefined, effectiveId: "fixture-agent.v1" },
+    { mode: "provider", agentId: undefined, effectiveId: "reference-openai-compatible.v1" },
+    { mode: "provider", agentId: "fixture-agent.v1", effectiveId: "fixture-agent.v1" },
+    {
+      mode: "fixture",
+      agentId: "reference-openai-compatible.v1",
+      effectiveId: "reference-openai-compatible.v1",
+    },
+  ])(
+    "preserves explicit selection or resolves mode fallback: $mode / $agentId",
+    async ({ mode, agentId, effectiveId }) => {
+      const createdResponse = await recordedHandler("POST", "/experiments", {
+        name: "Agent choice",
+        execution_mode: mode,
+        ...(agentId ? { agent_id: agentId } : {}),
+      });
+      if (!("data" in createdResponse)) throw new Error("Expected Experiment");
+      const experiment = experimentSchema.parse(createdResponse.data);
+      expect(experiment.agent_id).toBe(agentId ?? null);
+      const baseline = await recordedHandler("POST", `/experiments/${experiment.id}/runs`, {});
+      if (!("data" in baseline)) throw new Error("Expected Run");
+      expect(runSchema.parse(baseline.data).evaluation_spec.agent_id).toBe(effectiveId);
+      await recordedHandler("POST", `/policies/${candidatePolicy.id}/replay`);
+      const detail = await recordedHandler("GET", `/experiments/${experiment.id}`);
+      if (!("data" in detail)) throw new Error("Expected Experiment");
+      const replay = experimentSchema.parse(detail.data).runs.find((run) => run.kind === "replay");
+      expect(replay?.evaluation_spec.agent_id).toBe(effectiveId);
+    },
+  );
+
+  it("rejects unknown explicit Agents instead of using a mode default", async () => {
+    expect(
+      await recordedHandler("POST", "/experiments", { agent_id: "unknown-agent.v1" }),
+    ).toMatchObject({
+      error: {
+        status: 400,
+        data: {
+          code: "AGENT_NOT_REGISTERED",
+          message: "Agent is not registered",
+          details: { agent_id: "unknown-agent.v1" },
+        },
+      },
+    });
+  });
 
   it("serves a Zod-validated recording of the real Golden scenario", async () => {
     const response = await recordedHandler("GET", "/experiments");
@@ -91,6 +152,7 @@ describe("recorded demo handlers", () => {
   it("saves a fixture failure and gates activation on its regression replay", async () => {
     const createdResponse = await recordedHandler("POST", "/experiments", {
       name: "Recorded regression",
+      agent_id: "reference-openai-compatible.v1",
       task: "Investigate checkout API latency",
       scenario_id: "checkout-api-latency.v1",
     });
@@ -99,6 +161,9 @@ describe("recorded demo handlers", () => {
     const baselineResponse = await recordedHandler("POST", `/experiments/${experimentId}/runs`, {});
     if (!("data" in baselineResponse)) return;
     const runId = (baselineResponse.data as { id: string }).id;
+    expect(runSchema.parse(baselineResponse.data).evaluation_spec.agent_id).toBe(
+      "reference-openai-compatible.v1",
+    );
 
     const saved = await recordedHandler("POST", `/runs/${runId}/regression-case`);
     expect(saved).toMatchObject({
@@ -125,6 +190,12 @@ describe("recorded demo handlers", () => {
         ],
       },
     });
+    const detail = await recordedHandler("GET", `/experiments/${experimentId}`);
+    if (!("data" in detail)) throw new Error("Expected Experiment");
+    const regressionReplay = experimentSchema
+      .parse(detail.data)
+      .runs.find((run) => run.id.startsWith("recorded-regression-replay"));
+    expect(regressionReplay?.evaluation_spec.agent_id).toBe("reference-openai-compatible.v1");
     expect(await recordedHandler("POST", `/policies/${candidatePolicy.id}/activate`)).toMatchObject(
       { data: { status: "active" } },
     );

@@ -12,20 +12,24 @@ import {
   goldenExperiment,
   replayAnalysis,
   replayRun,
+  registeredAgents,
   secondaryExperiment,
 } from "./fixtures";
 
 type RecordedError = {
   status: number;
-  data: { code: string; message: string };
+  data: { code: string; message: string; details?: unknown };
 };
 
 let experiments: Experiment[] = [cloneFixture(goldenExperiment), cloneFixture(secondaryExperiment)];
 
 const delay = () => new Promise((resolve) => setTimeout(resolve, 120));
 const ok = (data: unknown) => ({ data });
-const fail = (status: number, code: string, message: string) => ({
-  error: { status, data: { code, message } } satisfies RecordedError,
+const fail = (status: number, code: string, message: string, details?: unknown) => ({
+  error: {
+    status,
+    data: { code, message, ...(details ? { details } : {}) },
+  } satisfies RecordedError,
 });
 
 function normalizedPath(url: string) {
@@ -48,6 +52,10 @@ function replaceCandidate(policy: Policy) {
 export async function recordedHandler(method: string, url: string, body?: unknown) {
   await delay();
   const path = normalizedPath(url);
+
+  if (method === "GET" && path === "/agents") {
+    return ok(cloneFixture(registeredAgents));
+  }
 
   if (method === "GET" && path === "/scenarios") {
     return ok(
@@ -105,6 +113,7 @@ export async function recordedHandler(method: string, url: string, body?: unknow
       task?: string;
       scenario_id?: string;
       execution_mode?: ExecutionMode;
+      agent_id?: string | null;
       scenario_params?: Record<string, string>;
     };
     if (request.scenario_id === "multi-step-research.v1") {
@@ -118,6 +127,14 @@ export async function recordedHandler(method: string, url: string, body?: unknow
       }
     }
     const executionMode = request.execution_mode ?? "fixture";
+    const effectiveAgentId =
+      request.agent_id ??
+      (executionMode === "provider" ? "reference-openai-compatible.v1" : "fixture-agent.v1");
+    if (!registeredAgents.some((agent) => agent.id === effectiveAgentId)) {
+      return fail(400, "AGENT_NOT_REGISTERED", "Agent is not registered", {
+        agent_id: effectiveAgentId,
+      });
+    }
     const created: Experiment = {
       id: `exp-recorded-${experiments.length + 1}`,
       name: request.name?.trim() || "Recorded experiment",
@@ -125,6 +142,7 @@ export async function recordedHandler(method: string, url: string, body?: unknow
       scenario_id: request.scenario_id ?? "checkout-api-latency.v1",
       scenario_params: request.scenario_params ?? {},
       execution_mode: executionMode,
+      agent_id: request.agent_id ?? null,
       created_at: "2026-07-16T09:00:00Z",
       runs: [],
       regression_cases: [],
@@ -149,6 +167,11 @@ export async function recordedHandler(method: string, url: string, body?: unknow
         experiment_id: experiment.id,
         task: experiment.task,
         execution_mode: experiment.execution_mode ?? "fixture",
+        agent_id:
+          experiment.agent_id ??
+          (experiment.execution_mode === "provider"
+            ? "reference-openai-compatible.v1"
+            : "fixture-agent.v1"),
         scenario_id: experiment.scenario_id,
         scenario_params: experiment.scenario_params ?? {},
       },
@@ -296,6 +319,11 @@ export async function recordedHandler(method: string, url: string, body?: unknow
         experiment_id: experiment.id,
         task: experiment.task,
         execution_mode: experiment.execution_mode ?? "fixture",
+        agent_id:
+          experiment.agent_id ??
+          (experiment.execution_mode === "provider"
+            ? "reference-openai-compatible.v1"
+            : "fixture-agent.v1"),
         scenario_id: experiment.scenario_id,
         scenario_params: experiment.scenario_params ?? {},
         policy: policy.patch,
@@ -340,6 +368,13 @@ export async function recordedHandler(method: string, url: string, body?: unknow
           experiment_id: experiment.id,
           scenario_id: pending.scenario_id,
           seed: pending.seed,
+          agent_id:
+            experiment.runs.find((run) => run.id === pending.source_run_id)?.evaluation_spec
+              .agent_id ??
+            experiment.agent_id ??
+            (pending.execution_mode === "provider"
+              ? "reference-openai-compatible.v1"
+              : "fixture-agent.v1"),
           scenario_params: pending.scenario_params,
           policy: experiment.candidate_policy.patch,
         },

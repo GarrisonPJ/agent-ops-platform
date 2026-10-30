@@ -1,4 +1,5 @@
 import type {
+  AgentMetadata,
   EvaluationSpec,
   EventEnvelope,
   ExecutionMode,
@@ -16,6 +17,7 @@ import type {
 } from "../schemas/phase1";
 
 export type {
+  AgentMetadata,
   EvaluationSpec,
   EventEnvelope,
   ExecutionMode,
@@ -63,4 +65,5 @@ export interface CreateExperimentRequest {
   scenario_id: string;
   execution_mode: ExecutionMode;
   scenario_params?: Record<string, string>;
+  agent_id?: string;
 }
