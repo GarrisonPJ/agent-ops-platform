@@ -30,7 +30,14 @@ use tokio::io::{
 use tokio::process::{Child, Command};
 use tokio::time::{interval, sleep, timeout, timeout_at, Instant, Interval};
 
+mod registry;
+pub use registry::{AgentMetadata, AgentRegistry, RegistryError};
+
 pub const MAX_LINE_BYTES: usize = 65_536;
+/// Repository-relative default; deployments should package config/agents.toml and set the
+/// environment override when the binary is moved outside the repository.
+pub const DEFAULT_AGENT_REGISTRY_PATH: &str =
+    concat!(env!("CARGO_MANIFEST_DIR"), "/../../../config/agents.toml");
 const NETWORK_RETRY_WINDOW: Duration = Duration::from_secs(10);
 const MAX_CACHED_ENVIRONMENT_TOKENS: usize = 1024;
 const ENV_TOKEN_HANDOFF_ENV: &str = "AGENTOPS_ENV_TOKEN_HANDOFF_DIR";
@@ -654,6 +661,18 @@ impl Worker {
     pub fn cleanup_environment_token_after_terminal_ack(&self, run_id: &str) -> Result<bool> {
         self.environment_token_handoff
             .cleanup_after_terminal_ack(run_id)
+    }
+
+    /// Additive H1-4 seam for production cutover: resolve a spec through the
+    /// operator registry before passing the resulting argv to supervision.
+    /// `AGENTOPS_AGENT_PROGRAM` remains the local break-glass command until
+    /// cutover; an explicit registry selection must take precedence then.
+    pub fn resolve_agent_command(
+        &self,
+        registry: &AgentRegistry,
+        spec: &EvaluationSpec,
+    ) -> Result<TrustedCommand> {
+        registry.resolve_spec(spec).map_err(anyhow::Error::msg)
     }
 
     /// Additive H1-3 seam: supervise one trusted Environment and Agent attempt.

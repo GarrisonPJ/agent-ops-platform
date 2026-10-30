@@ -294,6 +294,7 @@ fn claim(timeout_ms: u64) -> ClaimResponse {
         run_id: "run-1".into(),
         experiment_id: "experiment-1".into(),
         scenario_id: "checkout-api-latency.v1".into(),
+        agent_id: None,
         task: "Investigate checkout latency".into(),
         seed: 42,
         execution_mode: ExecutionMode::Fixture,

@@ -189,6 +189,8 @@ pub struct EvaluationSpec {
     pub run_id: String,
     pub experiment_id: String,
     pub scenario_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_id: Option<String>,
     pub task: String,
     pub seed: u64,
     #[serde(default)]
@@ -216,6 +218,20 @@ impl EvaluationSpec {
                 "scenario '{}' does not match the allowlisted id pattern",
                 self.scenario_id
             ));
+        }
+        if let Some(agent_id) = &self.agent_id {
+            // Agent identifiers share the Python registry grammar, whose base
+            // has at least two ASCII characters. Do not change legacy scenario IDs.
+            if !is_valid_scenario_id(agent_id)
+                || agent_id
+                    .rsplit_once(".v")
+                    .is_none_or(|(base, _)| base.len() < 2)
+            {
+                return Err(format!(
+                    "agent '{}' does not match the allowlisted id pattern",
+                    agent_id
+                ));
+            }
         }
         if self.scenario_params.len() > MAX_SCENARIO_PARAM_KEYS {
             return Err(format!(
@@ -402,6 +418,7 @@ mod tests {
             run_id: "run-1".into(),
             experiment_id: "experiment-1".into(),
             scenario_id: "checkout-api-latency.v1".into(),
+            agent_id: None,
             task: "Investigate checkout latency".into(),
             seed: 42,
             execution_mode: ExecutionMode::Fixture,
@@ -472,6 +489,28 @@ mod tests {
         let mut value = spec();
         value.scenario_id = "INVALID".into();
         assert!(value.validate().unwrap_err().contains("allowlisted"));
+    }
+
+    #[test]
+    fn agent_id_is_optional_and_matches_registry_grammar() {
+        let mut value = spec();
+        assert!(value.validate().is_ok());
+        for id in [
+            "INVALID", "a.v1", "ab.v", "ab.v-1", "éx.v1", " ab.v1", "ab.v1 ",
+        ] {
+            value.agent_id = Some(id.into());
+            assert!(value.validate().unwrap_err().contains("agent"), "{id}");
+        }
+        for id in [
+            "ab.v1".into(),
+            "0-.v0".into(),
+            format!("{}.v1", "a".repeat(61)),
+        ] {
+            value.agent_id = Some(id.clone());
+            assert!(value.validate().is_ok(), "{id}");
+        }
+        value.agent_id = Some(format!("{}.v1", "a".repeat(62)));
+        assert!(value.validate().is_err());
     }
 
     #[test]
