@@ -117,6 +117,8 @@ class ProviderError(Exception):
 class ProviderUsage:
     prompt_tokens: int = 0
     completion_tokens: int = 0
+    prompt_tokens_available: bool = True
+    completion_tokens_available: bool = True
 
 
 @dataclass(frozen=True)
@@ -466,6 +468,8 @@ def _parse_response(
             completion_tokens=_nonnegative_int(
                 usage.get("completion_tokens") if isinstance(usage, dict) else 0
             ),
+            prompt_tokens_available=_usage_field_available(usage, "prompt_tokens"),
+            completion_tokens_available=_usage_field_available(usage, "completion_tokens"),
         ),
         latency_ms=latency_ms,
         request_count=request_count,
@@ -599,3 +603,9 @@ def _elapsed_ms(started_at: float) -> int:
 
 def _nonnegative_int(value: object) -> int:
     return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else 0
+
+
+def _usage_field_available(usage: object, field: str) -> bool:
+    """Availability is stricter than the legacy numeric fallback API."""
+    value = usage.get(field) if isinstance(usage, dict) else None
+    return type(value) is int and 0 <= value <= 1_000_000_000

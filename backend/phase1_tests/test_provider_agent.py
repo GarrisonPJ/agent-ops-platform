@@ -967,3 +967,47 @@ async def test_legacy_checkout_provider_still_rejects_fixture_log_arguments(
         "required": ["service", "query"],
         "additionalProperties": False,
     }
+
+
+@pytest.mark.parametrize("field", ["prompt_tokens", "completion_tokens"])
+@pytest.mark.parametrize("value,available", [
+    (0, True), (1_000_000_000, True), (None, False), (True, False),
+    (-1, False), (1.0, False), ("1", False), (1_000_000_001, False),
+    (float("nan"), False), (float("inf"), False),
+])
+def test_provider_usage_availability_is_strict_and_independent(field, value, available):
+    import httpx
+    from app.phase1_provider import _parse_response
+    response = _parse_response(httpx.Response(200, content=json.dumps({
+        "choices": [{"message": {"content": "done"}}],
+        "usage": {"prompt_tokens": 5, "completion_tokens": 5} | {field: value},
+    }).encode()), latency_ms=1, request_count=1)
+    other = "completion_tokens" if field == "prompt_tokens" else "prompt_tokens"
+    assert getattr(response.usage, field + "_available") is available
+    assert getattr(response.usage, other + "_available") is True
+    assert getattr(response.usage, other) == 5
+    assert type(getattr(response.usage, field)) is int  # legacy numeric API is unchanged
+
+
+@pytest.mark.parametrize("usage", [None, {}, [], {"prompt_tokens": 2}])
+def test_provider_missing_usage_preserves_unknown_dimensions(usage):
+    import httpx
+    from app.phase1_provider import _parse_response
+    response = _parse_response(httpx.Response(200, json={
+        "choices": [{"message": {"content": "done"}}], "usage": usage,
+    }), latency_ms=1, request_count=1)
+    assert response.usage.prompt_tokens_available is (isinstance(usage, dict) and "prompt_tokens" in usage)
+    assert response.usage.completion_tokens_available is False
+    assert response.usage.completion_tokens == 0
+
+
+def test_provider_absent_usage_is_unknown_without_changing_numeric_defaults():
+    import httpx
+    from app.phase1_provider import _parse_response
+    response = _parse_response(httpx.Response(200, json={
+        "choices": [{"message": {"content": "done"}}],
+    }), latency_ms=1, request_count=1)
+    assert response.usage.prompt_tokens == 0
+    assert response.usage.completion_tokens == 0
+    assert not response.usage.prompt_tokens_available
+    assert not response.usage.completion_tokens_available
