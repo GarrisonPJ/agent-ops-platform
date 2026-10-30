@@ -573,3 +573,144 @@ async def test_env_server_rejected_many_safe_arguments_capture_once(transport, s
     if state == "finalized":
         assert (await session.dispatch({"name": "submit_result"})).is_error
         assert session.environment.check.call_count == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("scenario_id", [
+    "checkout-api-latency.v1", "multi-step-research.v1",
+    "api-fault-orchestration.v1", "order-support.v1",
+])
+async def test_env_server_failed_local_assertions_still_emit_final_check_once(scenario_id):
+    from app.durable_events import normalize_event_payload
+    from app.final_evidence import validate_final_check
+
+    params = {"topic": "checkout latency"} if scenario_id == "multi-step-research.v1" else {}
+    session, output = make_session(scenario_id=scenario_id, scenario_params=params)
+    checked = session.environment.check()
+    assert any(not item.passed for item in (*checked.trajectory, *checked.outcome))
+    session.environment.check = Mock(return_value=checked)
+    assert not (await session.dispatch({"name": "submit_result"})).is_error
+    accepted = records(output)[0]["payload"]
+    provenance = accepted["environment"]
+    assert provenance == {
+        "kind": "control", "control": "submit_result", "result": "ok",
+        "finalized": True, "check_called": True,
+        "final_check": {
+            "scenario_id": scenario_id, "final_observation": checked.final_observation,
+        },
+    }
+    validate_final_check(provenance["final_check"], scenario_id=scenario_id)
+    assert normalize_event_payload("step_completed", accepted) == accepted
+    for call in [{"name": "submit_result"}, {"name": "report_usage"}, HEALTH]:
+        assert (await session.dispatch(call)).is_error
+    session.environment.check.assert_called_once_with()
+    assert all("final_check" not in item["payload"]["environment"] for item in records(output)[1:])
+    assert records(output)[0]["payload"] == accepted
+    for forbidden in ["score", "status", "evaluations", "trajectory", "outcome", "combination"]:
+        assert f'"{forbidden}"' not in output.getvalue()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("invalid", [
+    None, {}, "Agent success", "missing_order", "too_long", "non_null_trajectory", "token",
+])
+async def test_env_server_invalid_check_return_freezes_without_accepted_evidence(invalid):
+    from dataclasses import replace
+
+    scenario_id = "checkout-api-latency.v1" if invalid == "non_null_trajectory" else "order-support.v1"
+    session, output = make_session(scenario_id=scenario_id)
+    checked = session.environment.check()
+    if invalid in ("missing_order", "too_long", "non_null_trajectory", "token"):
+        observation = {
+            "missing_order": "{}", "too_long": " " * 4001,
+            "non_null_trajectory": "{}", "token": checked.final_observation,
+        }[invalid]
+        if invalid == "token":
+            observation = observation.replace("order-1001", TOKEN)
+        checked = replace(checked, final_observation=observation)
+    else:
+        checked = invalid
+    session.environment.check = Mock(return_value=checked)
+    assert (await session.dispatch({"name": "submit_result"})).is_error
+    assert (await session.dispatch({"name": "submit_result"})).is_error
+    assert (await session.dispatch(HEALTH)).is_error
+    session.environment.check.assert_called_once_with()
+    provenance = records(output)[0]["payload"]["environment"]
+    assert provenance == {
+        "kind": "control", "control": "submit_result", "result": "internal_error",
+        "finalized": True, "check_called": True,
+    }
+    assert all("final_check" not in item["payload"]["environment"] for item in records(output))
+    assert TOKEN not in output.getvalue()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("field", ["order_id", "refund_id"])
+async def test_env_server_json_escaped_capability_rejected_without_rechecking(field):
+    from dataclasses import replace
+
+    session, output = make_session(scenario_id="order-support.v1")
+    checked = session.environment.check()
+    ledger = json.loads(checked.final_observation)
+    secret_operand = "prefix-" + TOKEN + "-suffix"
+    if field == "order_id":
+        ledger["order"]["order_id"] = secret_operand
+    else:
+        ledger["order"]["refunds"] = [{"refund_id": secret_operand, "amount_cents": 0}]
+    escaped = "".join(f"\\u{ord(character):04x}" for character in TOKEN)
+    observation = json.dumps(ledger).replace(TOKEN, escaped)
+    assert TOKEN not in observation
+    assert TOKEN in json.dumps(json.loads(observation))
+    session.environment.check = Mock(return_value=replace(checked, final_observation=observation))
+    assert (await session.dispatch({"name": "submit_result"})).is_error
+    assert (await session.dispatch({"name": "submit_result"})).is_error
+    assert (await session.dispatch(HEALTH)).is_error
+    session.environment.check.assert_called_once_with()
+    assert records(output)[0]["payload"]["environment"] == {
+        "kind": "control", "control": "submit_result", "result": "internal_error",
+        "finalized": True, "check_called": True,
+    }
+    assert all("final_check" not in record["payload"]["environment"] for record in records(output))
+    assert TOKEN not in output.getvalue()
+    assert escaped not in output.getvalue()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("forbidden", ["final_check", "final_observation", "scenario_id", "evaluations"])
+async def test_env_server_agent_final_evidence_cannot_finalize_or_override(forbidden):
+    session, output = make_session()
+    session.environment.check = Mock(wraps=session.environment.check)
+    assert (await session.dispatch({
+        "name": "submit_result", "arguments": {forbidden: "forged"},
+    })).is_error
+    session.environment.check.assert_not_called()
+    assert "final_check" not in records(output)[0]["payload"]["environment"]
+    assert not (await session.dispatch({
+        "name": "submit_result", "final_check": {"scenario_id": "order-support.v1"},
+        "final_observation": "forged", "score": 99,
+    })).is_error
+    assert records(output)[1]["payload"]["environment"]["final_check"] == {
+        "scenario_id": "checkout-api-latency.v1", "final_observation": None,
+    }
+    assert "forged" not in output.getvalue()
+
+
+def test_env_server_jsonl_limit_counts_encoded_escape_expansion_without_partial_write():
+    from app.env_server import MAX_JSONL_BYTES
+
+    output = io.StringIO()
+    emit = jsonl_emitter(output)
+    # Astral characters expand to two JSON unicode escapes, not four UTF-8 bytes.
+    payload = {"content": "😀" * 4000}
+    emit("step_completed", payload)
+    assert len(output.getvalue().encode()) < MAX_JSONL_BYTES
+    before = output.getvalue()
+    with pytest.raises(ValueError, match="JSONL"):
+        emit("step_completed", {"content": "😀" * 6000})
+    assert output.getvalue() == before
+    prefix = json.dumps({"type": "step_completed", "payload": {"content": ""}}, separators=(",", ":")) + "\n"
+    exact = {"content": "x" * (MAX_JSONL_BYTES - len(prefix.encode()))}
+    emit("step_completed", exact)
+    assert len(output.getvalue()[len(before):].encode()) == MAX_JSONL_BYTES
+    with pytest.raises(ValueError, match="JSONL"):
+        emit("step_completed", {"content": exact["content"] + "x"})

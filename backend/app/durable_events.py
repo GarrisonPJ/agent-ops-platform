@@ -1,4 +1,9 @@
-"""Typed, loss-limiting normalization for facts that may become durable."""
+"""Typed, loss-limiting normalization for facts that may become durable.
+
+Runner uploads and Environment capture use this projection before persistence.
+Final-check operands must survive exactly or fail, never be silently repaired.
+Read final_evidence.py for operands and env_server.py for trusted generation.
+"""
 
 from __future__ import annotations
 
@@ -8,6 +13,8 @@ from enum import StrEnum
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
+
+from app.final_evidence import FinalCheck, validate_final_check
 
 
 MAX_PROVIDER_LATENCY_MS = 86_400_000
@@ -139,6 +146,7 @@ class EnvironmentStepProvenance(DurableModel):
     finalized: bool = False
     check_called: bool = False
     usage: AgentReportedUsage | None = None
+    final_check: FinalCheck | None = None
 
 
 _PROVIDER_FAILURE_MESSAGES = {
@@ -457,9 +465,23 @@ def _normalize_environment_step(value: object) -> dict[str, object] | None:
         )
         if key in value
     }
+    if "final_check" in value:
+        # Presence, including explicit null, is fail-closed. Validate the raw
+        # tuple before legacy diagnostics can default or repair any flags.
+        if not (
+            value.get("kind") == "control"
+            and value.get("control") == "submit_result"
+            and value.get("result") == "ok"
+            and value.get("finalized") is True
+            and value.get("check_called") is True
+        ):
+            raise ValueError("final-check provenance mismatch")
+        fields["final_check"] = validate_final_check(value["final_check"])
     try:
         parsed = EnvironmentStepProvenance.model_validate(fields, strict=True)
     except ValidationError:
+        if "final_check" in value:
+            raise
         return None
     if (parsed.kind == "control") != (parsed.control is not None):
         return None
@@ -478,7 +500,12 @@ def _normalize_environment_step(value: object) -> dict[str, object] | None:
                 )
             except ValidationError:
                 pass
-    return parsed.model_dump(mode="json", exclude_none=True)
+    normalized = parsed.model_dump(mode="json", exclude_none=True)
+    if parsed.final_check is not None:
+        # Null is a required operand for trajectory-only suites, not an absent
+        # optional field. Recursive exclude_none would otherwise erase it.
+        normalized["final_check"] = parsed.final_check.model_dump(mode="json")
+    return normalized
 
 
 def _normalize_step_completed(payload: Mapping[str, object]) -> dict[str, object]:

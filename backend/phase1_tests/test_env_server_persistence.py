@@ -505,3 +505,64 @@ async def test_env_server_reducer_budget_evidence_uses_final_world_index(api, co
     assert budget[0].step_index == trajectory["steps"][-1]["index"]
     assert budget[0].severity == 1.0
     assert budget[0].details == {"step_count": 6, "max_steps": 6}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("refund", [False, True])
+async def test_env_server_final_check_exact_ledger_survives_durable_retry(api, refund):
+    from sqlalchemy import select
+
+    from app.final_evidence import validate_final_check, validate_order_final_observation
+    from app.phase1_models import RunEvent
+
+    client, factory = api
+    experiment = (await client.post("/api/experiments", json={
+        "name": "Final evidence persistence", "task": "Resolve order",
+        "scenario_id": "order-support.v1",
+    })).json()
+    run = (await client.post(f"/api/experiments/{experiment['id']}/runs", json={})).json()
+    claim = (await client.post(
+        "/api/internal/runner/jobs/claim", headers=AUTH, json={"runner_id": "runner-env"},
+    )).json()
+    token = "f123456789abcdef" * 4
+    output = io.StringIO()
+    session = EnvironmentSession(
+        EvaluationSpec.model_validate(run["evaluation_spec"]), token, jsonl_emitter(output),
+    )
+    if refund:
+        for name in ["inspect_order", "authorize_payment", "ship_order", "request_refund", "request_refund"]:
+            arguments = {"order_id": "order-1001"}
+            if name == "request_refund":
+                arguments["reason"] = "shipping_failed"
+            assert not (await session.dispatch({"name": name, "arguments": arguments})).is_error
+    expected_observation = session.environment.check().final_observation
+    assert not (await session.dispatch({"name": "submit_result"})).is_error
+    assert (await session.dispatch({"name": "submit_result"})).is_error
+    captured = [json.loads(line) for line in output.getvalue().splitlines()]
+    events = [
+        {"type": "run_started", "payload": {"attempt": 1, "source": "environment"}},
+        *captured,
+    ]
+    await persist(client, run, claim, events)
+    await persist(client, run, claim, events)
+    async with factory() as db:
+        persisted = (await db.scalars(
+            select(RunEvent).where(RunEvent.run_id == run["id"]).order_by(RunEvent.sequence)
+        )).all()
+    assert len(persisted) == len(events)
+    final_checks = [
+        event.payload["environment"]["final_check"] for event in persisted
+        if "final_check" in event.payload.get("environment", {})
+    ]
+    assert final_checks == [{
+        "scenario_id": "order-support.v1", "final_observation": expected_observation,
+    }]
+    parsed = validate_final_check(
+        final_checks[0], scenario_id=run["evaluation_spec"]["scenario_id"]
+    )
+    order = validate_order_final_observation(parsed.final_observation).order
+    assert order.refund_count == (1 if refund else 0)
+    assert len(order.refunds) == (1 if refund else 0)
+    assert token not in json.dumps([event.payload for event in persisted])
+    for event in persisted:
+        assert normalize_event_payload(event.event_type, event.payload) == event.payload

@@ -29,12 +29,14 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 
 import app.scenarios  # noqa: F401 — register built-in worlds
 from app.durable_events import AgentReportedUsage, normalize_event_payload
-from app.environment import InvalidToolArgumentsError, UnknownToolError
+from app.environment import EnvironmentCheck, InvalidToolArgumentsError, UnknownToolError
+from app.final_evidence import validate_final_check, validate_order_final_observation
 from app.phase1_schemas import EvaluationSpec
 from app.scenario_registry import create_environment
 
 MAX_SPEC_BYTES = 65_536
 MAX_REQUEST_BYTES = 16_384
+MAX_JSONL_BYTES = 65_536
 CONTROLS = frozenset({"submit_result", "report_usage"})
 Emit = Callable[[str, dict], None]
 
@@ -57,10 +59,12 @@ def read_spec(stream: BinaryIO) -> EvaluationSpec:
 
 def jsonl_emitter(stream: TextIO) -> Emit:
     def emit(event_type: str, payload: dict) -> None:
-        stream.write(
-            json.dumps({"type": event_type, "payload": payload}, separators=(",", ":"))
-            + "\n"
-        )
+        line = json.dumps(
+            {"type": event_type, "payload": payload}, separators=(",", ":")
+        ) + "\n"
+        if len(line.encode("utf-8")) > MAX_JSONL_BYTES:
+            raise ValueError("Environment JSONL line exceeds byte limit")
+        stream.write(line)
         stream.flush()
 
     return emit
@@ -86,6 +90,7 @@ class EnvironmentSession:
         self.world_attempts = 0
         self._index = 0
         self._finalized = False
+        self._scenario_id = spec.scenario_id
         self._token = token
         self._emit = emit
         self._lock = asyncio.Lock()
@@ -112,6 +117,7 @@ class EnvironmentSession:
             result = "ok"
             observation = ""
             check_called = False
+            final_check = None
             usage = None
             if self._finalized:
                 result = (
@@ -132,9 +138,32 @@ class EnvironmentSession:
                     self._finalized = True
                     try:
                         check_called = True
-                        self.environment.check()
+                        checked = self.environment.check()
+                        if not isinstance(checked, EnvironmentCheck):
+                            raise ValueError("invalid Environment check return")
+                        final_check = validate_final_check(
+                            {
+                                "scenario_id": self._scenario_id,
+                                "final_observation": checked.final_observation,
+                            },
+                            scenario_id=self._scenario_id,
+                        ).model_dump(mode="json")
+                        # Required evidence cannot be redacted into different
+                        # operands. Reject a secret-bearing snapshot instead.
+                        if self._redact(final_check) != final_check:
+                            raise ValueError("capability in final-check evidence")
+                        if final_check["final_observation"] is not None:
+                            # JSON escapes can hide a capability in a valid string
+                            # operand. Inspect the decoded ledger but retain the
+                            # original observation bytes; never repair evidence.
+                            ledger = validate_order_final_observation(
+                                final_check["final_observation"]
+                            ).model_dump(mode="json")
+                            if self._redact(ledger) != ledger:
+                                raise ValueError("capability in final-check operands")
                         observation = "Environment finalized; Control Plane owns score and Run status."
                     except Exception:
+                        final_check = None
                         result = "internal_error"
             elif control == "report_usage":
                 try:
@@ -169,6 +198,8 @@ class EnvironmentSession:
                 provenance["control"] = control
             if usage is not None:
                 provenance["usage"] = usage
+            if final_check is not None:
+                provenance["final_check"] = final_check
             # Rejected Agent arguments are diagnostic only: omit them before the
             # durable projection so arbitrary invalid input cannot overflow its cap.
             # Successful calls retain the existing allowlisted argument semantics.
