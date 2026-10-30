@@ -247,6 +247,7 @@ fn ensure_secure_handoff_directory(directory: &Path) -> Result<()> {
 fn open_locked_file(path: &Path) -> Result<LockedFile> {
     let file = OpenOptions::new()
         .create(true)
+        .truncate(false)
         .read(true)
         .write(true)
         .mode(0o600)
@@ -2219,7 +2220,7 @@ async fn terminate_process_group(
     }
     let _ = leader.kill().await;
     let _ = leader.wait().await;
-    if let Some(other) = other.as_deref_mut() {
+    if let Some(other) = other {
         let _ = other.kill().await;
         let _ = other.wait().await;
     }
@@ -2491,6 +2492,7 @@ mod tests {
         // an actual cross-process proof.
         let bare_file = OpenOptions::new()
             .create(true)
+            .truncate(false)
             .read(true)
             .write(true)
             .mode(0o600)
