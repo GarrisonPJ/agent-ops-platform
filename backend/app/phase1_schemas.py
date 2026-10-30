@@ -26,6 +26,7 @@ from app.scenario_ids import (
     SCENARIO_ID_PATTERN,
     SCENARIO_PARAM_KEY_PATTERN,
 )
+from app.agent_registry import AGENT_ID_PATTERN, MAX_AGENT_ID_LENGTH
 ALLOWED_POLICY_TOOLS = frozenset(
     {
         "check_service_health",
@@ -47,6 +48,13 @@ def validate_scenario_id(value: str) -> str:
     normalized = value.strip()
     if not SCENARIO_ID_PATTERN.fullmatch(normalized):
         raise ValueError("scenario_id must match ^[a-z0-9][a-z0-9-]+\\.v[0-9]+$")
+    return normalized
+
+
+def validate_agent_id(value: str) -> str:
+    normalized = value.strip()
+    if len(normalized) > MAX_AGENT_ID_LENGTH or not normalized.isascii() or not AGENT_ID_PATTERN.fullmatch(normalized):
+        raise ValueError("agent_id must match ^[a-z0-9][a-z0-9-]+\\.v[0-9]+$")
     return normalized
 
 
@@ -140,6 +148,7 @@ class EvaluationSpec(StrictModel):
     task: str = Field(min_length=1, max_length=4_000)
     seed: int = Field(default=42, ge=0, le=2_147_483_647)
     execution_mode: ExecutionMode = ExecutionMode.FIXTURE
+    agent_id: str | None = Field(default=None, min_length=1, max_length=MAX_AGENT_ID_LENGTH)
     policy: PolicyPatch | None = None
     limits: EvaluationLimits = Field(default_factory=EvaluationLimits)
     scenario_params: dict[str, str] = Field(default_factory=dict)
@@ -148,6 +157,11 @@ class EvaluationSpec(StrictModel):
     @classmethod
     def normalize_scenario_id(cls, value: str) -> str:
         return validate_scenario_id(value)
+
+    @field_validator("agent_id")
+    @classmethod
+    def normalize_agent_id(cls, value: str | None) -> str | None:
+        return validate_agent_id(value) if value is not None else None
 
     @field_validator("scenario_params")
     @classmethod
@@ -181,12 +195,18 @@ class ExperimentCreate(StrictModel):
     task: str = Field(min_length=1, max_length=4_000)
     scenario_id: str = Field(default=DEFAULT_SCENARIO_ID, min_length=2, max_length=64)
     execution_mode: ExecutionMode = ExecutionMode.FIXTURE
+    agent_id: str | None = Field(default=None, min_length=1, max_length=MAX_AGENT_ID_LENGTH)
     scenario_params: dict[str, str] = Field(default_factory=dict)
 
     @field_validator("scenario_id")
     @classmethod
     def normalize_scenario_id(cls, value: str) -> str:
         return validate_scenario_id(value)
+
+    @field_validator("agent_id")
+    @classmethod
+    def normalize_agent_id(cls, value: str | None) -> str | None:
+        return validate_agent_id(value) if value is not None else None
 
     @field_validator("scenario_params")
     @classmethod
@@ -207,6 +227,13 @@ class ScenarioSummary(StrictModel):
     default_task: str
     allowed_tools: list[str]
     params: list[ScenarioParamSummary] = Field(default_factory=list)
+
+
+class AgentMetadataResponse(StrictModel):
+    id: str
+    name: str
+    kind: Literal["fixture", "reference"]
+    description: str
 
 
 class RunCreate(StrictModel):
@@ -458,6 +485,7 @@ class ExperimentResponse(BaseModel):
     scenario_id: str
     scenario_params: dict[str, str] = Field(default_factory=dict)
     execution_mode: ExecutionMode = ExecutionMode.FIXTURE
+    agent_id: str | None = None
     created_at: datetime
     runs: list[RunResponse] = Field(default_factory=list)
     regression_cases: list[RegressionCaseResponse] = Field(default_factory=list)

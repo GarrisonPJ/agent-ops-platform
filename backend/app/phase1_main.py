@@ -26,6 +26,7 @@ from app.phase1_events import event_notifier
 from app.phase1_models import Run, RunEvent, utcnow
 from app.phase1_schemas import (
     ApiErrorPayload,
+    AgentMetadataResponse,
     AnalysisResponse,
     ClaimRequest,
     ClaimResponse,
@@ -66,6 +67,7 @@ from app.phase1_service import (
     get_run_diagnostics,
     heartbeat,
     list_experiments,
+    list_registered_agents,
     list_registered_scenarios,
     list_regression_cases,
     next_event_sequence,
@@ -275,6 +277,10 @@ def create_app(
     @router.get("/scenarios", response_model=list[ScenarioSummary])
     async def scenarios_list() -> list[ScenarioSummary]:
         return list_registered_scenarios()
+
+    @router.get("/agents", response_model=list[AgentMetadataResponse])
+    async def agents_list() -> list[AgentMetadataResponse]:
+        return [AgentMetadataResponse.model_validate(item) for item in list_registered_agents()]
 
     @router.get("/experiments", response_model=list[ExperimentResponse])
     async def experiments_list(

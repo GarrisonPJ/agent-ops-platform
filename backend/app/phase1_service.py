@@ -1,4 +1,9 @@
-"""Application services for experiments, runs, leases, and policy replay."""
+"""Application services for experiments, runs, leases, and policy replay.
+
+HTTP routes call these services to persist Run state and queue Runner jobs.
+Run creation must validate the effective agent before committing queued work.
+Read ``app.phase1_main`` next for the HTTP transaction and error boundary.
+"""
 
 from __future__ import annotations
 
@@ -12,6 +17,7 @@ from sqlalchemy import func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agent_registry import AgentRegistryError, load_registry
 from app.failure_analyzer import analyze_trajectory
 from app.scoring import compute_score
 import app.scenarios  # noqa: F401 — register built-in Scenarios
@@ -188,6 +194,35 @@ def _aware(value: datetime | None) -> datetime | None:
 
 def run_response(run: Run) -> RunResponse:
     return RunResponse.model_validate(run)
+
+
+def _resolve_agent(agent_id: str | None, execution_mode: ExecutionMode) -> str:
+    """Validate the effective operator registration before durable writes."""
+    try:
+        registry = load_registry()
+    except AgentRegistryError as exc:
+        raise DomainError(503, "AGENT_REGISTRY_INVALID", "Agent registry is invalid") from exc
+    selected = agent_id or (
+        "fixture-agent.v1"
+        if execution_mode == ExecutionMode.FIXTURE
+        else "reference-openai-compatible.v1"
+    )
+    try:
+        return registry.resolve(selected, execution_mode.value)
+    except AgentRegistryError as exc:
+        raise DomainError(
+            400,
+            "AGENT_NOT_REGISTERED",
+            "Agent is not registered",
+            {"agent_id": selected},
+        ) from exc
+
+
+def list_registered_agents() -> list[dict[str, str]]:
+    try:
+        return [item.public_dict() for item in load_registry().metadata()]
+    except AgentRegistryError as exc:
+        raise DomainError(503, "AGENT_REGISTRY_INVALID", "Agent registry is invalid") from exc
 
 
 def policy_response(policy: Policy) -> PolicyResponse:
@@ -441,6 +476,7 @@ async def experiment_response(db: AsyncSession, experiment: Experiment) -> Exper
         scenario_id=experiment.scenario_id,
         scenario_params=dict(experiment.scenario_params or {}),
         execution_mode=ExecutionMode(experiment.execution_mode),
+        agent_id=experiment.agent_id,
         created_at=experiment.created_at,
         runs=[run_response(item) for item in runs],
         regression_cases=[RegressionCaseResponse.model_validate(item) for item in regression_cases],
@@ -450,6 +486,7 @@ async def experiment_response(db: AsyncSession, experiment: Experiment) -> Exper
 
 
 async def create_experiment(db: AsyncSession, data: ExperimentCreate) -> ExperimentResponse:
+    _resolve_agent(data.agent_id, data.execution_mode)
     try:
         normalized_params = ensure_registered_scenario(data.scenario_id, data.scenario_params)
     except UnknownScenarioError as exc:
@@ -479,6 +516,7 @@ async def create_experiment(db: AsyncSession, data: ExperimentCreate) -> Experim
         scenario_id=data.scenario_id,
         scenario_params=dict(normalized_params),
         execution_mode=data.execution_mode.value,
+        agent_id=data.agent_id,
     )
     db.add(experiment)
     await db.commit()
@@ -529,15 +567,22 @@ def _evaluation_spec(
     experiment: Experiment,
     seed: int,
     execution_mode: ExecutionMode | None = None,
+    agent_id: str | None = None,
     policy: PolicyPatch | None = None,
 ) -> EvaluationSpec:
+    selected_mode = execution_mode or ExecutionMode(experiment.execution_mode)
+    selected_agent = _resolve_agent(
+        experiment.agent_id if agent_id is None else agent_id,
+        selected_mode,
+    )
     return EvaluationSpec(
         run_id=run_id,
         experiment_id=experiment.id,
         scenario_id=experiment.scenario_id,
         task=experiment.task,
         seed=seed,
-        execution_mode=execution_mode or ExecutionMode(experiment.execution_mode),
+        execution_mode=selected_mode,
+        agent_id=selected_agent,
         policy=policy,
         limits=EvaluationLimits(),
         scenario_params=dict(experiment.scenario_params or {}),
@@ -574,6 +619,7 @@ def _ensure_experiment_scenario(experiment: Experiment) -> None:
 async def create_baseline_run(db: AsyncSession, experiment_id: str, seed: int) -> RunResponse:
     experiment = await require_experiment(db, experiment_id)
     _ensure_experiment_scenario(experiment)
+    _resolve_agent(experiment.agent_id, ExecutionMode(experiment.execution_mode))
     run_id = new_id()
     spec = _evaluation_spec(run_id=run_id, experiment=experiment, seed=seed)
     run = Run(
@@ -1502,6 +1548,10 @@ async def replay_policy(db: AsyncSession, policy_id: str) -> PolicyResponse:
         experiment=experiment,
         seed=baseline_spec.seed,
         execution_mode=baseline_spec.execution_mode,
+        agent_id=(
+            baseline_spec.agent_id
+            or _resolve_agent(None, baseline_spec.execution_mode)
+        ),
         policy=PolicyPatch.model_validate(policy.patch),
     )
     run = Run(
@@ -1620,6 +1670,7 @@ async def activate_policy(db: AsyncSession, policy_id: str) -> PolicyResponse:
             task=source_spec.task,
             seed=case.seed,
             execution_mode=ExecutionMode(case.execution_mode),
+            agent_id=_resolve_agent(source_spec.agent_id, ExecutionMode(case.execution_mode)),
             policy=PolicyPatch.model_validate(policy.patch),
             limits=source_spec.limits,
             scenario_params=dict(case.scenario_params or {}),

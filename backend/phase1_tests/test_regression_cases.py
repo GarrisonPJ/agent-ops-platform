@@ -1,8 +1,17 @@
+"""Regression-case persistence and policy activation API tests.
+
+The API fixture drives failed Runs through policy validation and regression
+replay creation, using isolated SQLite storage rather than a live Runner.
+Invalid activation must not commit orphaned Runs, jobs, or replay pointers.
+Read ``app.phase1_service.activate_policy`` next for the transaction boundary.
+"""
+
 from __future__ import annotations
 
 import asyncio
 import sqlite3
 from datetime import datetime, timezone
+from pathlib import Path
 
 import pytest
 from httpx import ASGITransport
@@ -291,6 +300,97 @@ async def test_activation_gates_on_regression_replay_without_overwriting_policy(
     assert activated.status_code == 200
     assert activated.json()["status"] == "active"
     assert activated.json()["score_delta"] == pytest.approx(updated_policy["score_delta"])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("registry_body", "expected_status", "expected_code"),
+    [
+        (
+            "[[agents]]\nid='other-agent.v1'\nname='Other'\nkind='fixture'\n"
+            "description='Other registration'\ncommand=['python']\n",
+            400,
+            "AGENT_NOT_REGISTERED",
+        ),
+        ("not = valid for this registry", 503, "AGENT_REGISTRY_INVALID"),
+    ],
+    ids=["removed-explicit-registration", "invalid-registry"],
+)
+async def test_activation_revalidates_explicit_source_agent_without_committing_replay(
+    api, monkeypatch, tmp_path: Path, registry_body: str, expected_status: int, expected_code: str
+) -> None:
+    client, factory = api
+    registry_path = tmp_path / "agents.toml"
+    registry_path.write_text(
+        (Path(__file__).parents[2] / "config" / "agents.toml").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("AGENTOPS_AGENT_REGISTRY", str(registry_path))
+    experiment_response = await client.post(
+        "/api/experiments",
+        json={
+            "name": "Explicit regression identity",
+            "task": "Investigate checkout API latency",
+            "scenario_id": "checkout-api-latency.v1",
+            "agent_id": "fixture-agent.v1",
+        },
+    )
+    assert experiment_response.status_code == 201
+    experiment = experiment_response.json()
+    baseline_response = await client.post(f"/api/experiments/{experiment['id']}/runs", json={})
+    assert baseline_response.status_code == 201
+    baseline = baseline_response.json()
+    assert baseline["evaluation_spec"]["agent_id"] == "fixture-agent.v1"
+    baseline_claim = await claim(client)
+    await complete(client, baseline_claim, "failed")
+    case = (await client.post(f"/api/runs/{baseline['id']}/regression-case")).json()
+
+    detail = (await client.get(f"/api/experiments/{experiment['id']}"))
+    policy = detail.json()["candidate_policy"]
+    main_replay = (await client.post(f"/api/policies/{policy['id']}/replay")).json()
+    main_claim = await claim(client)
+    replay_id = main_claim["run"]["run_id"]
+    await upload(
+        client,
+        main_claim,
+        [
+            envelope(replay_id, 1, "run_started"),
+            step(replay_id, 2, 0, "check_service_health", {"service": "checkout-api"}),
+            step(replay_id, 3, 1, "query_service_metrics", {"service": "checkout-api", "metric": "dependency_latency"}),
+            step(replay_id, 4, 2, "fetch_service_logs", {"service": "checkout-api", "query": "payment dependency timeout"}),
+            envelope(replay_id, 5, "run_completed", {"exit_code": 0}),
+        ],
+    )
+    await complete(client, main_claim, "succeeded")
+    updated_policy = (
+        await client.get(f"/api/experiments/{experiment['id']}")
+    ).json()["candidate_policy"]
+    assert updated_policy["status"] == "validated"
+    assert updated_policy["score_delta"] > 0
+
+    async with factory() as db:
+        run_ids_before = set((await db.execute(select(Run.id))).scalars())
+        job_ids_before = set((await db.execute(select(RunnerJob.run_id))).scalars())
+        case_before = await db.get(RegressionCase, case["id"])
+        assert case_before.replay_run_id is None
+        assert case_before.replay_policy_id is None
+
+    registry_path.write_text(registry_body, encoding="utf-8")
+    activation = await client.post(f"/api/policies/{policy['id']}/activate")
+    assert activation.status_code == expected_status, activation.text
+    assert activation.json()["code"] == expected_code
+    if expected_code == "AGENT_NOT_REGISTERED":
+        assert activation.json()["details"] == {"agent_id": "fixture-agent.v1"}
+
+    async with factory() as db:
+        assert set((await db.execute(select(Run.id))).scalars()) == run_ids_before
+        assert set((await db.execute(select(RunnerJob.run_id))).scalars()) == job_ids_before
+        stored_case = await db.get(RegressionCase, case["id"])
+        assert stored_case.replay_run_id is None
+        assert stored_case.replay_policy_id is None
+        stored_policy = await db.get(Policy, policy["id"])
+        assert stored_policy.status == "validated"
+        assert stored_policy.replay_run_id == main_replay["replay_run_id"]
 
 
 @pytest.mark.asyncio

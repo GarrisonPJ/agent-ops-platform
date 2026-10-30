@@ -67,6 +67,20 @@
   },
   "additionalProperties": false,
   "properties": {
+    "agent_id": {
+      "anyOf": [
+        {
+          "maxLength": 64,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Agent Id"
+    },
     "execution_mode": {
       "$ref": "#/$defs/ExecutionMode",
       "default": "fixture"

@@ -1,0 +1,13 @@
+[[agents]]
+id = "fixture-agent.v1"
+name = "Deterministic fixture agent"
+kind = "fixture"
+description = "Deterministic MCP agent for local Golden validation."
+command = ["python", "-m", "app.fixture_agent"]
+
+[[agents]]
+id = "reference-openai-compatible.v1"
+name = "OpenAI-compatible reference agent"
+kind = "reference"
+description = "MCP reference loop using Runner-side provider configuration."
+command = ["python", "-m", "app.reference_agent"]
