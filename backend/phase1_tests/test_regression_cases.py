@@ -24,6 +24,7 @@ import app.phase1_service as phase1_service
 from app.migrations import application_alembic_head
 from app.phase1_main import create_app
 from app.phase1_service import _is_regression_case_source_unique_violation
+from test_cp_completion import facts
 from app.phase1_models import Base, Policy, RegressionCase, Run, RunnerJob, new_id
 
 
@@ -31,6 +32,11 @@ AUTH = {"Authorization": "Bearer test-runner-token"}
 
 
 def envelope(run_id: str, sequence: int, event_type: str, payload: dict | None = None) -> dict:
+    payload = {"attempt": 1, **(payload or {})}
+    if event_type == "run_started":
+        payload["source"] = "environment"
+    if event_type == "step_completed":
+        payload.setdefault("environment", {"kind": "world", "result": "ok"})
     return {
         "schema_version": 1,
         "run_id": run_id,
@@ -86,13 +92,24 @@ async def claim(client: AsyncClient, runner_id: str = "runner-1") -> dict:
 
 
 async def complete(client: AsyncClient, claimed: dict, status: str) -> dict:
+    if status == "succeeded":
+        if not claimed.get("uploaded_through"):
+            from test_cp_completion import packet
+            run = {"id": claimed["run"]["run_id"], "evaluation_spec": claimed["run"]["evaluation_spec"]}
+            await upload(client, claimed, await packet(run))
+        elif not claimed.get("final_check_uploaded"):
+            await upload(client, claimed, [envelope(claimed["run"]["run_id"], claimed["uploaded_through"] + 1, "step_completed", {
+                "environment": {"kind": "control", "control": "submit_result", "result": "ok",
+                    "finalized": True, "check_called": True,
+                    "final_check": {"scenario_id": "checkout-api-latency.v1", "final_observation": None}},
+            })])
     response = await client.post(
         f"/api/internal/runner/jobs/{claimed['lease_id']}/complete",
         headers=AUTH,
-        json={"runner_id": "runner-1", "status": status},
+        json={"runner_id": "runner-1", "status": status, "execution": facts(claimed["run"]["run_id"], claimed["attempt"])},
     )
     assert response.status_code == 200, response.text
-    return response.json()
+    return response.json()["run"]
 
 
 async def upload(client: AsyncClient, claimed: dict, events: list[dict]) -> None:
@@ -106,6 +123,8 @@ async def upload(client: AsyncClient, claimed: dict, events: list[dict]) -> None
         },
     )
     assert response.status_code == 200, response.text
+    claimed["uploaded_through"] = response.json()["accepted_through"]
+    claimed["final_check_uploaded"] = any("final_check" in e["payload"].get("environment", {}) for e in events)
 
 
 @pytest.mark.asyncio
@@ -264,7 +283,6 @@ async def test_activation_gates_on_regression_replay_without_overwriting_policy(
             step(replay_id, 2, 0, "check_service_health", {"service": "checkout-api"}),
             step(replay_id, 3, 1, "query_service_metrics", {"service": "checkout-api", "metric": "dependency_latency"}),
             step(replay_id, 4, 2, "fetch_service_logs", {"service": "checkout-api", "query": "payment dependency timeout"}),
-            envelope(replay_id, 5, "run_completed", {"exit_code": 0}),
         ],
     )
     await complete(client, main_claim, "succeeded")
@@ -358,7 +376,6 @@ async def test_activation_revalidates_explicit_source_agent_without_committing_r
             step(replay_id, 2, 0, "check_service_health", {"service": "checkout-api"}),
             step(replay_id, 3, 1, "query_service_metrics", {"service": "checkout-api", "metric": "dependency_latency"}),
             step(replay_id, 4, 2, "fetch_service_logs", {"service": "checkout-api", "query": "payment dependency timeout"}),
-            envelope(replay_id, 5, "run_completed", {"exit_code": 0}),
         ],
     )
     await complete(client, main_claim, "succeeded")
@@ -428,7 +445,6 @@ async def test_each_policy_gets_its_own_regression_case_replay(api) -> None:
                 "fetch_service_logs",
                 {"service": "checkout-api", "query": "payment dependency timeout"},
             ),
-            envelope(replay_id, 5, "run_completed", {"exit_code": 0}),
         ],
     )
     await complete(client, main_claim, "succeeded")
@@ -538,7 +554,6 @@ async def test_concurrent_activation_claims_one_regression_replay(tmp_path, monk
             step(replay_id, 2, 0, "check_service_health", {"service": "checkout-api"}),
             step(replay_id, 3, 1, "query_service_metrics", {"service": "checkout-api", "metric": "dependency_latency"}),
             step(replay_id, 4, 2, "fetch_service_logs", {"service": "checkout-api", "query": "payment dependency timeout"}),
-            envelope(replay_id, 5, "run_completed", {"exit_code": 0}),
         ],
     )
     await complete(client, replay_claim, "succeeded")
@@ -616,7 +631,6 @@ async def test_activation_reject_race_rolls_back_regression_replay(api, monkeypa
             step(replay_id, 2, 0, "check_service_health", {"service": "checkout-api"}),
             step(replay_id, 3, 1, "query_service_metrics", {"service": "checkout-api", "metric": "dependency_latency"}),
             step(replay_id, 4, 2, "fetch_service_logs", {"service": "checkout-api", "query": "payment dependency timeout"}),
-            envelope(replay_id, 5, "run_completed", {"exit_code": 0}),
         ],
     )
     await complete(client, replay_claim, "succeeded")

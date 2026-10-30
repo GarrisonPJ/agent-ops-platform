@@ -238,11 +238,12 @@ def _detect_budget(steps: list[dict], trajectory: dict) -> list[FailureEvidence]
 
 
 def _assertion_failure_evidence(
-    trajectory: dict, assertion_suite: AssertionSuite | None
+    trajectory: dict, assertion_suite: AssertionSuite | None,
+    assertion_result: dict | None = None,
 ) -> list[FailureEvidence]:
-    if assertion_suite is None or not assertion_suite.assertions:
+    if assertion_result is None and (assertion_suite is None or not assertion_suite.assertions):
         return []
-    result = evaluate_assertion_suite(assertion_suite, trajectory)
+    result = assertion_result if assertion_result is not None else evaluate_assertion_suite(assertion_suite, trajectory)
     evidence: list[FailureEvidence] = []
     classification_by_assertion = {
         "tool-used": FailureClassification.TOOL_SELECTION_ERROR,
@@ -300,7 +301,8 @@ def _run_level_failure_evidence(trajectory: dict) -> list[FailureEvidence]:
 
 
 def analyze_trajectory(
-    trajectory: dict, assertion_suite: AssertionSuite | None = None
+    trajectory: dict, assertion_suite: AssertionSuite | None = None,
+    assertion_result: dict | None = None,
 ) -> FailureReport:
     """Analyze a single trajectory for failures across all four dimensions.
 
@@ -322,6 +324,7 @@ def analyze_trajectory(
 
     if total_steps == 0:
         run_level_evidence = _run_level_failure_evidence(trajectory)
+        run_level_evidence.extend(_assertion_failure_evidence(trajectory, assertion_suite, assertion_result))
         return FailureReport(
             dimensions={item.dimension: 1.0 for item in run_level_evidence},
             dominant=run_level_evidence[0].dimension if run_level_evidence else None,
@@ -342,7 +345,7 @@ def analyze_trajectory(
     all_evidence.extend(_detect_execution(steps))
     all_evidence.extend(_detect_context(steps))
     all_evidence.extend(_detect_budget(steps, trajectory))
-    all_evidence.extend(_assertion_failure_evidence(trajectory, assertion_suite))
+    all_evidence.extend(_assertion_failure_evidence(trajectory, assertion_suite, assertion_result))
     all_evidence.extend(_run_level_failure_evidence(trajectory))
 
     if not all_evidence:

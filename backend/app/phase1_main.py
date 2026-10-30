@@ -32,6 +32,7 @@ from app.phase1_schemas import (
     ClaimResponse,
     ClaimedRun,
     CompleteRequest,
+    CompletionResponse,
     EventEnvelope,
     EventUploadRequest,
     EventUploadResponse,
@@ -484,14 +485,14 @@ def create_app(
 
     @router.post(
         "/internal/runner/jobs/{lease_id}/complete",
-        response_model=RunResponse,
+        response_model=CompletionResponse,
         dependencies=[Depends(require_runner)],
     )
     async def runner_complete(
         lease_id: str,
         body: CompleteRequest,
         db: AsyncSession = Depends(get_db),
-    ) -> RunResponse:
+    ) -> CompletionResponse:
         return await complete_job(
             db,
             lease_id=lease_id,
@@ -499,6 +500,7 @@ def create_app(
             status=body.status,
             failure_kind=body.failure_kind,
             metrics=body.metrics,
+            execution=body.execution,
         )
 
     application.include_router(router)

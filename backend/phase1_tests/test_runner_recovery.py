@@ -10,6 +10,7 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 
+from test_cp_completion import facts
 from app.phase1_models import RunEvent, RunnerAttempt, RunnerJob, utcnow
 from app.failure_analyzer import analyze_trajectory
 from app.scenario_registry import assertion_suite_for_scenario, require_scenario
@@ -108,6 +109,11 @@ async def expire_lease(factory, run_id: str) -> None:
 
 
 def event(run_id: str, sequence: int, event_type: str, payload: dict | None = None) -> dict:
+    payload = {"attempt": 1, **(payload or {})}
+    if event_type == "run_started":
+        payload["source"] = "environment"
+    if event_type == "step_completed":
+        payload["environment"] = {"kind": "world", "result": "ok"}
     return {
         "schema_version": 1,
         "run_id": run_id,
@@ -119,6 +125,8 @@ def event(run_id: str, sequence: int, event_type: str, payload: dict | None = No
 
 
 async def upload(client: AsyncClient, claim_data: dict, events: list[dict]) -> None:
+    for item in events:
+        item["payload"]["attempt"] = claim_data["attempt"]
     response = await client.post(
         f"/api/internal/runner/runs/{claim_data['run']['run_id']}/events",
         headers=AUTH,
@@ -182,11 +190,11 @@ async def test_expired_lease_is_reclaimed_and_old_lease_is_fenced(api) -> None:
     completed = await client.post(
         f"/api/internal/runner/jobs/{replacement['lease_id']}/complete",
         headers=AUTH,
-        json={"runner_id": "runner-2", "status": "succeeded"},
+        json={"runner_id": "runner-2", "status": "succeeded", "execution": facts(run["id"], replacement["attempt"])},
     )
     assert completed.status_code == 200
-    assert completed.json()["status"] == "succeeded"
-    assert completed.json()["metrics"]["steps"] == 1
+    assert completed.json()["status"] == "failed"  # No accepted final check or complete suite.
+    assert completed.json()["run"]["metrics"]["steps"] == 1
 
     async with factory() as db:
         job = await db.get(RunnerJob, run["id"])
@@ -204,7 +212,7 @@ async def test_expired_lease_is_reclaimed_and_old_lease_is_fenced(api) -> None:
         assert job is not None
         assert job.attempt == 2
         assert job.runner_id == "runner-2"
-        assert [row.sequence for row in rows] == [1, 2, 3]
+        assert [row.sequence for row in rows] == [1, 2, 3, 4]
 
 
 @pytest.mark.asyncio
@@ -236,7 +244,7 @@ async def test_cancel_intent_survives_runner_recovery(api) -> None:
     completed = await client.post(
         f"/api/internal/runner/jobs/{replacement['lease_id']}/complete",
         headers=AUTH,
-        json={"runner_id": "runner-2", "status": "succeeded"},
+        json={"runner_id": "runner-2", "status": "succeeded", "execution": facts(run["id"], replacement["attempt"])},
     )
     assert completed.status_code == 200
     assert completed.json()["status"] == "cancelled"
@@ -271,8 +279,8 @@ async def test_expired_lease_exhaustion_marks_run_terminal(api) -> None:
         job = await db.get(RunnerJob, run["id"])
         assert job is not None
         assert job.attempt == 3
-        assert job.lease_id is None
-        assert job.runner_id is None
+        assert job.lease_id == claimed["lease_id"]
+        assert job.runner_id == "runner-3"  # Retained for same-identity terminal ACK retry.
         attempts = list(
             (
                 await db.execute(

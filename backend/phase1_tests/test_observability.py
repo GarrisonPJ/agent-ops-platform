@@ -7,6 +7,7 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 
+from test_cp_completion import facts
 from app.phase1_models import Run, RunEvent, RunnerJob, utcnow
 from app.phase1_schemas import (
     MAX_PROVIDER_LATENCY_MS,
@@ -50,6 +51,9 @@ def fingerprint(value: str) -> str:
 
 
 def event(run_id: str, sequence: int, event_type: str, payload: dict) -> dict:
+    payload = {"attempt": 1, **payload}
+    if event_type == "run_started":
+        payload["source"] = "environment"
     return {
         "schema_version": 1,
         "run_id": run_id,
@@ -85,7 +89,6 @@ async def test_run_diagnostics_projects_durable_correlation_and_metrics(api) -> 
                 },
             },
         ),
-        event(run["id"], 3, "run_failed", {"attempt": 1, "status": "failed"}),
     ]
     uploaded = await client.post(
         f"/api/internal/runner/runs/{run['id']}/events",
@@ -99,6 +102,7 @@ async def test_run_diagnostics_projects_durable_correlation_and_metrics(api) -> 
         json={
             "runner_id": "runner-observer",
             "status": "failed",
+            "execution": facts(run["id"]),
             "error": "provider failed",
             "metrics": {
                 "event_retries": 2,
@@ -184,6 +188,7 @@ async def test_retry_of_legacy_provider_event_is_idempotent_and_sanitized(api) -
     _, run = await create_baseline(client)
     job = await claim(client)
     raw_payload = {
+        "attempt": 1,
         "stream": "stderr",
         "content": "Provider execution failed.",
         "provider": {
@@ -231,7 +236,7 @@ async def test_retry_of_legacy_provider_event_is_idempotent_and_sanitized(api) -
 
     async with factory() as db:
         persisted = (
-            await db.execute(select(RunEvent).where(RunEvent.run_id == run["id"]))
+            await db.execute(select(RunEvent).where(RunEvent.run_id == run["id"], RunEvent.event_type == "process_output"))
         ).scalar_one()
         assert persisted.payload["provider"] == {
             "model": "legacy-model",
@@ -292,7 +297,7 @@ async def test_provider_persistence_uses_fixed_safe_diagnostics(api) -> None:
         json={
             "runner_id": "runner-observer",
             "lease_id": job["lease_id"],
-            "events": [event(run["id"], 1, "process_output", malicious)],
+            "events": [event(run["id"], 1, "run_started", {}), event(run["id"], 2, "process_output", malicious)],
         },
     )
     assert uploaded.status_code == 200
@@ -302,6 +307,7 @@ async def test_provider_persistence_uses_fixed_safe_diagnostics(api) -> None:
         json={
             "runner_id": "runner-observer",
             "status": "failed",
+            "execution": facts(run["id"]),
             "error": "agent failed",
         },
     )
@@ -311,10 +317,11 @@ async def test_provider_persistence_uses_fixed_safe_diagnostics(api) -> None:
         persisted = await db.get(Run, run["id"])
         assert persisted is not None
         persisted_event = (
-            await db.execute(select(RunEvent).where(RunEvent.run_id == run["id"]))
+            await db.execute(select(RunEvent).where(RunEvent.run_id == run["id"], RunEvent.event_type == "process_output"))
         ).scalar_one()
         durable = str(persisted_event.payload) + str(persisted.metrics)
         assert persisted_event.payload == {
+            "attempt": 1,
             "stream": "stderr",
             "content": "Provider execution output redacted.",
             "provider": {
@@ -364,16 +371,17 @@ async def test_malformed_provider_metadata_cannot_preserve_raw_output(api) -> No
         json={
             "runner_id": "runner-observer",
             "lease_id": job["lease_id"],
-            "events": [event(run["id"], 1, "process_output", payload)],
+            "events": [event(run["id"], 1, "run_started", {}), event(run["id"], 2, "process_output", payload)],
         },
     )
     assert uploaded.status_code == 200
 
     async with factory() as db:
         persisted = (
-            await db.execute(select(RunEvent).where(RunEvent.run_id == run["id"]))
+            await db.execute(select(RunEvent).where(RunEvent.run_id == run["id"], RunEvent.event_type == "process_output"))
         ).scalar_one()
         assert persisted.payload == {
+            "attempt": 1,
             "stream": "stdout",
             "content": "Provider execution output redacted.",
         }
@@ -396,16 +404,16 @@ async def test_non_provider_process_output_content_is_preserved(api) -> None:
         json={
             "runner_id": "runner-observer",
             "lease_id": job["lease_id"],
-            "events": [event(run["id"], 1, "process_output", {"content": content})],
+            "events": [event(run["id"], 1, "run_started", {}), event(run["id"], 2, "process_output", {"content": content})],
         },
     )
     assert uploaded.status_code == 200
 
     async with factory() as db:
         persisted = (
-            await db.execute(select(RunEvent).where(RunEvent.run_id == run["id"]))
+            await db.execute(select(RunEvent).where(RunEvent.run_id == run["id"], RunEvent.event_type == "process_output"))
         ).scalar_one()
-        assert persisted.payload == {"content": content}
+        assert persisted.payload == {"attempt": 1, "content": content}
 
 
 @pytest.mark.asyncio
@@ -434,7 +442,6 @@ async def test_provider_telemetry_aggregation_saturates_at_schema_limits(api) ->
                 },
             )
         )
-    events.append(event(run["id"], 4, "run_failed", {"attempt": 1, "status": "failed"}))
 
     uploaded = await client.post(
         f"/api/internal/runner/runs/{run['id']}/events",
@@ -448,11 +455,12 @@ async def test_provider_telemetry_aggregation_saturates_at_schema_limits(api) ->
         json={
             "runner_id": "runner-observer",
             "status": "failed",
+            "execution": facts(run["id"]),
             "error": "provider failed",
         },
     )
     assert completed.status_code == 200
-    assert completed.json()["metrics"]["provider"] == {
+    assert completed.json()["run"]["metrics"]["provider"] == {
         "model": "boundary-model",
         "latency_ms": MAX_PROVIDER_LATENCY_MS,
         "request_count": MAX_PROVIDER_REQUEST_COUNT,
@@ -492,6 +500,7 @@ async def test_operations_overview_reports_queue_and_terminal_signals(api) -> No
         json={
             "runner_id": "runner-observer",
             "status": "failed",
+            "execution": facts(completed_run["id"]),
             "error": "agent failed",
             "metrics": {"event_retries": 3},
         },
@@ -574,6 +583,7 @@ async def test_run_diagnostics_uses_only_the_latest_recovered_attempt(api) -> No
                     4,
                     "process_output",
                     {
+                        "attempt": 2,
                         "stream": "stdout",
                         "content": "Provider request completed.",
                         "provider": {
@@ -586,7 +596,6 @@ async def test_run_diagnostics_uses_only_the_latest_recovered_attempt(api) -> No
                         },
                     },
                 ),
-                event(run["id"], 5, "run_failed", {"attempt": 2, "status": "failed"}),
             ],
         },
     )
@@ -597,6 +606,7 @@ async def test_run_diagnostics_uses_only_the_latest_recovered_attempt(api) -> No
         json={
             "runner_id": "runner-replacement",
             "status": "failed",
+            "execution": facts(run["id"], 2),
             "error": "provider failed",
             "metrics": {"event_retries": 0},
         },

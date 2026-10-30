@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from app.phase1_models import RunnerJob
+
 import hashlib
 import json
 import sys
@@ -185,6 +187,7 @@ async def test_report_reconstructs_persisted_run_events(api) -> None:
                 evaluation_spec={"scenario_id": "checkout-api-latency.v1"},
             )
         )
+        db.add(RunnerJob(run_id=run_id, attempt=1))
         for index in range(3):
             db.add(
                 RunEvent(
@@ -192,6 +195,7 @@ async def test_report_reconstructs_persisted_run_events(api) -> None:
                     sequence=index + 1,
                     event_type="step_completed",
                     payload={
+                        "attempt": 1, "environment": {"kind": "world", "result": "ok"},
                         "index": index,
                         "tool_call": {
                             "name": "fetch_service_logs",
@@ -244,12 +248,14 @@ async def test_report_binds_labels_to_packet_and_review_metadata(api) -> None:
                 evaluation_spec={"scenario_id": "checkout-api-latency.v1"},
             )
         )
+        db.add(RunnerJob(run_id=run_id, attempt=1))
         db.add(
             RunEvent(
                 run_id=run_id,
                 sequence=1,
                 event_type="step_completed",
                 payload={
+                    "attempt": 1, "environment": {"kind": "world", "result": "ok"},
                     "index": 0,
                     "tool_call": {
                         "name": "fetch_service_logs",

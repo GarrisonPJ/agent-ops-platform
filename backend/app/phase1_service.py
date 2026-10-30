@@ -19,6 +19,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agent_registry import AgentRegistryError, load_registry
 from app.failure_analyzer import analyze_trajectory
+from app.final_evidence import FinalCheck, validate_final_check
+from app.phase1_events import event_notifier
+from app.scenario_assertions import evaluate_assertion_suite
 from app.scoring import compute_score
 import app.scenarios  # noqa: F401 — register built-in Scenarios
 from app.scenario_registry import (
@@ -48,6 +51,9 @@ from app.phase1_schemas import (
     EvaluationLimits,
     EvaluationSpec,
     EventEnvelope,
+    ExecutionFacts,
+    CompletionResponse,
+    validate_runner_event,
     ExecutionMode,
     ExperimentCreate,
     ExperimentResponse,
@@ -306,7 +312,12 @@ def _sanitize_provider_error(value: object) -> dict[str, object] | None:
 
 
 def _sanitize_event_payload(event_type: str, payload: object) -> dict[str, object]:
-    return normalize_event_payload(event_type, payload)
+    normalized = normalize_event_payload(event_type, payload)
+    if event_type == "process_output" and isinstance(payload, dict):
+        attempt = payload.get("attempt")
+        if type(attempt) is int and 1 <= attempt <= 100:
+            normalized["attempt"] = attempt
+    return normalized
 
 
 async def get_run_diagnostics(db: AsyncSession, run_id: str) -> RunDiagnosticsResponse:
@@ -728,28 +739,25 @@ async def cancel_run(db: AsyncSession, run_id: str) -> RunResponse:
         if run.status in TERMINAL_RUN_STATUSES:
             return run_response(run)
 
-        observed_status = run.status
-        now = utcnow()
-        values = {
-            "status": (
-                RunStatus.CANCELLED.value
-                if observed_status == RunStatus.QUEUED.value
-                else RunStatus.CANCELLING.value
-            ),
-            "completed_at": now if observed_status == RunStatus.QUEUED.value else run.completed_at,
-        }
-        claimed = await db.execute(
-            update(Run)
-            .where(Run.id == run_id, Run.status == observed_status)
-            .values(**values)
-        )
-        if claimed.rowcount != 1:
-            await db.rollback()
-            continue
-
-        if job is not None:
-            job.cancel_requested_at = now
-        await db.commit()
+        if job is None:
+            raise DomainError(500, "JOB_INVARIANT_BROKEN", "Run job is missing")
+        job.cancel_requested_at = utcnow()
+        if run.status == RunStatus.QUEUED.value:
+            if not await _terminalize(
+                db, job, run, "cancelled", TerminalFailureKind.CANCELLED, None
+            ):
+                await db.rollback()
+                continue
+        else:
+            changed = await db.execute(
+                update(Run)
+                .where(Run.id == run.id, Run.status == run.status)
+                .values(status=RunStatus.CANCELLING.value)
+            )
+            if changed.rowcount != 1:
+                await db.rollback()
+                continue
+        await _commit_terminal_notifications(db)
         await db.refresh(run)
         return run_response(run)
 
@@ -767,7 +775,8 @@ async def _recover_expired_jobs(db: AsyncSession) -> int:
                     RunnerJob.lease_expires_at.is_not(None),
                     RunnerJob.lease_expires_at <= now,
                 )
-                .with_for_update(skip_locked=True)
+                .with_for_update(of=RunnerJob, skip_locked=True)
+                .execution_options(populate_existing=True)
             )
         )
         .scalars()
@@ -776,15 +785,29 @@ async def _recover_expired_jobs(db: AsyncSession) -> int:
     recovered = 0
     for job in jobs:
         run = await require_run(db, job.run_id)
+        # The joined eligibility predicate came from an earlier statement
+        # snapshot.  Job-first locking gives us ownership, but the Run and its
+        # lease predicate must be revalidated after that lock is acquired.
+        await db.refresh(run)
+        lease_expires_at = _aware(job.lease_expires_at)
+        if (
+            run.status not in RECOVERABLE_RUN_STATUSES
+            or job.lease_id is None
+            or job.runner_id is None
+            or lease_expires_at is None
+            or lease_expires_at > now
+        ):
+            continue
         previous_status = run.status
         history_attempt = job.attempt
         lease_id = job.lease_id
         runner_id = job.runner_id
-        lease_expires_at = job.lease_expires_at
         assert lease_id is not None
         assert runner_id is not None
         assert lease_expires_at is not None
-        reason = f"runner lease expired during {previous_status} (attempt {history_attempt})"
+        reason = (
+            f"runner lease expired during {previous_status} (attempt {history_attempt})"
+        )
         history_outcome = "recovered"
         if history_attempt >= MAX_RUN_ATTEMPTS:
             status = (
@@ -794,20 +817,22 @@ async def _recover_expired_jobs(db: AsyncSession) -> int:
             )
             history_outcome = status
             error = f"{reason}; maximum of {MAX_RUN_ATTEMPTS} attempts reached"
-            run.status = status
-            run.error = error
-            run.completed_at = now
-            if run.started_at is None:
-                run.started_at = now
-            await _record_terminal_effects(
+            if not await _terminalize(
                 db,
+                job,
                 run,
                 status,
-                {
-                    "recovery_reason": reason,
-                    "attempt": history_attempt,
-                },
-            )
+                (
+                    TerminalFailureKind.CANCELLED
+                    if status == "cancelled"
+                    else TerminalFailureKind.INTERNAL_FAILURE
+                ),
+                None,
+            ):
+                raise DomainError(
+                    409, "RUN_STATE_CHANGED", "Recovery lost terminal compare-and-set"
+                )
+            run.error = error
             job.recovery_reason = error
         else:
             run.status = RunStatus.QUEUED.value
@@ -827,9 +852,10 @@ async def _recover_expired_jobs(db: AsyncSession) -> int:
                 recorded_at=now,
             )
         )
-        job.lease_id = None
-        job.runner_id = None
-        job.lease_expires_at = None
+        if history_outcome == "recovered":
+            job.lease_id = None
+            job.runner_id = None
+            job.lease_expires_at = None
         recovered += 1
     if recovered:
         await db.flush()
@@ -913,11 +939,11 @@ async def claim_job(db: AsyncSession, runner_id: str) -> tuple[RunnerJob, Run] |
         job.lease_id = str(uuid4())
         job.runner_id = runner_id
         job.lease_expires_at = now + timedelta(seconds=LEASE_SECONDS)
-        await db.commit()
+        await _commit_terminal_notifications(db)
         await db.refresh(job)
         await db.refresh(run)
         return job, run
-    await db.commit()
+    await _commit_terminal_notifications(db)
     return None
 
 
@@ -930,7 +956,7 @@ async def _leased_job(
     allow_expired: bool = False,
     for_update: bool = False,
 ) -> tuple[RunnerJob, Run]:
-    statement = select(RunnerJob).where(RunnerJob.lease_id == lease_id)
+    statement = select(RunnerJob).where(RunnerJob.lease_id == lease_id).execution_options(populate_existing=True)
     if for_update:
         statement = statement.with_for_update()
     job = (await db.execute(statement)).scalar_one_or_none()
@@ -985,6 +1011,11 @@ async def persist_events(
     runner_id: str,
     events: list[EventEnvelope],
 ) -> tuple[int, list[dict[str, Any]]]:
+    for event in events:
+        try:
+            validate_runner_event(event.type, event.payload)
+        except ValueError as exc:
+            raise DomainError(422, "INVALID_EVENT_GRAMMAR", str(exc)) from exc
     supplied_sequences = [item.sequence for item in events]
     if supplied_sequences != sorted(set(supplied_sequences)):
         raise DomainError(422, "INVALID_EVENT_ORDER", "Events must have unique increasing sequences")
@@ -1001,7 +1032,7 @@ async def persist_events(
         _, run = await _leased_job(
             db, lease_id=lease_id, runner_id=runner_id, run_id=run_id
         )
-        _, run = await _leased_job(
+        job, run = await _leased_job(
             db,
             lease_id=lease_id,
             runner_id=runner_id,
@@ -1011,6 +1042,9 @@ async def persist_events(
         await db.refresh(run)
         if any(item.run_id != run_id for item in events):
             raise DomainError(422, "EVENT_RUN_MISMATCH", "Every event must target the URL run")
+
+        if any(event.payload.get("attempt") != job.attempt for event in events):
+            raise DomainError(409, "ATTEMPT_MISMATCH", "Event targets another Attempt")
 
         maximum = (
             await db.execute(select(func.max(RunEvent.sequence)).where(RunEvent.run_id == run_id))
@@ -1064,6 +1098,31 @@ async def persist_events(
                     {"expected": expected, "received": event.sequence},
                 )
             expected += 1
+
+        history = list((await db.execute(
+            select(RunEvent).where(RunEvent.run_id == run_id).order_by(RunEvent.sequence)
+        )).scalars().all())
+        current = [item for item in history if item.payload.get("attempt") == job.attempt]
+        started = any(item.event_type == "run_started" for item in current)
+        accepted_final = any("final_check" in item.payload.get("environment", {}) for item in current)
+        for event in pending:
+            if event.payload.get("attempt") != job.attempt:
+                raise DomainError(409, "ATTEMPT_MISMATCH", "Event targets another Attempt")
+            if event.type == "run_started":
+                if started:
+                    raise DomainError(409, "EVENT_GRAMMAR_CONFLICT", "Attempt already started")
+                started = True
+            elif not started:
+                raise DomainError(422, "MISSING_RUN_STARTED", "Attempt must start before facts")
+            provenance = event.payload.get("environment", {})
+            if "final_check" in provenance:
+                if accepted_final:
+                    raise DomainError(409, "FINAL_CHECK_CONFLICT", "Attempt already has accepted evidence")
+                try:
+                    validate_final_check(provenance["final_check"], scenario_id=run.evaluation_spec["scenario_id"])
+                except ValueError as exc:
+                    raise DomainError(422, "INVALID_FINAL_CHECK", str(exc)) from exc
+                accepted_final = True
 
         now = utcnow()
         if run.status == RunStatus.CLAIMED.value:
@@ -1125,15 +1184,36 @@ async def _trajectory_from_events(db: AsyncSession, run: Run) -> tuple[dict, dic
         .all()
     )
     steps: list[dict] = []
-    latest_attempt_start = 0
-    for index, event in enumerate(events):
-        if event.event_type != "run_started":
-            continue
-        attempt = event.payload.get("attempt")
-        if isinstance(attempt, int) and not isinstance(attempt, bool) and attempt >= 1:
-            latest_attempt_start = index
-
-    latest_events = events[latest_attempt_start:]
+    job = await db.get(RunnerJob, run.id)
+    assert job is not None
+    # A current-attempt interval starts at the last validated current
+    # run_started marker.  Records before that boundary are historical, but a
+    # malformed identity after it is corruption in the current durable prefix,
+    # not an event that may be silently filtered out.
+    current_start_sequence: int | None = None
+    for event in events:
+        payload = event.payload if isinstance(event.payload, dict) else {}
+        if (
+            event.event_type == "run_started"
+            and type(payload.get("attempt")) is int
+            and payload.get("attempt") == job.attempt
+            and payload.get("source") == "environment"
+        ):
+            if current_start_sequence is None:
+                current_start_sequence = event.sequence
+    latest_events = (
+        [event for event in events if event.sequence >= current_start_sequence]
+        if current_start_sequence is not None
+        else [
+            event
+            for event in events
+            if type(event.payload.get("attempt")) is int
+            and event.payload["attempt"] == job.attempt
+        ]
+    )
+    # A start-less historical record remains inspectable for diagnostics, but
+    # it can never authorize success because the boundary is unvalidated.
+    evidence_invalid = current_start_sequence is None
     provider_error = any(
         event.event_type == "process_output"
         and isinstance(event.payload.get("provider_error"), dict)
@@ -1146,6 +1226,26 @@ async def _trajectory_from_events(db: AsyncSession, run: Run) -> tuple[dict, dic
     )
     environment_finalized = False
     environment_check_called = False
+    final_check: FinalCheck | None = None
+    evidence_invalid = evidence_invalid or not environment_seen
+    start_count = 0
+    final_count = 0
+    for event in latest_events:
+        if event.event_type in {"run_completed", "run_failed", "run_cancelled"}:
+            continue
+        payload = event.payload if isinstance(event.payload, dict) else {}
+        if payload.get("attempt") != job.attempt:
+            evidence_invalid = True
+        try:
+            validate_runner_event(event.event_type, event.payload)
+        except ValueError:
+            # Do not allow normalize_event_payload below to erase a malformed
+            # attempt identity from the current durable sequence interval.
+            evidence_invalid = True
+        if event.event_type == "run_started":
+            start_count += 1
+            if start_count != 1:
+                evidence_invalid = True
     agent_usage: dict[str, object] = {
         "source": "agent_reported",
         "token_prompt": None,
@@ -1156,13 +1256,33 @@ async def _trajectory_from_events(db: AsyncSession, run: Run) -> tuple[dict, dic
         if event.event_type != "step_completed":
             continue
         payload = event.payload
-        environment = normalize_event_payload(event.event_type, payload).get(
-            "environment"
-        )
+        try:
+            environment = normalize_event_payload(event.event_type, payload).get(
+                "environment"
+            )
+        except ValueError:
+            evidence_invalid = True
+            continue
         if isinstance(environment, dict):
-            environment_seen = True
-            environment_finalized |= environment.get("finalized") is True
-            environment_check_called |= environment.get("check_called") is True
+            if "final_check" in environment:
+                try:
+                    candidate = validate_final_check(
+                        environment["final_check"],
+                        scenario_id=run.evaluation_spec["scenario_id"],
+                    )
+                    validate_runner_event(event.event_type, payload)
+                    final_count += 1
+                    if final_count != 1:
+                        raise ValueError("conflicting accepted evidence")
+                    final_check = candidate
+                    environment_finalized = True
+                    environment_check_called = True
+                except ValueError:
+                    # Corrupt durable required evidence must never become success.
+                    evidence_invalid = True
+                    final_check = None
+                    environment_finalized = False
+                    environment_check_called = False
             if environment.get("kind") == "control":
                 usage = environment.get("usage")
                 if isinstance(usage, dict):
@@ -1187,20 +1307,6 @@ async def _trajectory_from_events(db: AsyncSession, run: Run) -> tuple[dict, dic
                     "token_completion": None,
                 }
             )
-        else:
-            steps.append(
-                {
-                    "index": payload.get("index", len(steps)),
-                    "action": payload.get("tool_call"),
-                    "observation": payload.get("observation", ""),
-                    "latency_ms": payload.get("latency_ms", 0),
-                    "context_window": payload.get("context_window"),
-                    "token_prompt": payload.get("token_prompt", 0),
-                    "token_completion": payload.get("token_completion", 0),
-                }
-            )
-    prompt_tokens = sum(int(item.get("token_prompt") or 0) for item in steps)
-    completion_tokens = sum(int(item.get("token_completion") or 0) for item in steps)
     total_latency = sum(int(item.get("latency_ms") or 0) for item in steps)
     max_steps = 6
     policy = run.evaluation_spec.get("policy")
@@ -1211,39 +1317,36 @@ async def _trajectory_from_events(db: AsyncSession, run: Run) -> tuple[dict, dic
         "run_status": run.status,
         "steps": steps,
         "max_steps": max_steps,
-        "total_tokens": prompt_tokens + completion_tokens,
+        "total_tokens": None,
         "total_latency_ms": total_latency,
         "provider_error": provider_error,
     }
+    trajectory["evidence_valid"] = not evidence_invalid and final_check is not None
+    # Outcomes are not world attempts and must not affect step-count/sequence.
+    trajectory["final_observation"] = (
+        final_check.final_observation if final_check is not None else ""
+    )
+    prompt = agent_usage.get("token_prompt")
+    completion = agent_usage.get("token_completion")
+    total = (
+        prompt + completion
+        if isinstance(prompt, int) and isinstance(completion, int)
+        else None
+    )
+    trajectory["total_tokens"] = total
+    trajectory["agent_usage"] = agent_usage
     metrics = {
         "steps": len(steps),
         "latency_ms": total_latency,
-        "token_prompt": prompt_tokens,
-        "token_completion": completion_tokens,
-        "total_tokens": prompt_tokens + completion_tokens,
+        "token_prompt": prompt,
+        "token_completion": completion,
+        "total_tokens": total,
+        "agent_usage": agent_usage,
+        "environment": {
+            "finalized": environment_finalized,
+            "check_called": environment_check_called,
+        },
     }
-    if environment_seen:
-        prompt = agent_usage.get("token_prompt")
-        completion = agent_usage.get("token_completion")
-        total = (
-            prompt + completion
-            if isinstance(prompt, int) and isinstance(completion, int)
-            else None
-        )
-        trajectory["total_tokens"] = total
-        trajectory["agent_usage"] = agent_usage
-        metrics.update(
-            {
-                "token_prompt": prompt,
-                "token_completion": completion,
-                "total_tokens": total,
-                "agent_usage": agent_usage,
-                "environment": {
-                    "finalized": environment_finalized,
-                    "check_called": environment_check_called,
-                },
-            }
-        )
     metrics.update(_provider_metrics(latest_events))
     return trajectory, metrics
 
@@ -1339,16 +1442,17 @@ def _provider_terminal_error(metrics: dict) -> str | None:
 
 
 async def _analyze_and_score(
-    db: AsyncSession, run: Run, runner_metrics: dict | None
+    db: AsyncSession,
+    run: Run,
+    runner_metrics: dict | None,
+    projection: tuple[dict, dict, dict] | None = None,
 ) -> None:
-    trajectory, computed_metrics = await _trajectory_from_events(db, run)
-    scenario_id = run.evaluation_spec.get("scenario_id")
-    assertion_suite = (
-        assertion_suite_for_scenario(scenario_id)
-        if isinstance(scenario_id, str)
-        else None
+    trajectory, computed_metrics, assertion_result = (
+        projection or await _evaluation_projection(db, run)
     )
-    score_result = compute_score(trajectory, assertion_suite=assertion_suite)
+    trajectory["status"] = "success" if run.status == "succeeded" else "failed"
+    trajectory["run_status"] = run.status
+    score_result = compute_score(trajectory, assertion_result=assertion_result)
     run.score = float(score_result["score"])
     safe_runner_metrics: dict[str, int] = {}
     if isinstance(runner_metrics, dict) and "event_retries" in runner_metrics:
@@ -1362,7 +1466,7 @@ async def _analyze_and_score(
     }
     if "assertions" in score_result:
         run.metrics["assertions"] = score_result["assertions"]
-    report = analyze_trajectory(trajectory, assertion_suite=assertion_suite)
+    report = analyze_trajectory(trajectory, assertion_result=assertion_result)
     dimensions = {key: float(value) for key, value in report.dimensions.items()}
 
     evidence = []
@@ -1419,8 +1523,9 @@ async def _record_terminal_effects(
     run: Run,
     status: str,
     metrics: dict | None,
+    projection: tuple[dict, dict, dict] | None = None,
 ) -> None:
-    await _analyze_and_score(db, run, metrics)
+    await _analyze_and_score(db, run, metrics, projection)
     if run.kind == "baseline" and status in {
         RunStatus.FAILED.value,
         RunStatus.TIMED_OUT.value,
@@ -1437,6 +1542,120 @@ async def _record_terminal_effects(
         )
 
 
+async def _evaluation_projection(db: AsyncSession, run: Run) -> tuple[dict, dict, dict]:
+    trajectory, metrics = await _trajectory_from_events(db, run)
+    suite = assertion_suite_for_scenario(run.evaluation_spec["scenario_id"])
+    return trajectory, metrics, evaluate_assertion_suite(suite, trajectory)
+
+
+async def _terminalize(
+    db: AsyncSession,
+    job: RunnerJob,
+    run: Run,
+    status: str,
+    failure_kind: TerminalFailureKind | str | None,
+    metrics: dict | None,
+    projection: tuple[dict, dict, dict] | None = None,
+) -> bool:
+    """Job lock precedes this CAS; event, effects and state share one commit."""
+    if run.status in TERMINAL_RUN_STATUSES:
+        return False
+    now = utcnow()
+    failure = normalize_terminal_failure_kind(failure_kind, status=status)
+    changed = await db.execute(
+        update(Run)
+        .where(Run.id == run.id, Run.status == run.status)
+        .values(
+            status=status,
+            completed_at=now,
+            started_at=func.coalesce(Run.started_at, now),
+            error=terminal_failure_message(failure) if failure else None,
+        )
+    )
+    if changed.rowcount != 1:
+        return False
+    await db.refresh(run)
+    sequence = await next_event_sequence(db, run.id)
+    event_type = (
+        "run_completed"
+        if status == "succeeded"
+        else "run_cancelled" if status == "cancelled" else "run_failed"
+    )
+    payload = {"attempt": job.attempt, "status": status}
+    if failure is not None:
+        payload["failure_kind"] = failure.value
+    db.add(
+        RunEvent(
+            run_id=run.id,
+            sequence=sequence,
+            event_type=event_type,
+            payload=payload,
+            occurred_at=now,
+        )
+    )
+    await _record_terminal_effects(db, run, status, metrics, projection)
+    if (
+        status == "failed"
+        and _provider_error(run.metrics.get("provider_error")) is not None
+    ):
+        run.error = _provider_terminal_error(run.metrics)
+    published = EventEnvelope(
+        run_id=run.id,
+        sequence=sequence,
+        type=event_type,
+        payload=payload,
+        occurred_at=now,
+    ).model_dump(mode="json")
+    db.info.setdefault("terminal_notifications", []).append((run.id, published))
+    return True
+
+
+async def _commit_terminal_notifications(db: AsyncSession) -> None:
+    try:
+        await db.commit()
+    except BaseException:
+        db.info.pop("terminal_notifications", None)
+        raise
+    for run_id, event in db.info.pop("terminal_notifications", []):
+        await event_notifier.publish(run_id, [event])
+
+
+async def _completion_response(
+    db: AsyncSession, job: RunnerJob, run: Run
+) -> CompletionResponse:
+    terminal = (
+        (
+            await db.execute(
+                select(RunEvent)
+                .where(
+                    RunEvent.run_id == run.id,
+                    RunEvent.event_type.in_(
+                        ["run_completed", "run_failed", "run_cancelled"]
+                    ),
+                )
+                .order_by(RunEvent.sequence.desc())
+            )
+        )
+        .scalars()
+        .first()
+    )
+    if (
+        terminal is None
+        or terminal.payload.get("attempt") != job.attempt
+        or terminal.payload.get("status") != run.status
+    ):
+        raise DomainError(
+            500, "TERMINAL_INVARIANT_BROKEN", "Missing agreeing terminal event"
+        )
+    return CompletionResponse(
+        run_id=run.id,
+        attempt=job.attempt,
+        terminal_sequence=terminal.sequence,
+        status=run.status,
+        run=run_response(run),
+    )
+
+
 async def complete_job(
     db: AsyncSession,
     *,
@@ -1445,65 +1664,75 @@ async def complete_job(
     status: str,
     failure_kind: TerminalFailureKind | str | None,
     metrics: dict | None,
-) -> RunResponse:
-    requested_status = status
+    execution: ExecutionFacts,
+) -> CompletionResponse:
     while True:
         job, run = await _leased_job(
             db,
             lease_id=lease_id,
             runner_id=runner_id,
+            run_id=execution.run_id,
             allow_expired=True,
             for_update=True,
         )
+        await db.refresh(run)
+        if execution.attempt != job.attempt:
+            raise DomainError(
+                409, "ATTEMPT_MISMATCH", "Completion targets another Attempt"
+            )
         if run.status in TERMINAL_RUN_STATUSES:
-            return run_response(run)
+            return await _completion_response(db, job, run)
         expires_at = _aware(job.lease_expires_at)
         if expires_at is None or expires_at <= utcnow():
             raise DomainError(409, "LEASE_EXPIRED", "Runner lease has expired")
-
-        observed_status = run.status
-        effective_status = (
-            RunStatus.CANCELLED.value
-            if observed_status == RunStatus.CANCELLING.value
+        projection = await _evaluation_projection(db, run)
+        eligible = (
+            execution.eligible
+            and execution.submitted
+            and execution.check_succeeded
+            and execution.planned_environment_teardown
+            and execution.failure is None
+            and projection[0]["evidence_valid"]
+            and projection[2]["aggregate"] >= 1.0
+        )
+        cancellation_requested = (
+            run.status == RunStatus.CANCELLING.value
             or job.cancel_requested_at is not None
-            else requested_status
         )
-        normalized_failure_kind = normalize_terminal_failure_kind(
-            failure_kind, status=effective_status
-        )
-        initial_error = (
-            terminal_failure_message(normalized_failure_kind)
-            if normalized_failure_kind is not None
-            else None
-        )
-        completed_at = utcnow()
-        claimed = await db.execute(
-            update(Run)
-            .where(Run.id == run.id, Run.status == observed_status)
-            .values(
-                status=effective_status,
-                error=initial_error,
-                completed_at=completed_at,
-                started_at=func.coalesce(Run.started_at, completed_at),
+        effective_status = status
+        if cancellation_requested:
+            effective_status = RunStatus.CANCELLED.value
+        elif execution.failure is not None:
+            effective_status = (
+                RunStatus.TIMED_OUT.value
+                if execution.failure == "timed_out"
+                else RunStatus.CANCELLED.value
+                if execution.failure == "cancelled"
+                else RunStatus.FAILED.value
             )
-        )
-        if claimed.rowcount != 1:
+        elif status == RunStatus.TIMED_OUT.value:
+            effective_status = RunStatus.TIMED_OUT.value
+        elif status == RunStatus.CANCELLED.value:
+            effective_status = RunStatus.CANCELLED.value
+        elif status == RunStatus.SUCCEEDED.value and not eligible:
+            effective_status = RunStatus.FAILED.value
+        if execution.failure is not None:
+            failure_kind = {
+                "cancelled": TerminalFailureKind.CANCELLED,
+                "timed_out": TerminalFailureKind.TIMED_OUT,
+                "agent_exit": TerminalFailureKind.AGENT_EXIT,
+                "output_limit_exceeded": TerminalFailureKind.OUTPUT_LIMIT_EXCEEDED,
+            }.get(execution.failure, TerminalFailureKind.INTERNAL_FAILURE)
+        if effective_status == "failed" and failure_kind is None:
+            failure_kind = TerminalFailureKind.INTERNAL_FAILURE
+        if not await _terminalize(
+            db, job, run, effective_status, failure_kind, metrics, projection
+        ):
             await db.rollback()
             continue
-
+        await _commit_terminal_notifications(db)
         await db.refresh(run)
-        break
-
-    await _record_terminal_effects(db, run, effective_status, metrics)
-    if effective_status == RunStatus.FAILED.value:
-        provider_error = _provider_error(run.metrics.get("provider_error"))
-        if provider_error is not None:
-            run.error = _provider_terminal_error(run.metrics) or terminal_failure_message(
-                TerminalFailureKind.PROVIDER_FAILURE
-            )
-    await db.commit()
-    await db.refresh(run)
-    return run_response(run)
+        return await _completion_response(db, job, run)
 
 
 async def get_analysis(db: AsyncSession, run_id: str) -> AnalysisResponse:

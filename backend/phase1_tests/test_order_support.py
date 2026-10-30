@@ -433,20 +433,30 @@ async def test_order_support_isolated_closed_loop_persists_final_state_evidence(
         spec = EvaluationSpec.model_validate(job["run"]["evaluation_spec"])
         code, events = fixture_events(spec)
         assert code == expected_code
+        import io
+        from app.env_server import EnvironmentSession, jsonl_emitter
+        from test_cp_completion import facts
+        output = io.StringIO()
+        session = EnvironmentSession(spec, "f123456789abcdef" * 4, jsonl_emitter(output))
+        for kind, payload in events:
+            if kind == "step_completed":
+                await session.dispatch(payload["tool_call"])
+        await session.dispatch({"name": "submit_result"})
+        captured = [json.loads(line) for line in output.getvalue().splitlines()]
         persisted = [envelope(spec.run_id, 1, "run_started", {"attempt": 1})]
-        persisted.extend(envelope(spec.run_id, index + 2, kind, payload)
-                         for index, (kind, payload) in enumerate(events))
+        persisted.extend(envelope(spec.run_id, i + 2, record["type"], record["payload"])
+                         for i, record in enumerate(captured))
         status = "succeeded" if code == 0 else "failed"
-        persisted.append(envelope(spec.run_id, len(persisted) + 1,
-                                  "run_completed" if code == 0 else "run_failed", {"exit_code": code}))
         assert await upload(client, job, persisted) == len(persisted)
         completed = await client.post(
             f"/api/internal/runner/jobs/{job['lease_id']}/complete",
-            headers=AUTH, json={"runner_id": "runner-1", "status": status},
+            headers=AUTH, json={"runner_id": "runner-1", "status": status, "execution": facts(spec.run_id)},
         )
         assert completed.status_code == 200
-        stored = completed.json()
-        expected = compute_score(trajectory(events), assertion_suite=assertion_suite_for_scenario(SCENARIO_ID))
+        stored = completed.json()["run"]
+        projected = trajectory(events)
+        projected["final_observation"] = captured[-1]["payload"]["environment"]["final_check"]["final_observation"]
+        expected = compute_score(projected, assertion_suite=assertion_suite_for_scenario(SCENARIO_ID))
         assert stored["metrics"]["assertions"] == expected["assertions"]
         stream = await client.get(f"/api/runs/{spec.run_id}/stream?after=0")
         assert '"refund_count"' in stream.text.replace('\\"', '"')

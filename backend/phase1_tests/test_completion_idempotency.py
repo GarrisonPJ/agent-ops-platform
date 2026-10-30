@@ -8,6 +8,8 @@ import pytest
 from sqlalchemy import event, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from test_cp_completion import facts
+
 import app.phase1_service as phase1_service
 from app.phase1_main import create_app
 from app.phase1_models import (
@@ -49,7 +51,7 @@ async def test_terminal_complete_remains_idempotent_after_lease_expiry(api) -> N
     assert claim.status_code == 200
     lease_id = claim.json()["lease_id"]
     completion_url = f"/api/internal/runner/jobs/{lease_id}/complete"
-    payload = {"runner_id": "runner-1", "status": "failed", "error": "budget exhausted"}
+    payload = {"runner_id": "runner-1", "status": "failed", "error": "budget exhausted", "execution": facts(run["id"])}
 
     first = await client.post(completion_url, headers=AUTH, json=payload)
     assert first.status_code == 200
@@ -62,8 +64,8 @@ async def test_terminal_complete_remains_idempotent_after_lease_expiry(api) -> N
 
     repeated = await client.post(completion_url, headers=AUTH, json=payload)
     assert repeated.status_code == 200
-    assert repeated.json()["id"] == first.json()["id"]
-    assert repeated.json()["completed_at"] == first.json()["completed_at"]
+    assert repeated.json()["run_id"] == first.json()["run_id"]
+    assert repeated.json()["run"]["completed_at"] == first.json()["run"]["completed_at"]
 
 
 @pytest.mark.asyncio
@@ -154,7 +156,7 @@ async def test_concurrent_completion_records_terminal_effects_once(tmp_path, mon
 
         monkeypatch.setattr(phase1_service, "_leased_job", wait_after_read)
         completion_url = f"/api/internal/runner/jobs/{lease_id}/complete"
-        payload = {"runner_id": "runner-1", "status": "failed"}
+        payload = {"runner_id": "runner-1", "status": "failed", "execution": facts(run_id)}
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=app), base_url="http://test"
         ) as client:
@@ -168,17 +170,17 @@ async def test_concurrent_completion_records_terminal_effects_once(tmp_path, mon
 
         assert [response.status_code for response in responses] == [200, 200]
         response_payloads = [response.json() for response in responses]
-        assert response_payloads[0]["id"] == response_payloads[1]["id"] == run_id
+        assert response_payloads[0]["run_id"] == response_payloads[1]["run_id"] == run_id
         assert (
-            response_payloads[0]["completed_at"]
-            == response_payloads[1]["completed_at"]
+            response_payloads[0]["run"]["completed_at"]
+            == response_payloads[1]["run"]["completed_at"]
         )
         async with factory() as db:
             persisted_run = await db.get(Run, run_id)
             assert persisted_run is not None
             assert persisted_run.status == "failed"
             assert persisted_run.completed_at is not None
-            assert persisted_run.completed_at.isoformat() == response_payloads[0]["completed_at"]
+            assert persisted_run.completed_at.isoformat() == response_payloads[0]["run"]["completed_at"]
             analyses = (
                 await db.execute(select(RunAnalysis).where(RunAnalysis.run_id == run_id))
             ).scalars().all()

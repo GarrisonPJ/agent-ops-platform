@@ -10,15 +10,17 @@ from pathlib import Path
 
 import pytest
 import pytest_asyncio
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
 from sqlalchemy.sql.dml import Update
 
 import app.phase1_service as phase1_service
 from app.migrations import application_alembic_head
-from app.phase1_models import Experiment, Policy, Run, RunAnalysis, RunEvent, RunnerJob, new_id, utcnow
-from app.phase1_schemas import EvaluationSpec, EventEnvelope
+from app.phase1_events import event_notifier
+from app.phase1_models import Experiment, Policy, Run, RunAnalysis, RunEvent, RunnerJob, RunnerAttempt, new_id, utcnow
+from app.phase1_schemas import EvaluationSpec, EventEnvelope, ExecutionFacts
+from test_cp_completion import facts
 
 
 BACKEND_DIR = Path(__file__).parents[1]
@@ -119,16 +121,18 @@ async def _seed_claimed_run(
                 lease_expires_at=now + timedelta(minutes=1),
             )
         )
+        db.add(RunEvent(run_id=run_id, sequence=1, event_type="run_started",
+                        payload={"attempt": 1, "source": "environment"}, occurred_at=now))
     return run_id, lease_id, experiment_id
 
 
 def _event(run_id: str, content: str) -> EventEnvelope:
     return EventEnvelope(
         run_id=run_id,
-        sequence=1,
+        sequence=2,
         occurred_at=datetime.now(timezone.utc),
         type="process_output",
-        payload={"content": content},
+        payload={"attempt": 1, "content": content},
     )
 
 
@@ -146,6 +150,223 @@ async def _synchronize_initial_lease_reads(monkeypatch, count: int = 2) -> None:
         return result
 
     monkeypatch.setattr(phase1_service, "_leased_job", wait_after_read)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("first_writer", ["upload", "completion"])
+async def test_postgres_upload_completion_contend_on_durable_prefix(
+    postgres_db: async_sessionmaker[AsyncSession], monkeypatch, first_writer: str
+) -> None:
+    run_id, lease_id, _ = await _seed_claimed_run(postgres_db)
+    first_ready = asyncio.Event()
+    release_first = asyncio.Event()
+    original_leased_job = phase1_service._leased_job
+    queue = event_notifier.subscribe(run_id)
+    try:
+        async with postgres_db() as upload_db, postgres_db() as completion_db:
+            upload_pid = (await upload_db.execute(text("SELECT pg_backend_pid()"))).scalar_one()
+            completion_pid = (await completion_db.execute(text("SELECT pg_backend_pid()"))).scalar_one()
+            first_db = upload_db if first_writer == "upload" else completion_db
+
+            async def pause_first_after_job_lock(db, *args, **kwargs):
+                result = await original_leased_job(db, *args, **kwargs)
+                if db is first_db and kwargs.get("for_update") and not first_ready.is_set():
+                    first_ready.set()
+                    await asyncio.wait_for(release_first.wait(), timeout=5)
+                return result
+
+            monkeypatch.setattr(phase1_service, "_leased_job", pause_first_after_job_lock)
+
+            async def upload():
+                return await phase1_service.persist_events(
+                    upload_db, run_id=run_id, lease_id=lease_id,
+                    runner_id="postgres-runner", events=[_event(run_id, "contended upload")],
+                )
+
+            async def complete():
+                return await phase1_service.complete_job(
+                    completion_db, lease_id=lease_id, runner_id="postgres-runner",
+                    status="failed", failure_kind=None, metrics=None,
+                    execution=ExecutionFacts.model_validate(facts(run_id)),
+                )
+
+            operations = [upload, complete] if first_writer == "upload" else [complete, upload]
+            tasks = [asyncio.create_task(operations[0]())]
+            try:
+                await asyncio.wait_for(first_ready.wait(), timeout=5)
+                tasks.append(asyncio.create_task(operations[1]()))
+                waiting, blocking = (
+                    (completion_pid, upload_pid) if first_writer == "upload"
+                    else (upload_pid, completion_pid)
+                )
+                await _wait_for_postgres_blocker(postgres_db, waiting, blocking)
+                assert queue.empty()
+                async with postgres_db() as observer:
+                    assert (await observer.get(Run, run_id)).status == "claimed"
+                    assert await observer.get(RunAnalysis, run_id) is None
+            finally:
+                release_first.set()
+                results = await asyncio.wait_for(
+                    asyncio.gather(*tasks, return_exceptions=True), timeout=10
+                )
+        monkeypatch.setattr(phase1_service, "_leased_job", original_leased_job)
+        completed = results[1 if first_writer == "upload" else 0]
+        assert not isinstance(completed, Exception), results
+        assert completed.status == "failed"
+        sequence = 3 if first_writer == "upload" else 2
+        assert completed.terminal_sequence == sequence
+        uploaded = results[0 if first_writer == "upload" else 1]
+        if first_writer == "upload":
+            assert uploaded[0] == 2 and len(uploaded[1]) == 1
+        else:
+            # Completion occupies the proposed sequence: no client event can replace it.
+            assert isinstance(uploaded, phase1_service.DomainError), results
+            assert uploaded.code == "EVENT_CONFLICT"
+            async with postgres_db() as db:
+                late = _event(run_id, "late append")
+                late.sequence = sequence + 1
+                with pytest.raises(phase1_service.DomainError) as rejected:
+                    await phase1_service.persist_events(
+                        db, run_id=run_id, lease_id=lease_id,
+                        runner_id="postgres-runner", events=[late],
+                    )
+                assert rejected.value.code == "RUN_TERMINAL"
+        # Only committed terminalization publishes; retries do not publish or rescore.
+        assert queue.get_nowait()["sequence"] == sequence
+        assert queue.empty()
+        async with postgres_db() as db:
+            repeated = await phase1_service.complete_job(
+                db, lease_id=lease_id, runner_id="postgres-runner",
+                status="succeeded", failure_kind=None, metrics=None,
+                execution=ExecutionFacts.model_validate(facts(run_id)),
+            )
+            assert repeated.model_dump() == completed.model_dump()
+        assert queue.empty()
+        async with postgres_db() as db:
+            rows = list((await db.scalars(
+                select(RunEvent).where(RunEvent.run_id == run_id).order_by(RunEvent.sequence)
+            )).all())
+            assert [row.sequence for row in rows] == list(range(1, sequence + 1))
+            assert [row.event_type for row in rows] == (
+                ["run_started", "process_output", "run_failed"] if first_writer == "upload"
+                else ["run_started", "run_failed"]
+            )
+            assert rows[-1].payload == {"attempt": 1, "status": "failed", "failure_kind": "internal_failure"}
+            assert len((await db.scalars(select(RunAnalysis).where(RunAnalysis.run_id == run_id))).all()) == 1
+            assert len((await db.scalars(select(Policy).where(Policy.source_run_id == run_id))).all()) == 1
+    finally:
+        event_notifier.unsubscribe(run_id, queue)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("attempt", [1, 3])
+async def test_postgres_recovery_snapshot_cannot_resurrect_completion(
+    postgres_db: async_sessionmaker[AsyncSession], monkeypatch, attempt: int
+) -> None:
+    run_id, lease_id, _ = await _seed_claimed_run(postgres_db)
+    expires_at = utcnow() + timedelta(minutes=1)
+    async with postgres_db.begin() as db:
+        job = await db.get(RunnerJob, run_id)
+        job.attempt = attempt
+        job.lease_expires_at = expires_at
+        start = await db.scalar(select(RunEvent).where(RunEvent.run_id == run_id))
+        start.payload = {"attempt": attempt, "source": "environment"}
+    ready = asyncio.Event()
+    release = asyncio.Event()
+    original_projection = phase1_service._evaluation_projection
+    queue = event_notifier.subscribe(run_id)
+    gate_key = 6140359
+    try:
+        async with postgres_db() as completion_db, postgres_db() as recovery_db, postgres_db() as gate_db:
+            gate_pid = (await gate_db.execute(text("SELECT pg_backend_pid()"))).scalar_one()
+            recovery_pid = (await recovery_db.execute(text("SELECT pg_backend_pid()"))).scalar_one()
+            await gate_db.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": gate_key})
+
+            async def pause_after_lease_validation(db, run):
+                if db is completion_db:
+                    ready.set()
+                    await asyncio.wait_for(release.wait(), timeout=5)
+                return await original_projection(db, run)
+
+            monkeypatch.setattr(phase1_service, "_evaluation_projection", pause_after_lease_validation)
+            original_execute = recovery_db.execute
+            gated = False
+
+            async def gate_recovery_statement(statement, *args, **kwargs):
+                nonlocal gated
+                if getattr(statement, "_for_update_arg", None) is not None and not gated:
+                    gated = True
+                    # Freeze the real joined predicate's statement snapshot, then
+                    # wait before LockRows can acquire Job. Completion leaves Job
+                    # unchanged, so the old candidate survives lock acquisition.
+                    sql = str(statement.compile(
+                        dialect=recovery_db.bind.sync_engine.dialect,
+                        compile_kwargs={"literal_binds": True},
+                    ))
+                    predicate = sql.rsplit(" FOR UPDATE", 1)[0]
+                    wrapped = text(
+                        "WITH candidates AS MATERIALIZED (" + predicate + "), "
+                        "gate AS MATERIALIZED (SELECT pg_advisory_xact_lock(:gate) FROM candidates) "
+                        "SELECT runner_jobs.* FROM runner_jobs JOIN candidates USING (run_id) "
+                        "CROSS JOIN gate FOR UPDATE OF runner_jobs SKIP LOCKED"
+                    )
+                    statement = select(RunnerJob).from_statement(wrapped).execution_options(populate_existing=True)
+                    return await original_execute(statement, {"gate": gate_key})
+                return await original_execute(statement, *args, **kwargs)
+
+            monkeypatch.setattr(recovery_db, "execute", gate_recovery_statement)
+            completion_task = asyncio.create_task(phase1_service.complete_job(
+                completion_db, lease_id=lease_id, runner_id="postgres-runner",
+                status="failed", failure_kind=None, metrics=None,
+                execution=ExecutionFacts.model_validate(facts(run_id, attempt)),
+            ))
+            tasks = [completion_task]
+            try:
+                await asyncio.wait_for(ready.wait(), timeout=5)
+                # Logical expiry happens after completion's valid lease check;
+                # no wall-clock sleep or lease-length race is needed.
+                monkeypatch.setattr(phase1_service, "utcnow", lambda: expires_at + timedelta(seconds=1))
+                recovery_task = asyncio.create_task(phase1_service._recover_expired_jobs(recovery_db))
+                tasks.append(recovery_task)
+                await _wait_for_postgres_blocker(postgres_db, recovery_pid, gate_pid)
+                assert queue.empty()
+                release.set()
+                completed = await asyncio.wait_for(completion_task, timeout=5)
+                # Only now may recovery lock the unchanged Job from its old snapshot.
+                await gate_db.commit()
+                recovered = await asyncio.wait_for(recovery_task, timeout=5)
+                await phase1_service._commit_terminal_notifications(recovery_db)
+            finally:
+                release.set()
+                await gate_db.rollback()
+                await asyncio.wait_for(asyncio.gather(*tasks, return_exceptions=True), timeout=10)
+        assert gated and completed.status == "failed" and recovered == 0
+        assert queue.get_nowait()["sequence"] == 2
+        assert queue.empty()
+        async with postgres_db() as db:
+            repeated = await phase1_service.complete_job(
+                db, lease_id=lease_id, runner_id="postgres-runner",
+                status="succeeded", failure_kind=None, metrics=None,
+                execution=ExecutionFacts.model_validate(facts(run_id, attempt)),
+            )
+            assert repeated.model_dump() == completed.model_dump()
+        assert queue.empty()
+        async with postgres_db() as db:
+            run = await db.get(Run, run_id)
+            job = await db.get(RunnerJob, run_id)
+            assert run.status == "failed" and job.attempt == attempt
+            assert job.lease_id == lease_id and job.runner_id == "postgres-runner"
+            rows = list((await db.scalars(select(RunEvent).where(
+                RunEvent.run_id == run_id
+            ).order_by(RunEvent.sequence))).all())
+            assert [row.event_type for row in rows] == ["run_started", "run_failed"]
+            assert rows[-1].sequence == repeated.terminal_sequence == 2
+            assert rows[-1].payload["attempt"] == attempt
+            assert await db.scalar(select(func.count()).select_from(RunnerAttempt).where(RunnerAttempt.run_id == run_id)) == 0
+            assert len((await db.scalars(select(RunAnalysis).where(RunAnalysis.run_id == run_id))).all()) == 1
+            assert len((await db.scalars(select(Policy).where(Policy.source_run_id == run_id))).all()) == 1
+    finally:
+        event_notifier.unsubscribe(run_id, queue)
 
 
 @pytest.mark.asyncio
@@ -177,14 +398,14 @@ async def test_postgres_concurrent_duplicate_events_converge(
             timeout=10,
         )
 
-    assert [result[0] for result in results] == [1, 1]
+    assert [result[0] for result in results] == [2, 2]
     assert sum(bool(result[1]) for result in results) == 1
     async with postgres_db() as db:
         rows = (
-            await db.execute(select(RunEvent).where(RunEvent.run_id == run_id))
+            await db.execute(select(RunEvent).where(RunEvent.run_id == run_id, RunEvent.event_type == "process_output"))
         ).scalars().all()
     assert len(rows) == 1
-    assert rows[0].payload == {"content": "same payload"}
+    assert rows[0].payload == {"attempt": 1, "content": "same payload"}
 
 
 @pytest.mark.asyncio
@@ -231,13 +452,13 @@ async def test_postgres_concurrent_conflicting_events_return_domain_conflict(
     assert len(conflicts) == 1
     assert not unexpected
     assert conflicts[0].code == "EVENT_CONFLICT"
-    assert conflicts[0].details == {"sequence": 1}
+    assert conflicts[0].details == {"sequence": 2}
     async with postgres_db() as db:
         rows = (
-            await db.execute(select(RunEvent).where(RunEvent.run_id == run_id))
+            await db.execute(select(RunEvent).where(RunEvent.run_id == run_id, RunEvent.event_type == "process_output"))
         ).scalars().all()
     assert len(rows) == 1
-    assert rows[0].payload in ({"content": "first payload"}, {"content": "second payload"})
+    assert rows[0].payload in ({"attempt": 1, "content": "first payload"}, {"attempt": 1, "content": "second payload"})
 
 
 @pytest.mark.asyncio
@@ -492,6 +713,7 @@ async def test_postgres_cancel_and_complete_converge_without_duplicate_terminal_
             return await phase1_service.complete_job(
                 complete_db, lease_id=lease_id, runner_id="postgres-runner",
                 status="failed", failure_kind=None, metrics=None,
+                execution=ExecutionFacts.model_validate(facts(run_id)),
             )
 
         first_operation = complete if first_writer == "completion" else lambda: phase1_service.cancel_run(cancel_db, run_id)
@@ -511,19 +733,20 @@ async def test_postgres_cancel_and_complete_converge_without_duplicate_terminal_
     assert not any(isinstance(result, Exception) for result in results), results
     expected_status = "failed" if first_writer == "completion" else "cancelled"
     if first_writer == "completion":
-        assert [result.status.value for result in results] == ["failed", "failed"]
+        assert [result.status for result in results] == ["failed", "failed"]
     else:
         assert results[0].status.value in {"cancelling", "cancelled"}
-        assert results[1].status.value == "cancelled"
+        assert results[1].status == "cancelled"
     monkeypatch.setattr(phase1_service, "_leased_job", original_leased_job)
-    completed_at = results[0 if first_writer == "completion" else 1].completed_at
+    completed_at = results[0 if first_writer == "completion" else 1].run.completed_at
     async with postgres_db() as retry_db:
         repeated = await phase1_service.complete_job(
             retry_db, lease_id=lease_id, runner_id="postgres-runner",
             status="failed", failure_kind=None, metrics=None,
+            execution=ExecutionFacts.model_validate(facts(run_id)),
         )
-        assert repeated.status.value == expected_status
-        assert repeated.completed_at == completed_at
+        assert repeated.status == expected_status
+        assert repeated.run.completed_at == completed_at
 
     async with postgres_db() as db:
         run = await db.get(Run, run_id)
@@ -534,6 +757,14 @@ async def test_postgres_cancel_and_complete_converge_without_duplicate_terminal_
         assert (job.cancel_requested_at is not None) == (first_writer == "cancellation")
         assert len((await db.scalars(select(RunAnalysis).where(RunAnalysis.run_id == run_id))).all()) == 1
         policies = list((await db.scalars(select(Policy).where(Policy.source_run_id == run_id))).all())
+        terminal = list((await db.scalars(select(RunEvent).where(
+            RunEvent.run_id == run_id,
+            RunEvent.event_type.in_(["run_completed", "run_failed", "run_cancelled"]),
+        ))).all())
+        assert len(terminal) == 1
+        assert terminal[0].payload["status"] == expected_status
+        assert terminal[0].sequence == repeated.terminal_sequence == 2
+        assert repeated.run_id == run_id and repeated.attempt == 1
         assert len(policies) == (1 if expected_status == "failed" else 0)
         assert all(policy.status == "candidate" for policy in policies)
 
@@ -588,5 +819,6 @@ async def test_postgres_queued_cancel_and_claim_follow_the_same_lock_order(
         completed = await phase1_service.complete_job(
             db, lease_id=claimed_job.lease_id, runner_id="claim-runner",
             status="succeeded", failure_kind=None, metrics=None,
+            execution=ExecutionFacts.model_validate(facts(run_id)),
         )
-        assert completed.status.value == "cancelled"
+        assert completed.status == "cancelled"

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from app.phase1_models import RunnerJob
+
 import json
 from pathlib import Path
 
@@ -39,12 +41,13 @@ async def test_review_packet_balances_strata_without_exposing_analysis(api) -> N
                     evaluation_spec={"scenario_id": scenario_id},
                 )
             )
+            db.add(RunnerJob(run_id=run_id, attempt=1))
             db.add(
                 RunEvent(
                     run_id=run_id,
                     sequence=1,
                     event_type="step_completed",
-                    payload={"index": 0, "observation": "The call failed."},
+                    payload={"attempt": 1, "environment": {"kind": "world", "result": "ok"}, "index": 0, "observation": "The call failed."},
                     occurred_at=utcnow(),
                 )
             )

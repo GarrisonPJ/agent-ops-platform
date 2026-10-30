@@ -212,18 +212,20 @@ async def test_builtin_scenario_calibration_survives_run_event_round_trip(
             spec, lambda event_type, payload: emitted.append((event_type, payload))
         )
         assert (exit_code == 0) is replay
-        event_pairs = [("run_started", {"attempt": claim["attempt"]}), *emitted]
-        event_pairs.append(("run_completed" if replay else "run_failed", {"exit_code": exit_code}))
-        events = [
-            {
-                "schema_version": 1,
-                "run_id": run_id,
-                "sequence": index,
-                "occurred_at": datetime.now(timezone.utc).isoformat(),
-                "type": event_type,
-                "payload": payload,
-            }
-            for index, (event_type, payload) in enumerate(event_pairs, start=1)
+        import io
+        import json
+        from app.env_server import EnvironmentSession, jsonl_emitter
+        from test_cp_completion import event, facts
+        output = io.StringIO()
+        session = EnvironmentSession(spec, "f123456789abcdef" * 4, jsonl_emitter(output))
+        for kind, payload in emitted:
+            if kind == "step_completed":
+                await session.dispatch(payload["tool_call"])
+        await session.dispatch({"name": "submit_result"})
+        captured = [json.loads(line) for line in output.getvalue().splitlines()]
+        events = [event(run_id, 1, "run_started", {"source": "environment"})] + [
+            event(run_id, i + 2, record["type"], record["payload"])
+            for i, record in enumerate(captured)
         ]
         uploaded = await client.post(
             f"/api/internal/runner/runs/{run_id}/events",
@@ -242,10 +244,11 @@ async def test_builtin_scenario_calibration_survives_run_event_round_trip(
             json={
                 "runner_id": "calibration-runner",
                 "status": "succeeded" if replay else "failed",
+                "execution": facts(run_id),
             },
         )
         assert completed.status_code == 200, completed.text
-        scores.append(completed.json()["score"])
+        scores.append(completed.json()["run"]["score"])
 
         async with factory() as db:
             persisted = (
@@ -255,7 +258,7 @@ async def test_builtin_scenario_calibration_survives_run_event_round_trip(
                     .order_by(RunEvent.sequence)
                 )
             ).scalars().all()
-            assert [event.sequence for event in persisted] == list(range(1, len(events) + 1))
+            assert [event.sequence for event in persisted] == list(range(1, len(events) + 2))
             run = await db.get(Run, run_id)
             assert run is not None
             trajectory, metrics = await _trajectory_from_events(db, run)
@@ -265,8 +268,9 @@ async def test_builtin_scenario_calibration_survives_run_event_round_trip(
             assert set(analysis.dimensions) == expected
             assert [step["observation"] for step in trajectory["steps"]] == [
                 payload["observation"]
-                for event_type, payload in emitted
-                if event_type == "step_completed"
+                for record in captured
+                if (event_type := record["type"]) == "step_completed"
+                and (payload := record["payload"])["environment"]["kind"] == "world"
             ]
             assert metrics["steps"] == len(trajectory["steps"])
             assert run.metrics["total_tokens"] == metrics["total_tokens"]

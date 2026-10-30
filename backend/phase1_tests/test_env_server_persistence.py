@@ -15,7 +15,8 @@ import pytest
 
 from app.durable_events import MAX_PROVIDER_TOKENS, normalize_event_payload
 from app.env_server import EnvironmentSession, jsonl_emitter
-from app.phase1_models import Run
+from app.phase1_models import Run, RunnerJob
+from test_cp_completion import facts
 from app.phase1_schemas import EvaluationSpec
 from app.phase1_service import _trajectory_from_events
 from app.scenario_registry import assertion_suite_for_scenario
@@ -118,12 +119,16 @@ async def create_claim(client):
     return run, claim
 
 
-async def persist(client, run, claim, records):
+async def persist(client, run, claim, records, offset=0):
+    for record in records:
+        record["payload"].setdefault("attempt", claim["attempt"])
+        if record["type"] == "run_started":
+            record["payload"]["source"] = "environment"
     events = [
         {
             "schema_version": 1,
             "run_id": run["id"],
-            "sequence": index + 1,
+            "sequence": index + 1 + offset,
             "occurred_at": datetime.now(timezone.utc).isoformat(),
             **record,
         }
@@ -139,7 +144,7 @@ async def persist(client, run, claim, records):
         },
     )
     assert response.status_code == 200, response.text
-    assert response.json()["accepted_through"] == len(events)
+    assert response.json()["accepted_through"] == len(events) + offset
 
 
 @pytest.mark.asyncio
@@ -190,9 +195,7 @@ async def test_env_server_persist_reconstruct_controls_unknown_usage_and_cp_auth
     captured[-1]["payload"].update(
         {"score": 99, "status": "succeeded", "expected": "anything"}
     )
-    captured[-1]["payload"]["environment"].update(
-        {"score": 99, "trajectory": [{"score": 99}]}
-    )
+
     await persist(
         client,
         run,
@@ -236,10 +239,10 @@ async def test_env_server_persist_reconstruct_controls_unknown_usage_and_cp_auth
     result = await client.post(
         f"/api/internal/runner/jobs/{claim['lease_id']}/complete",
         headers=AUTH,
-        json={"runner_id": "runner-env", "status": "failed", "metrics": {"score": 99}},
+        json={"runner_id": "runner-env", "status": "failed", "metrics": {"score": 99}, "execution": facts(run["id"])},
     )
     assert result.status_code == 200, result.text
-    completed = result.json()
+    completed = result.json()["run"]
     assert completed["status"] == "failed"
     assert completed["score"] == pytest.approx(expected["score"])
     assert completed["score"] != 99
@@ -338,7 +341,15 @@ async def test_env_server_reconstruction_discards_abandoned_attempt_check_and_us
             },
         },
     ]
-    await persist(client, run, claim, records)
+    await persist(client, run, claim, records[:3])
+    from datetime import timedelta
+    from app.phase1_models import utcnow
+    async with factory() as db:
+        job = await db.get(RunnerJob, run["id"])
+        job.lease_expires_at = utcnow() - timedelta(seconds=1)
+        await db.commit()
+    claim = (await client.post("/api/internal/runner/jobs/claim", headers=AUTH, json={"runner_id": "runner-env"})).json()
+    await persist(client, run, claim, records[3:], offset=3)
     async with factory() as db:
         stored = await db.get(Run, run["id"])
         trajectory, metrics = await _trajectory_from_events(db, stored)
@@ -351,7 +362,7 @@ async def test_env_server_reconstruction_discards_abandoned_attempt_check_and_us
 @pytest.mark.asyncio
 @pytest.mark.parametrize("source", ["environment", None])
 @pytest.mark.parametrize("step_count", [0, 1])
-async def test_env_server_latest_attempt_source_selects_unknown_or_legacy_zero(
+async def test_env_server_latest_attempt_requires_source_and_keeps_usage_unknown(
     api, source, step_count
 ):
     client, factory = api
@@ -390,19 +401,32 @@ async def test_env_server_latest_attempt_source_selects_unknown_or_legacy_zero(
                 },
             }
         )
-    await persist(client, run, claim, records)
+    await persist(client, run, claim, records[:2])
+    from datetime import timedelta
+    from app.phase1_models import utcnow
+    async with factory() as db:
+        job = await db.get(RunnerJob, run["id"])
+        job.lease_expires_at = utcnow() - timedelta(seconds=1)
+        await db.commit()
+    claim = (await client.post("/api/internal/runner/jobs/claim", headers=AUTH, json={"runner_id": "runner-env"})).json()
+    if source is None:
+        # Missing canonical provenance is rejected, not a legacy zero-usage path.
+        events = [{"run_id": run["id"], "sequence": 3 + i,
+                   "occurred_at": utcnow().isoformat(), **record}
+                  for i, record in enumerate(records[2:])]
+        events[0]["payload"]["attempt"] = 2
+        result = await client.post(f"/api/internal/runner/runs/{run['id']}/events", headers=AUTH,
+            json={"runner_id": "runner-env", "lease_id": claim["lease_id"], "events": events})
+        assert result.status_code == 422
+        return
+    await persist(client, run, claim, records[2:], offset=2)
     async with factory() as db:
         stored = await db.get(Run, run["id"])
         trajectory, metrics = await _trajectory_from_events(db, stored)
     assert metrics["steps"] == step_count
-    assert (
-        trajectory["total_tokens"] == metrics["total_tokens"] == (None if source else 0)
-    )
-    if source:
-        assert metrics["environment"] == {"finalized": False, "check_called": False}
-        assert metrics["agent_usage"]["context_window"] is None
-    else:
-        assert "environment" not in metrics and "agent_usage" not in metrics
+    assert trajectory["total_tokens"] == metrics["total_tokens"] is None
+    assert metrics["environment"] == {"finalized": False, "check_called": False}
+    assert metrics["agent_usage"]["context_window"] is None
 
 
 @pytest.mark.asyncio

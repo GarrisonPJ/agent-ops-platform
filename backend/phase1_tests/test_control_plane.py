@@ -8,6 +8,7 @@ from httpx import AsyncClient
 from sqlalchemy import select
 
 from app.phase1_models import RunEvent
+from test_cp_completion import facts
 
 
 AUTH = {"Authorization": "Bearer test-runner-token"}
@@ -40,6 +41,11 @@ async def claim(client: AsyncClient, runner_id: str = "runner-1") -> dict:
 
 
 def envelope(run_id: str, sequence: int, event_type: str, payload: dict | None = None) -> dict:
+    payload = {"attempt": 1, **(payload or {})}
+    if event_type == "run_started":
+        payload["source"] = "environment"
+    if event_type == "step_completed":
+        payload.setdefault("environment", {"kind": "world", "result": "ok"})
     return {
         "schema_version": 1,
         "run_id": run_id,
@@ -100,13 +106,12 @@ async def test_full_baseline_replay_activate_loop(api) -> None:
         )
         for index in range(6)
     )
-    baseline_events.append(envelope(baseline["id"], 8, "run_failed", {"exit_code": 1}))
-    assert await upload(client, baseline_claim, baseline_events) == 8
+    assert await upload(client, baseline_claim, baseline_events) == 7
 
     completed = await client.post(
         f"/api/internal/runner/jobs/{baseline_claim['lease_id']}/complete",
         headers=AUTH,
-        json={"runner_id": "runner-1", "status": "failed", "error": "step budget exhausted"},
+        json={"runner_id": "runner-1", "status": "failed", "error": "step budget exhausted", "execution": facts(baseline["id"])},
     )
     assert completed.status_code == 200
     assert completed.json()["status"] == "failed"
@@ -143,16 +148,20 @@ async def test_full_baseline_replay_activate_loop(api) -> None:
         step(replay_id, 2, 0, "check_service_health", "Service is healthy; latency is elevated."),
         step(replay_id, 3, 1, "query_service_metrics", "Payment dependency p95 is 1.8s."),
         step(replay_id, 4, 2, "fetch_service_logs", "Payment connection pool is saturated."),
-        envelope(replay_id, 5, "run_completed", {"exit_code": 0}),
+        envelope(replay_id, 5, "step_completed", {"environment": {
+            "kind": "control", "control": "submit_result", "result": "ok",
+            "finalized": True, "check_called": True,
+            "final_check": {"scenario_id": "checkout-api-latency.v1", "final_observation": None},
+        }}),
     ]
     assert await upload(client, replay_claim, replay_events) == 5
     replay_completed = await client.post(
         f"/api/internal/runner/jobs/{replay_claim['lease_id']}/complete",
         headers=AUTH,
-        json={"runner_id": "runner-1", "status": "succeeded"},
+        json={"runner_id": "runner-1", "status": "succeeded", "execution": facts(replay_id)},
     )
     assert replay_completed.status_code == 200
-    assert replay_completed.json()["score"] > completed.json()["score"]
+    assert replay_completed.json()["run"]["score"] > completed.json()["run"]["score"]
 
     validated = (await client.get(f"/api/experiments/{experiment['id']}")).json()[
         "candidate_policy"
@@ -182,12 +191,11 @@ async def test_event_upload_is_idempotent_and_sse_replays_after_sequence(api) ->
         step(run["id"], index + 3, index + 1, "fetch_service_logs", "No conclusive signal.")
         for index in range(5)
     ]
-    final_events.append(envelope(run["id"], 8, "run_failed"))
-    assert await upload(client, job, final_events) == 8
+    assert await upload(client, job, final_events) == 7
     await client.post(
         f"/api/internal/runner/jobs/{job['lease_id']}/complete",
         headers=AUTH,
-        json={"runner_id": "runner-1", "status": "failed"},
+        json={"runner_id": "runner-1", "status": "failed", "execution": facts(run["id"])},
     )
     stream = await client.get(f"/api/runs/{run['id']}/stream?after=6")
     assert stream.status_code == 200
@@ -314,10 +322,11 @@ async def test_provider_mode_persists_safe_metadata_and_respects_cancellation(ap
             "runner_id": "runner-1",
             "status": "failed",
             "error": "agent exited with exit status: 1",
+            "execution": facts(run["id"], failure="agent_exit"),
         },
     )
     assert completed.status_code == 200
-    completed_run = completed.json()
+    completed_run = completed.json()["run"]
     assert completed_run["status"] == "failed"
     assert completed_run["error"] == "PROVIDER_TIMEOUT: Provider request timed out"
     assert completed_run["metrics"]["provider"] == {
@@ -359,12 +368,13 @@ async def test_provider_mode_persists_safe_metadata_and_respects_cancellation(ap
             "runner_id": "runner-1",
             "status": "failed",
             "error": "agent exited with exit status: 1",
+            "execution": facts(cancelled_run["id"], failure="agent_exit"),
         },
     )
     assert cancelled.status_code == 200
     assert cancelled.json()["status"] == "cancelled"
-    assert cancelled.json()["error"] == "Run cancelled"
-    assert cancelled.json()["metrics"]["provider_error"] == provider_error
+    assert cancelled.json()["run"]["error"] == "Run cancelled"
+    assert cancelled.json()["run"]["metrics"]["provider_error"] == provider_error
 
 
 @pytest.mark.asyncio
@@ -391,7 +401,7 @@ async def test_legacy_completion_error_cannot_reach_run_or_durable_events(api) -
             ],
         },
     )
-    assert uploaded.status_code == 200
+    assert uploaded.status_code == 422
 
     completed = await client.post(
         f"/api/internal/runner/jobs/{job['lease_id']}/complete",
@@ -400,11 +410,12 @@ async def test_legacy_completion_error_cannot_reach_run_or_durable_events(api) -
             "runner_id": "runner-1",
             "status": "failed",
             "error": completion_marker,
+            "execution": facts(run["id"], failure="internal"),
             "metrics": {"raw_error": completion_marker},
         },
     )
     assert completed.status_code == 200
-    completed_run = completed.json()
+    completed_run = completed.json()["run"]
     assert completed_run["error"] == "Agent execution failed"
     response_json = json.dumps(completed_run)
     assert completion_marker not in response_json
@@ -420,7 +431,7 @@ async def test_legacy_completion_error_cannot_reach_run_or_durable_events(api) -
         ).scalars().all()
 
     assert [event.payload for event in persisted_events] == [
-        {"status": "failed", "failure_kind": "internal_failure"}
+        {"attempt": 1, "status": "failed", "failure_kind": "internal_failure"}
     ]
     durable_json = json.dumps([event.payload for event in persisted_events])
     assert completion_marker not in durable_json

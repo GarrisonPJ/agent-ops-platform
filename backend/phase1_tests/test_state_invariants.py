@@ -12,7 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 import app.phase1_service as phase1_service
 from app.phase1_main import create_app
 from app.phase1_models import Base, Experiment, Policy, Run, RunEvent, RunnerJob, new_id, utcnow
-from app.phase1_schemas import EvaluationSpec, EventEnvelope
+from app.phase1_schemas import EvaluationSpec, EventEnvelope, ExecutionFacts
+from test_cp_completion import facts
 
 
 AUTH = {"Authorization": "Bearer test-runner-token"}
@@ -84,7 +85,7 @@ async def test_expired_lease_cannot_upload_or_complete(api) -> None:
                     "sequence": 1,
                     "occurred_at": utcnow().isoformat(),
                     "type": "run_started",
-                    "payload": {},
+                    "payload": {"attempt": 1, "source": "environment"},
                 }
             ],
         },
@@ -95,7 +96,7 @@ async def test_expired_lease_cannot_upload_or_complete(api) -> None:
     complete_response = await client.post(
         f"/api/internal/runner/jobs/{claimed['lease_id']}/complete",
         headers=AUTH,
-        json={"runner_id": "runner-1", "status": "failed"},
+        json={"runner_id": "runner-1", "status": "failed", "execution": facts(run["id"])},
     )
     assert complete_response.status_code == 409
     assert complete_response.json()["code"] == "LEASE_EXPIRED"
@@ -110,12 +111,12 @@ async def test_complete_and_replay_requests_are_idempotent(api) -> None:
     claimed = claim_response.json()
 
     complete_url = f"/api/internal/runner/jobs/{claimed['lease_id']}/complete"
-    payload = {"runner_id": "runner-1", "status": "failed", "error": "budget exhausted"}
+    payload = {"runner_id": "runner-1", "status": "failed", "execution": facts(run["id"]), "error": "budget exhausted"}
     first = await client.post(complete_url, headers=AUTH, json=payload)
     second = await client.post(complete_url, headers=AUTH, json=payload)
     assert first.status_code == second.status_code == 200
-    assert first.json()["id"] == second.json()["id"] == run["id"]
-    assert first.json()["completed_at"] == second.json()["completed_at"]
+    assert first.json()["run_id"] == second.json()["run_id"] == run["id"]
+    assert first.json()["run"]["completed_at"] == second.json()["run"]["completed_at"]
 
     experiment = await client.get(f"/api/experiments/{run['experiment_id']}")
     policy = experiment.json()["candidate_policy"]
@@ -354,7 +355,7 @@ async def test_replay_race_with_non_replayable_policy_keeps_existing_conflict(
     await client.post(
         f"/api/internal/runner/jobs/{claim_response.json()['lease_id']}/complete",
         headers=AUTH,
-        json={"runner_id": "runner-1", "status": "failed"},
+        json={"runner_id": "runner-1", "status": "failed", "execution": facts(run["id"])},
     )
     experiment = await client.get(f"/api/experiments/{run['experiment_id']}")
     policy = experiment.json()["candidate_policy"]
@@ -433,7 +434,7 @@ async def test_running_cancel_is_acknowledged_by_heartbeat(api) -> None:
     completed = await client.post(
         f"/api/internal/runner/jobs/{claimed['lease_id']}/complete",
         headers=AUTH,
-        json={"runner_id": "runner-1", "status": "cancelled"},
+        json={"runner_id": "runner-1", "status": "cancelled", "execution": facts(run["id"])},
     )
     assert completed.status_code == 200
     assert completed.json()["status"] == "cancelled"
@@ -456,8 +457,9 @@ async def test_cancel_cannot_overwrite_terminal_status_from_stale_session(api) -
                 status="failed",
                 failure_kind=None,
                 metrics=None,
+                execution=ExecutionFacts.model_validate(facts(run["id"])),
             )
-            assert completed.status.value == "failed"
+            assert completed.status == "failed"
         cancelled = await phase1_service.cancel_run(stale_db, run["id"])
 
     assert cancelled.status.value == "failed"
@@ -481,8 +483,9 @@ async def test_heartbeat_cannot_restore_running_after_terminal_completion(api) -
                 status="failed",
                 failure_kind=None,
                 metrics=None,
+                execution=ExecutionFacts.model_validate(facts(run["id"])),
             )
-            assert completed.status.value == "failed"
+            assert completed.status == "failed"
         with pytest.raises(phase1_service.DomainError) as error:
             await phase1_service.heartbeat(stale_db, claimed["lease_id"], "runner-1")
 
@@ -524,8 +527,8 @@ async def test_concurrent_event_retry_converges_on_normalized_payload(api, monke
         run_id=run["id"],
         sequence=1,
         occurred_at=datetime.now(timezone.utc),
-        type="process_output",
-        payload={"content": "same", "unexpected": "ignored"},
+        type="run_started",
+        payload={"attempt": 1, "source": "environment", "unexpected": "ignored"},
     )
     original_leased_job = phase1_service._leased_job
     reads = 0
@@ -578,7 +581,7 @@ async def test_activation_case_claim_retry_is_idempotent_after_winner_activates(
     completed = await client.post(
         f"/api/internal/runner/jobs/{claimed['lease_id']}/complete",
         headers=AUTH,
-        json={"runner_id": "runner-1", "status": "failed"},
+        json={"runner_id": "runner-1", "status": "failed", "execution": facts(run["id"])},
     )
     assert completed.status_code == 200
     policy_data = (await client.get(f"/api/experiments/{run['experiment_id']}")).json()[
@@ -607,7 +610,7 @@ async def test_policy_cannot_activate_before_successful_replay(api) -> None:
     completed = await client.post(
         f"/api/internal/runner/jobs/{claimed['lease_id']}/complete",
         headers=AUTH,
-        json={"runner_id": "runner-1", "status": "failed"},
+        json={"runner_id": "runner-1", "status": "failed", "execution": facts(run["id"])},
     )
     assert completed.status_code == 200
     experiment = (await client.get(f"/api/experiments/{run['experiment_id']}")).json()

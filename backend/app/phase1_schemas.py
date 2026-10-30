@@ -7,7 +7,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Annotated, Literal
 
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, StrictBool, StrictInt, field_validator, model_validator
 
 from app.durable_events import (
     MAX_PROVIDER_LATENCY_MS,
@@ -16,10 +16,13 @@ from app.durable_events import (
     MAX_PROVIDER_TOTAL_TOKENS,
     ProviderFailureKind,
     TerminalFailureKind,
+    EnvironmentStepProvenance,
     normalize_event_payload,
     normalize_terminal_failure_kind,
 )
 
+
+from app.final_evidence import validate_final_check
 
 from app.scenario_ids import (
     DEFAULT_SCENARIO_ID,
@@ -186,7 +189,10 @@ class EventEnvelope(StrictModel):
 
     @model_validator(mode="after")
     def normalize_payload(self) -> EventEnvelope:
+        attempt = self.payload.get("attempt")
         self.payload = normalize_event_payload(self.type, self.payload)
+        if self.type == "process_output" and type(attempt) is int and 1 <= attempt <= 100:
+            self.payload["attempt"] = attempt
         return self
 
 
@@ -538,17 +544,120 @@ class HeartbeatResponse(StrictModel):
     lease_expires_at: datetime
 
 
+def validate_runner_event(event_type: object, payload: object) -> None:
+    """Check unnormalized Runner facts; current-attempt grammar is Job-locked."""
+    if not isinstance(event_type, str) or event_type not in {
+        "run_started",
+        "step_completed",
+        "process_output",
+    }:
+        raise ValueError("Runner terminal events are forbidden")
+    if not isinstance(payload, dict):
+        raise ValueError("event payload must be an object")
+    attempt = payload.get("attempt")
+    if type(attempt) is not int or not 1 <= attempt <= 100:
+        raise ValueError("event attempt must be a strict integer in 1..100")
+    if event_type == "run_started" and payload.get("source") != "environment":
+        raise ValueError("run_started requires Environment source")
+    if event_type == "step_completed":
+        provenance = payload.get("environment")
+        if not isinstance(provenance, dict):
+            raise ValueError("step requires Environment provenance")
+        allowed = {
+            "kind",
+            "result",
+            "control",
+            "finalized",
+            "check_called",
+            "final_check",
+            "usage",
+        }
+        if set(provenance) - allowed:
+            raise ValueError("unexpected Environment provenance fields")
+        parsed = EnvironmentStepProvenance.model_validate(provenance, strict=True)
+        if (parsed.kind == "control") != (parsed.control is not None):
+            raise ValueError("invalid control provenance")
+        if "final_check" in provenance:
+            if not (
+                parsed.kind == "control"
+                and parsed.control == "submit_result"
+                and parsed.result == "ok"
+                and parsed.finalized is True
+                and parsed.check_called is True
+            ):
+                raise ValueError("invalid final-check tuple")
+            validate_final_check(provenance["final_check"])
+
+
 class EventUploadRequest(StrictModel):
     runner_id: str = Field(min_length=1, max_length=100)
     lease_id: str
     events: list[EventEnvelope] = Field(min_length=1, max_length=100)
+
+    @field_validator("events", mode="before")
+    @classmethod
+    def validate_raw_events(cls, value: object) -> object:
+        # EventEnvelope normalizes durable display fields. Never let that repair
+        # identities or provenance before the canonical ingress has checked them.
+        if not isinstance(value, list):
+            raise ValueError("events must be a list")
+        for event in value:
+            raw = event.model_dump() if isinstance(event, EventEnvelope) else event
+            if not isinstance(raw, dict):
+                raise ValueError("invalid event")
+            validate_runner_event(raw.get("type"), raw.get("payload"))
+        return value
 
 
 class EventUploadResponse(StrictModel):
     accepted_through: int
 
 
+class ExecutionFailure(StrEnum):
+    INVALID_ENVIRONMENT_READY = "invalid_environment_ready"
+    ENVIRONMENT_EXIT = "environment_exit"
+    AGENT_EXIT = "agent_exit"
+    MISSING_SUBMISSION = "missing_submission"
+    CANCELLED = "cancelled"
+    TIMED_OUT = "timed_out"
+    OUTPUT_LIMIT_EXCEEDED = "output_limit_exceeded"
+    LEASE_REJECTED = "lease_rejected"
+    INTERNAL = "internal"
+
+
+class ExecutionFacts(StrictModel):
+    run_id: str = Field(strict=True, min_length=1)
+    attempt: StrictInt = Field(ge=1, le=100)
+    eligible: StrictBool
+    submitted: StrictBool
+    check_succeeded: StrictBool
+    planned_environment_teardown: StrictBool
+    failure: ExecutionFailure | None
+
+    @field_validator("failure", mode="before")
+    @classmethod
+    def exact_failure(cls, value: object) -> object:
+        if value is not None and not isinstance(value, (str, ExecutionFailure)):
+            raise ValueError("failure must be null or an exact execution failure")
+        return value
+
+
+class CompletionResponse(StrictModel):
+    run_id: str
+    attempt: StrictInt = Field(ge=1, le=100)
+    terminal_sequence: StrictInt = Field(ge=1)
+    status: Literal["succeeded", "failed", "cancelled", "timed_out"]
+    run: RunResponse
+
+    @model_validator(mode="after")
+    def agree_with_run(self) -> CompletionResponse:
+        if self.run.id != self.run_id or self.run.status != self.status:
+            raise ValueError("completion identity/status must agree with Run")
+        return self
+
+
 class CompleteRequest(StrictModel):
+    execution: ExecutionFacts
     runner_id: str = Field(min_length=1, max_length=100)
     status: Literal["succeeded", "failed", "cancelled", "timed_out"]
     failure_kind: TerminalFailureKind | None = Field(

@@ -168,16 +168,16 @@ def evaluate_assertion(
             score = 1.0
         detail = f"steps={count} min={min_steps} max={max_steps}"
     elif assertion.type == "equals":
-        actual = _final_observation(steps)
+        actual = trajectory.get("final_observation", _final_observation(steps))
         score = 1.0 if assertion.expected is not None and actual == assertion.expected else 0.0
         detail = f"expected={assertion.expected!r} actual={actual!r}"
     elif assertion.type == "contains":
-        actual = _final_observation(steps)
+        actual = trajectory.get("final_observation", _final_observation(steps))
         needle = assertion.contains or ""
         score = 1.0 if needle and needle in actual else 0.0
         detail = f"contains={needle!r} actual={actual!r}"
     elif assertion.type == "json-match":
-        actual = _final_observation(steps)
+        actual = trajectory.get("final_observation", _final_observation(steps))
         try:
             payload = json.loads(actual)
         except json.JSONDecodeError:

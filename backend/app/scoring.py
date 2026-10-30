@@ -26,6 +26,7 @@ def compute_score(
     trajectory: dict[str, Any],
     weights: dict[str, float] | None = None,
     assertion_suite: AssertionSuite | None = None,
+    assertion_result: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Compute a quality score for a trajectory.
 
@@ -66,8 +67,9 @@ def compute_score(
         total_latency_ms = sum(s.get("latency_ms", 0) or 0 for s in steps)
 
     # --- success reward -------------------------------------------------------
-    assertion_result: dict[str, Any] | None = None
-    if assertion_suite is not None and assertion_suite.assertions:
+    if assertion_result is not None:
+        success_reward = float(assertion_result["aggregate"])
+    elif assertion_suite is not None and assertion_suite.assertions:
         assertion_result = evaluate_assertion_suite(assertion_suite, trajectory)
         success_reward = float(assertion_result["aggregate"])
     else:

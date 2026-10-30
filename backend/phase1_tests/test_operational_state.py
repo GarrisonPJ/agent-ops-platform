@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from test_cp_completion import facts
+
 from datetime import timedelta
 
 import pytest
@@ -64,7 +66,7 @@ async def complete_failed(
             "sequence": sequence,
             "type": "run_started",
             "occurred_at": utcnow().isoformat(),
-            "payload": {"attempt": job["attempt"]},
+            "payload": {"attempt": job["attempt"], "source": "environment"},
         }
     ]
     if provider_error_code is not None:
@@ -76,6 +78,7 @@ async def complete_failed(
                 "type": "process_output",
                 "occurred_at": utcnow().isoformat(),
                 "payload": {
+                    "attempt": job["attempt"],
                     "stream": "stderr",
                     "content": "Provider execution failed.",
                     "provider_error": {
@@ -106,12 +109,13 @@ async def complete_failed(
         json={
             "runner_id": runner_id,
             "status": "failed",
+            "execution": facts(run_id, job["attempt"]),
             "error": "agent failed",
             "metrics": metrics or None,
         },
     )
     assert completed.status_code == 200
-    return completed.json()
+    return completed.json()["run"]
 
 
 def state_codes(snapshot: dict) -> dict[str, str]:
