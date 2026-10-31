@@ -25,7 +25,7 @@ async def create_baseline(client: AsyncClient) -> dict:
         json={
             "name": "Lease invariants",
             "task": "Investigate checkout API latency",
-            "scenario_id": "checkout-api-latency.v1",
+            "scenario_id": "checkout-api-latency.v2",
         },
     )
     assert experiment_response.status_code == 201
@@ -137,7 +137,7 @@ async def test_activation_supersedes_existing_active_policy_before_claim(api) ->
         id=experiment_id,
         name="Policy replacement",
         task="Investigate checkout API latency",
-        scenario_id="checkout-api-latency.v1",
+        scenario_id="checkout-api-latency.v2",
         scenario_params={},
         execution_mode="fixture",
     )
@@ -242,7 +242,7 @@ async def test_concurrent_replay_requests_are_idempotent_across_sessions(
         id=experiment_id,
         name="Replay race",
         task="Investigate checkout API latency",
-        scenario_id="checkout-api-latency.v1",
+        scenario_id="checkout-api-latency.v2",
         scenario_params={},
         execution_mode="fixture",
     )

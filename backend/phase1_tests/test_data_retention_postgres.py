@@ -144,7 +144,7 @@ async def add_experiment(
                 id=experiment_id,
                 name=f'name-{experiment_id}',
                 task=f'task-{experiment_id}',
-                scenario_id='checkout-api-latency.v1',
+                scenario_id='checkout-api-latency.v2',
                 execution_mode='fixture',
                 created_at=OLD,
             )

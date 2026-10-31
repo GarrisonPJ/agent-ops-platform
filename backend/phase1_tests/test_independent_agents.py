@@ -84,7 +84,7 @@ async def test_client_real_local_mcp_roundtrip(monkeypatch) -> None:
         monkeypatch.delenv(key, raising=False)
     spec = {
         "schema_version": 1, "run_id": "run-1", "experiment_id": "experiment-1",
-        "scenario_id": "checkout-api-latency.v1", "task": "investigate latency",
+        "scenario_id": "checkout-api-latency.v2", "task": "investigate latency",
         "execution_mode": "fixture", "limits": {"timeout_ms": 20_000},
     }
     environment = None
@@ -613,7 +613,10 @@ async def test_successful_client_entry_cancellation_exits_all_resources_once(tra
     assert transport.exits == ["session", "streams", "http"]
 
 
-@pytest.mark.parametrize("scenario", ["checkout-api-latency.v1", "unknown.v2"])
+@pytest.mark.parametrize("scenario", [
+    "checkout-api-latency.v1", "multi-step-research.v1",
+    "api-fault-orchestration.v1", "unknown.v2",
+])
 def test_spec_unsupported_scenarios_fail_closed(monkeypatch, scenario):
     monkeypatch.setattr(sys, "stdin", SimpleNamespace(buffer=io.BytesIO(json.dumps(BASE_INPUT | {"scenario_id": scenario}).encode())))
     with pytest.raises(AgentInputError, match="UNSUPPORTED_SCENARIO"):

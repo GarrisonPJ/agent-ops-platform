@@ -103,7 +103,7 @@ async def test_create_research_experiment_requires_topic_param(api) -> None:
         json={
             "name": "Research",
             "task": "Answer a research question",
-            "scenario_id": "multi-step-research.v1",
+            "scenario_id": "multi-step-research.v2",
         },
     )
     assert response.status_code == 400
@@ -132,13 +132,13 @@ async def test_create_research_experiment_with_topic(api) -> None:
         json={
             "name": "Research",
             "task": "Answer a research question",
-            "scenario_id": "multi-step-research.v1",
+            "scenario_id": "multi-step-research.v2",
             "scenario_params": {"topic": "checkout latency"},
         },
     )
     assert response.status_code == 201
     payload = response.json()
-    assert payload["scenario_id"] == "multi-step-research.v1"
+    assert payload["scenario_id"] == "multi-step-research.v2"
     assert payload["scenario_params"] == {"topic": "checkout latency"}
 
 
@@ -165,7 +165,7 @@ async def test_create_experiment_rejects_oversized_param_value(api) -> None:
         json={
             "name": "Oversized param",
             "task": "Should fail",
-            "scenario_id": "multi-step-research.v1",
+            "scenario_id": "multi-step-research.v2",
             "scenario_params": {"topic": "x" * 201},
         },
     )
@@ -205,7 +205,7 @@ async def test_claimed_run_includes_scenario_params_in_evaluation_spec(api) -> N
             json={
                 "name": "Research",
                 "task": "Answer a research question",
-                "scenario_id": "multi-step-research.v1",
+                "scenario_id": "multi-step-research.v2",
                 "scenario_params": {"topic": "checkout latency"},
             },
         )
@@ -220,7 +220,7 @@ async def test_claimed_run_includes_scenario_params_in_evaluation_spec(api) -> N
     )
     assert claim.status_code == 200
     spec = claim.json()["run"]["evaluation_spec"]
-    assert spec["scenario_id"] == "multi-step-research.v1"
+    assert spec["scenario_id"] == "multi-step-research.v2"
     assert spec["scenario_params"] == {"topic": "checkout latency"}
     assert spec["run_id"] == run["id"]
 

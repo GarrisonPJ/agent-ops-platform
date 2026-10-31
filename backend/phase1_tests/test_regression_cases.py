@@ -72,7 +72,7 @@ async def create_run(client: AsyncClient, *, execution_mode: str = "fixture") ->
             json={
                 "name": "Regression cases",
                 "task": "Investigate checkout API latency",
-                "scenario_id": "checkout-api-latency.v1",
+                "scenario_id": "checkout-api-latency.v2",
                 "execution_mode": execution_mode,
             },
         )
@@ -101,7 +101,7 @@ async def complete(client: AsyncClient, claimed: dict, status: str) -> dict:
             await upload(client, claimed, [envelope(claimed["run"]["run_id"], claimed["uploaded_through"] + 1, "step_completed", {
                 "environment": {"kind": "control", "control": "submit_result", "result": "ok",
                     "finalized": True, "check_called": True,
-                    "final_check": {"scenario_id": "checkout-api-latency.v1", "final_observation": None}},
+                    "final_check": {"scenario_id": "checkout-api-latency.v2", "final_observation": None}},
             })])
     response = await client.post(
         f"/api/internal/runner/jobs/{claimed['lease_id']}/complete",
@@ -349,7 +349,7 @@ async def test_activation_revalidates_explicit_source_agent_without_committing_r
         json={
             "name": "Explicit regression identity",
             "task": "Investigate checkout API latency",
-            "scenario_id": "checkout-api-latency.v1",
+            "scenario_id": "checkout-api-latency.v2",
             "agent_id": "fixture-agent.v1",
         },
     )

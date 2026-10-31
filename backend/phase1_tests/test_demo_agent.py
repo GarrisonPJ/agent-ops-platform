@@ -39,7 +39,7 @@ def make_research_spec(policy: PolicyPatch | None = None) -> EvaluationSpec:
     return EvaluationSpec(
         run_id="run-research-1",
         experiment_id="experiment-research-1",
-        scenario_id="multi-step-research.v1",
+        scenario_id="multi-step-research.v2",
         task="Answer a research question",
         scenario_params={"topic": "checkout latency"},
         policy=policy,
@@ -103,7 +103,7 @@ def test_research_replay_uses_search_fetch_answer_sequence() -> None:
 
 def test_fault_golden_agent_satisfies_baseline_and_replay_contract() -> None:
     values = runpy.run_path(str(Path(__file__).parents[2] / "scripts" / "golden_e2e.py"))
-    scenario_id = "api-fault-orchestration.v1"
+    scenario_id = "api-fault-orchestration.v2"
     config = values["GOLDEN_SCENARIOS"][scenario_id]
     scenario = require_scenario(scenario_id)
     assert config["task"] == scenario.metadata.default_task
@@ -160,8 +160,8 @@ def test_fault_golden_agent_satisfies_baseline_and_replay_contract() -> None:
 @pytest.mark.parametrize(
     ("scenario_args", "expected"),
     [
-        (["--scenario", "api-fault-orchestration.v1"], ["api-fault-orchestration.v1"]),
-        ([], ["api-fault-orchestration.v1", "checkout-api-latency.v1", "multi-step-research.v1"]),
+        (["--scenario", "api-fault-orchestration.v2"], ["api-fault-orchestration.v2"]),
+        ([], ["api-fault-orchestration.v2", "checkout-api-latency.v2", "multi-step-research.v2"]),
     ],
 )
 def test_golden_cli_supports_fault_scenario(scenario_args, expected, monkeypatch, capsys) -> None:
@@ -199,7 +199,7 @@ def test_fault_golden_rejects_incomplete_fixture_before_activation(
 ) -> None:
     values = runpy.run_path(str(Path(__file__).parents[2] / "scripts" / "golden_e2e.py"))
     run_loop = values["run_golden_loop"]
-    scenario_id = "api-fault-orchestration.v1"
+    scenario_id = "api-fault-orchestration.v2"
     suite = assertion_suite_for_scenario(scenario_id)
     runs = {}
     for run_id, status, tools in (

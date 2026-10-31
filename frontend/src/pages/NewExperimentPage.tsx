@@ -11,7 +11,7 @@ import {
 import type { ExecutionMode, Scenario } from "../types/phase1";
 
 const FALLBACK_SCENARIO: Scenario = {
-  id: "checkout-api-latency.v1",
+  id: "checkout-api-latency.v2",
   name: "Checkout API Latency",
   description:
     "Investigate elevated checkout latency using health checks, dependency metrics, and evidence-backed logs.",

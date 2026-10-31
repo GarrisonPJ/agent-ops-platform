@@ -65,7 +65,7 @@ async def add_experiment(
         experiment = Experiment(
             name=f"name-secret-{label}",
             task=f"task-secret-{label}",
-            scenario_id="checkout-api-latency.v1",
+            scenario_id="checkout-api-latency.v2",
             execution_mode="fixture",
             created_at=OLD,
         )
@@ -551,7 +551,7 @@ async def test_cross_experiment_references_block_deletion(
             regression_case = RegressionCase(
                 experiment_id=target_experiment,
                 source_run_id=target_run,
-                scenario_id="checkout-api-latency.v1",
+                scenario_id="checkout-api-latency.v2",
                 seed=42,
                 scenario_params={},
                 execution_mode="fixture",
@@ -572,7 +572,7 @@ async def test_cross_experiment_references_block_deletion(
                         if reference_kind == "regression_source"
                         else external_run
                     ),
-                    scenario_id="checkout-api-latency.v1",
+                    scenario_id="checkout-api-latency.v2",
                     seed=42,
                     scenario_params={},
                     execution_mode="fixture",
@@ -724,7 +724,7 @@ async def test_stale_plan_aborts_when_regression_case_count_changes(api) -> None
             RegressionCase(
                 experiment_id=experiment_id,
                 source_run_id=run_id,
-                scenario_id="checkout-api-latency.v1",
+                scenario_id="checkout-api-latency.v2",
                 seed=42,
                 scenario_params={},
                 execution_mode="fixture",
@@ -817,7 +817,7 @@ async def test_execute_deletes_only_the_complete_eligible_aggregate(api) -> None
         regression_case = RegressionCase(
             experiment_id=target_experiment,
             source_run_id=target_run,
-            scenario_id="checkout-api-latency.v1",
+            scenario_id="checkout-api-latency.v2",
             seed=42,
             scenario_params={},
             execution_mode="fixture",

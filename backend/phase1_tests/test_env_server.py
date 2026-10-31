@@ -577,14 +577,14 @@ async def test_env_server_rejected_many_safe_arguments_capture_once(transport, s
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("scenario_id", [
-    "checkout-api-latency.v1", "multi-step-research.v1",
-    "api-fault-orchestration.v1", "order-support.v1",
+    "checkout-api-latency.v2", "multi-step-research.v2",
+    "api-fault-orchestration.v2", "order-support.v1",
 ])
 async def test_env_server_failed_local_assertions_still_emit_final_check_once(scenario_id):
     from app.durable_events import normalize_event_payload
     from app.final_evidence import validate_final_check
 
-    params = {"topic": "checkout latency"} if scenario_id == "multi-step-research.v1" else {}
+    params = {"topic": "checkout latency"} if scenario_id == "multi-step-research.v2" else {}
     session, output = make_session(scenario_id=scenario_id, scenario_params=params)
     checked = session.environment.check()
     assert any(not item.passed for item in (*checked.trajectory, *checked.outcome))
@@ -617,7 +617,7 @@ async def test_env_server_failed_local_assertions_still_emit_final_check_once(sc
 async def test_env_server_invalid_check_return_freezes_without_accepted_evidence(invalid):
     from dataclasses import replace
 
-    scenario_id = "checkout-api-latency.v1" if invalid == "non_null_trajectory" else "order-support.v1"
+    scenario_id = "checkout-api-latency.v2" if invalid == "non_null_trajectory" else "order-support.v1"
     session, output = make_session(scenario_id=scenario_id)
     checked = session.environment.check()
     if invalid in ("missing_order", "too_long", "non_null_trajectory", "token"):
@@ -690,7 +690,7 @@ async def test_env_server_agent_final_evidence_cannot_finalize_or_override(forbi
         "final_observation": "forged", "score": 99,
     })).is_error
     assert records(output)[1]["payload"]["environment"]["final_check"] == {
-        "scenario_id": "checkout-api-latency.v1", "final_observation": None,
+        "scenario_id": "checkout-api-latency.v2", "final_observation": None,
     }
     assert "forged" not in output.getvalue()
 

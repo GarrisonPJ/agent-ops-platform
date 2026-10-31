@@ -29,7 +29,7 @@ from app.scenario_assertions import (
 from app.phase1_service import _trajectory_from_events
 
 AUTH = {"Authorization": "Bearer test-runner-token"}
-SCENARIO = "checkout-api-latency.v1"
+SCENARIO = "checkout-api-latency.v2"
 
 
 def facts(run_id, attempt=1, **changes):
@@ -416,7 +416,7 @@ async def test_raw_ingress_grammar_rejects_before_normalization(api, mode):
     elif mode == "wrong_scenario":
         events[-1]["payload"]["environment"]["final_check"][
             "scenario_id"
-        ] = "multi-step-research.v1"
+        ] = "multi-step-research.v2"
     elif mode == "extra_provenance":
         events[-1]["payload"]["environment"]["score"] = 1
     elif mode == "split_final_tuple":

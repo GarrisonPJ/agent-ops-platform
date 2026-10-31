@@ -21,7 +21,7 @@ async def create_baseline(client: AsyncClient) -> tuple[dict, dict]:
             json={
                 "name": "Checkout latency",
                 "task": "Investigate checkout API latency",
-                "scenario_id": "checkout-api-latency.v1",
+                "scenario_id": "checkout-api-latency.v2",
             },
         )
     ).json()
@@ -151,7 +151,7 @@ async def test_full_baseline_replay_activate_loop(api) -> None:
         envelope(replay_id, 5, "step_completed", {"environment": {
             "kind": "control", "control": "submit_result", "result": "ok",
             "finalized": True, "check_called": True,
-            "final_check": {"scenario_id": "checkout-api-latency.v1", "final_observation": None},
+            "final_check": {"scenario_id": "checkout-api-latency.v2", "final_observation": None},
         }}),
     ]
     assert await upload(client, replay_claim, replay_events) == 5

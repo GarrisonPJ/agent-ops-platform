@@ -22,6 +22,8 @@ export const policyStatusSchema = z.enum([
 
 export const executionModeSchema = z.enum(["fixture", "provider"]);
 
+export const DEFAULT_SCENARIO_ID = "checkout-api-latency.v2";
+
 export const policyPatchSchema = z
   .object({
     instruction_patch: z.array(z.string().min(1).max(500)).max(10),
@@ -79,7 +81,7 @@ export const evaluationSpecSchema = z
     schema_version: z.literal(1),
     run_id: z.string().min(1),
     experiment_id: z.string().min(1),
-    scenario_id: scenarioIdSchema.default("checkout-api-latency.v1"),
+    scenario_id: scenarioIdSchema.default(DEFAULT_SCENARIO_ID),
     task: z.string().min(1).max(4_000),
     seed: z.number().int().min(0).max(2_147_483_647),
     execution_mode: executionModeSchema.optional(),
@@ -100,9 +102,9 @@ export const runMetricsSchema = z
     steps: z.number().int().nonnegative().optional(),
     step_count: z.number().int().nonnegative().optional(),
     latency_ms: z.number().nonnegative().optional(),
-    token_prompt: z.number().int().nonnegative().optional(),
-    token_completion: z.number().int().nonnegative().optional(),
-    total_tokens: z.number().int().nonnegative().optional(),
+    token_prompt: z.number().int().nonnegative().nullable().optional(),
+    token_completion: z.number().int().nonnegative().nullable().optional(),
+    total_tokens: z.number().int().nonnegative().nullable().optional(),
     tool_failures: z.number().int().nonnegative().optional(),
   })
   .catchall(z.unknown());

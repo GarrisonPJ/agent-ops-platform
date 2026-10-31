@@ -889,7 +889,7 @@ async def test_provider_agent_rejects_a_tool_outside_the_allowlist_once(
     ("scenario_id", "tool", "arguments", "observation"),
     [
         (
-            "checkout-api-latency.v1",
+            "checkout-api-latency.v2",
             "check_service_health",
             {"service": "checkout-api"},
             "Service is healthy but checkout latency is elevated.",
@@ -918,7 +918,7 @@ async def test_legacy_provider_observations_are_not_promoted_to_environment(
 
     monkeypatch.setattr(require_scenario(scenario_id).environment_factory, "call", forbidden)
     spec = {
-        "checkout-api-latency.v1": provider_spec,
+        "checkout-api-latency.v2": provider_spec,
         RESEARCH_SCENARIO_ID: research_provider_spec,
         FAULT_SCENARIO_ID: fault_provider_spec,
     }[scenario_id]()

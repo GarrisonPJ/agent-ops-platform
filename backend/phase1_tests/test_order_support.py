@@ -113,7 +113,7 @@ def test_order_support_explicit_registration_factory_and_instruction_only_policy
     assert patch.tool_priority == {}
     assert patch.max_steps == 6
     assert PolicyPatch.model_validate_json(patch.model_dump_json()) == patch
-    assert DEFAULT_SCENARIO_ID == "checkout-api-latency.v1"
+    assert DEFAULT_SCENARIO_ID == "checkout-api-latency.v2"
     assert entry.handler.__dict__ == {}  # No shared mutable world on the handler.
 
 

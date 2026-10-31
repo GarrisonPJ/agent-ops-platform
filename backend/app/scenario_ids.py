@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import re
 
-CHECKOUT_SCENARIO_ID = "checkout-api-latency.v1"
-MULTI_STEP_RESEARCH_SCENARIO_ID = "multi-step-research.v1"
-API_FAULT_ORCHESTRATION_SCENARIO_ID = "api-fault-orchestration.v1"
+CHECKOUT_SCENARIO_ID = "checkout-api-latency.v2"
+MULTI_STEP_RESEARCH_SCENARIO_ID = "multi-step-research.v2"
+API_FAULT_ORCHESTRATION_SCENARIO_ID = "api-fault-orchestration.v2"
 ORDER_SUPPORT_SCENARIO_ID = "order-support.v1"
 
 DEFAULT_SCENARIO_ID = CHECKOUT_SCENARIO_ID

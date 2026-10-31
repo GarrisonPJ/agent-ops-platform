@@ -2,7 +2,7 @@
   "schema_version": 1,
   "run_id": "00000000-0000-4000-8000-000000000001",
   "experiment_id": "00000000-0000-4000-8000-000000000002",
-  "scenario_id": "checkout-api-latency.v1",
+  "scenario_id": "checkout-api-latency.v2",
   "task": "Investigate checkout API latency",
   "seed": 42,
   "execution_mode": "fixture",

@@ -391,7 +391,7 @@ def test_migration_preserves_populated_pre_0009_experiment(tmp_path: Path) -> No
             "VALUES (?, ?, ?, ?, ?, ?, ?)",
             (
                 "legacy-experiment", "Legacy experiment", legacy_spec["task"],
-                "checkout-api-latency.v1", '{"region": "local"}', "fixture",
+                "checkout-api-latency.v2", '{"region": "local"}', "fixture",
                 "2026-01-01 00:00:00",
             ),
         )

@@ -23,7 +23,7 @@ const mocks = vi.hoisted(() => ({
   ],
   scenarios: [
     {
-      id: "checkout-api-latency.v1",
+      id: "checkout-api-latency.v2",
       name: "Checkout API Latency",
       description: "Investigate elevated checkout latency.",
       default_task:
@@ -32,7 +32,7 @@ const mocks = vi.hoisted(() => ({
       params: [],
     },
     {
-      id: "multi-step-research.v1",
+      id: "multi-step-research.v2",
       name: "Multi-step Research",
       description: "Search, fetch, and answer.",
       default_task: "Answer a research question using search and fetch tools",
@@ -221,7 +221,7 @@ describe("NewExperimentPage", () => {
       expect(mocks.createExperiment).toHaveBeenCalledWith({
         name: "Checkout latency investigation",
         task: "Investigate why the checkout API latency increased after the latest deployment.",
-        scenario_id: "checkout-api-latency.v1",
+        scenario_id: "checkout-api-latency.v2",
         execution_mode: "provider",
       }),
     );
@@ -282,7 +282,7 @@ describe("NewExperimentPage", () => {
       expect(mocks.createExperiment).toHaveBeenCalledWith({
         name: "Multi-step Research investigation",
         task: "Answer a research question using search and fetch tools",
-        scenario_id: "multi-step-research.v1",
+        scenario_id: "multi-step-research.v2",
         execution_mode: "fixture",
         scenario_params: { topic: "payment latency" },
       }),

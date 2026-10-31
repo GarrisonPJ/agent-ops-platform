@@ -22,9 +22,9 @@ from app.final_evidence import (
 
 
 TRAJECTORY_IDS = [
-    "checkout-api-latency.v1",
-    "multi-step-research.v1",
-    "api-fault-orchestration.v1",
+    "checkout-api-latency.v2",
+    "multi-step-research.v2",
+    "api-fault-orchestration.v2",
 ]
 
 
@@ -83,7 +83,10 @@ def test_final_evidence_forbids_authority_fields(field):
 
 @pytest.mark.parametrize("raw", [
     None, [], {}, {"scenario_id": True, "final_observation": None},
-    evidence(scenario_id="checkout-api-latency.v2"),
+    evidence(scenario_id="checkout-api-latency.v1"),
+    evidence(scenario_id="multi-step-research.v1"),
+    evidence(scenario_id="api-fault-orchestration.v1"),
+    evidence(scenario_id="checkout-api-latency.v3"),
     evidence(scenario_id="unregistered.v1"), evidence(1), evidence(b"{}"), evidence(),
 ])
 def test_final_evidence_rejects_invalid_shape_identity_or_operand(raw):

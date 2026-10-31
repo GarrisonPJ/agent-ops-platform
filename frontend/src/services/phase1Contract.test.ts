@@ -74,7 +74,7 @@ describe("Phase 1 frontend contract", () => {
       const request = {
         name: "Agent contract",
         task: "Investigate checkout",
-        scenario_id: "checkout-api-latency.v1",
+        scenario_id: "checkout-api-latency.v2",
         execution_mode: "provider" as const,
         ...(agentId ? { agent_id: agentId } : {}),
       };
@@ -103,7 +103,7 @@ describe("Phase 1 frontend contract", () => {
       const spec = { ...goldenJourney.experiment.runs[0].evaluation_spec, agent_id: agentId };
       expect(evaluationSpecSchema.parse(spec).agent_id).toBe(agentId);
       const { scenario_id: _scenarioId, ...legacy } = spec;
-      expect(evaluationSpecSchema.parse(legacy).scenario_id).toBe("checkout-api-latency.v1");
+      expect(evaluationSpecSchema.parse(legacy).scenario_id).toBe("checkout-api-latency.v2");
     }
     for (const agentId of ["", "unversioned", "../command.v1", "a".repeat(65) + ".v1"]) {
       expect(

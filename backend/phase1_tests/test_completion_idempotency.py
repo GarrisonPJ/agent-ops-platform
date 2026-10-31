@@ -36,7 +36,7 @@ async def test_terminal_complete_remains_idempotent_after_lease_expiry(api) -> N
             json={
                 "name": "Terminal idempotency",
                 "task": "Investigate checkout API latency",
-                "scenario_id": "checkout-api-latency.v1",
+                "scenario_id": "checkout-api-latency.v2",
             },
         )
     ).json()
@@ -103,7 +103,7 @@ async def test_concurrent_completion_records_terminal_effects_once(tmp_path, mon
             experiment = Experiment(
                 name="Concurrent completion",
                 task="Investigate checkout API latency",
-                scenario_id="checkout-api-latency.v1",
+                scenario_id="checkout-api-latency.v2",
                 execution_mode="fixture",
             )
             db.add(experiment)

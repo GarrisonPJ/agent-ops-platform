@@ -84,7 +84,7 @@ async def _seed_claimed_run(
     evaluation_spec = EvaluationSpec(
         run_id=run_id,
         experiment_id=experiment_id,
-        scenario_id="checkout-api-latency.v1",
+        scenario_id="checkout-api-latency.v2",
         task="Investigate checkout API latency",
     )
     async with factory.begin() as db:
@@ -93,7 +93,7 @@ async def _seed_claimed_run(
                 id=experiment_id,
                 name="PostgreSQL contention",
                 task="Investigate checkout API latency",
-                scenario_id="checkout-api-latency.v1",
+                scenario_id="checkout-api-latency.v2",
                 execution_mode="fixture",
                 created_at=now,
             )
@@ -471,7 +471,7 @@ async def test_postgres_concurrent_policy_replay_creates_one_run_and_job(
     baseline_spec = EvaluationSpec(
         run_id=baseline_id,
         experiment_id=experiment_id,
-        scenario_id="checkout-api-latency.v1",
+        scenario_id="checkout-api-latency.v2",
         task="Investigate checkout API latency",
     )
     async with postgres_db.begin() as db:
@@ -480,7 +480,7 @@ async def test_postgres_concurrent_policy_replay_creates_one_run_and_job(
                 id=experiment_id,
                 name="PostgreSQL replay race",
                 task="Investigate checkout API latency",
-                scenario_id="checkout-api-latency.v1",
+                scenario_id="checkout-api-latency.v2",
                 execution_mode="fixture",
             )
         )
@@ -570,7 +570,7 @@ async def test_postgres_concurrent_different_policy_activation_is_serialized(
     baseline_spec = EvaluationSpec(
         run_id=baseline_id,
         experiment_id=experiment_id,
-        scenario_id="checkout-api-latency.v1",
+        scenario_id="checkout-api-latency.v2",
         task="Investigate checkout API latency",
     )
     async with postgres_db.begin() as db:
@@ -579,7 +579,7 @@ async def test_postgres_concurrent_different_policy_activation_is_serialized(
                 id=experiment_id,
                 name="PostgreSQL activation race",
                 task="Investigate checkout API latency",
-                scenario_id="checkout-api-latency.v1",
+                scenario_id="checkout-api-latency.v2",
                 execution_mode="fixture",
             )
         )
