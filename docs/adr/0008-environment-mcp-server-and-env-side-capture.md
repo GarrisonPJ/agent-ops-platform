@@ -99,9 +99,11 @@ priority among simultaneously ready failure signals. Deterministic tests must
 prove reader-side prefix consumption before observed Agent exit, release the
 suffix only afterward, and assert exact accepted events and sequence numbers.
 
-Real-model execution is explicitly deferred for this local engineering
-closeout by the operator. Fixture/fake-Provider tests remain deterministic;
-this deferral is not evidence of Ollama/vLLM or live-model acceptance.
+Fixture/fake-Provider tests remain deterministic and CI does not require a live
+model. H1-5 separately records finite direct llama.cpp acceptance against an
+already installed endpoint; research/order succeeded and checkout/fault failures
+remain failures. This is not evidence of Ollama/vLLM compatibility, accuracy,
+stable pass rate or public deployment.
 
 ## Consequences
 

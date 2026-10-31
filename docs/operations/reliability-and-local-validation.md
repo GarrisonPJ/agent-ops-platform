@@ -111,7 +111,7 @@ For a terminal Provider Run, inspect both `terminal.error` and
 | Code | Classification | Meaning and next check |
 |---|---|---|
 | `PROVIDER_NOT_CONFIGURED` | Configuration, not retryable | One or more required Runner settings (`AGENTOPS_PROVIDER_BASE_URL`, `AGENTOPS_PROVIDER_API_KEY`, or `AGENTOPS_PROVIDER_MODEL`) is missing. |
-| `PROVIDER_CONFIGURATION_ERROR` | Configuration, not retryable | The URL or numeric timeout/retry setting is invalid. Fix Runner environment and restart it. |
+| `PROVIDER_CONFIGURATION_ERROR` | Configuration, not retryable | The URL, timeout/retry budget or optional generation setting is invalid. Fix Runner environment and restart it. |
 | `PROVIDER_TIMEOUT` | Transport, retryable | The bounded request timed out. Check Provider latency and the configured timeout before retrying. |
 | `PROVIDER_UNAVAILABLE` | Transport, retryable | HTTPX could not complete the request. Check DNS, network route, proxy, and Provider health. |
 | `PROVIDER_RATE_LIMITED` | Remote rate limit, retryable | The Provider returned HTTP 429. Respect the Provider's limit/backoff policy. |
@@ -195,7 +195,7 @@ The H1 standard Runner network build succeeded locally on 2026-10-31; the
 closeout rebuild refreshed Rust after the P2 fixes using the same Dockerfile
 and cached dependency layers. Actual volume initialization/replacement was
 checked separately. This is not cold-cache, fresh-base, hosted CI, cross-platform
-or live-model evidence. Current limits: [system-acceptance.md](system-acceptance.md).
+or live-model evidence. The later H1-5 image rebuild and direct live-model run are separate evidence in the [dated record](../history/h1-live-model-acceptance-2026-11-01.md). Current limits: [system-acceptance.md](system-acceptance.md).
 
 Provider fake-server tests must not be sent through an inherited corporate
 proxy. Inherited proxy variables have caused fake-server loopback timeouts. Prefer a

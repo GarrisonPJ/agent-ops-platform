@@ -247,6 +247,6 @@ Agent stdout ──────────────> 诊断/受限 relay；�
 - exit-boundary 与 lock-path 两个 P2 已修复并经 scoped 独立复审。具体用例在 `exit_boundary_tests.rs` 与 `lib.rs` lock tests；测试不穷举所有调度交错。
 - `open_locked_file` 对 capacity/per-Run locks 使用 `O_NOFOLLOW | O_NONBLOCK`，校验打开 fd 的 regular-file/owner/mode，拒绝 symlink、dangling、FIFO/device，不截断目标。可信目录仍是边界，不隔离恶意同用户进程。
 - CI 保留 Golden、recovery、PostgreSQL/calibration gates，只用 deterministic fixture/fake-provider。恢复门显式选择专用 registry 的 `recovery-fixture.v1`，不靠无效的 override 覆盖 CP 显式 Agent ID。
-- 不写 v1 alias、不启动 H2、不访问或重评分历史数据。标准镜像/volume、host、hosted CI、cold-cache、完整 exact-payload 各自是独立声明；真实模型验收明确延期。历史 Runner daemon bounded stop exit 137 不是 child-group cleanup 失败证据，也不能声称优雅 daemon shutdown。
+- 不写 v1 alias、不启动 H2、不访问或重评分历史数据。标准镜像/volume、host、hosted CI、cold-cache、完整 exact-payload 各自是独立声明；真实 llama.cpp + PostgreSQL 的 H1-5 验收已另行完成，实际成功/失败见 [记录](../history/h1-live-model-acceptance-2026-11-01.md)。历史 Runner daemon bounded stop exit 137 不是 child-group cleanup 失败证据，也不能声称优雅 daemon shutdown。
 
 继续阅读：[`01-run-lifecycle.md`](01-run-lifecycle.md)、[`02-environment-and-mcp.md`](02-environment-and-mcp.md)、[`ADR-0002`](../adr/0002-runner-recovery.md)、[`ADR-0008`](../adr/0008-environment-mcp-server-and-env-side-capture.md)。

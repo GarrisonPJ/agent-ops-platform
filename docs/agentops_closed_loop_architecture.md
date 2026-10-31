@@ -80,7 +80,15 @@ See [ADR-0002](adr/0002-runner-recovery.md), [ADR-0008](adr/0008-environment-mcp
 
 ADR-0013 changes only run-level explicit context evidence (strictly above 95%, Agent-reported) and suppresses assertion-derived planning for zero-world-call explicit Provider failure. Scoring, labels and terminal gates are unchanged. Fresh v3 packets bind actual event/trajectory facts; historical packets are not relabeled. Six controlled contracts plus real PostgreSQL dump/restore remain `provisional_mechanics`, `publishable_accuracy=false`, not general accuracy.
 
-Host tests, ASGI calibration, standard network builds, offline-derived images, actual volume replacement, browser recording, hosted CI and live models establish different things. Current operator choice explicitly defers real-local-model acceptance and installation to a separate task. Fake Providers cannot satisfy it. Procedures: [validation](operations/reliability-and-local-validation.md), [calibration](evaluation-calibration.md), [local-model handoff](operations/local-model.md).
+Host tests, ASGI calibration, standard network builds, offline-derived images,
+actual volume replacement, browser recording, hosted CI and live models establish
+different things. H1-5 now has finite direct acceptance for an already installed
+Swift/llama.cpp endpoint, while fixture/fake-Provider CI remains deterministic and
+fake results are not relabeled as live results. The direct run set is not a pass-rate,
+accuracy, universal compatibility or public-deployment claim. Procedures:
+[validation](operations/reliability-and-local-validation.md),
+[calibration](evaluation-calibration.md), [local model](operations/local-model.md),
+and [dated H1-5 record](history/h1-live-model-acceptance-2026-11-01.md).
 
 ## Future architecture, not current features
 

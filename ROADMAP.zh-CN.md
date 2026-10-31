@@ -16,9 +16,9 @@
 
 Phase 1 hosted CI 在 `8bd2ef0` 通过，其计数只属于该历史快照。H1 已集成独立 Environment/MCP 与注册 fixture/reference Agent、生产 Rust dispatch/completion、可信 final-check、CP 独占评分、checkout/research/fault v2 与 `order-support.v1`、analyzer-v3 机制，以及真实 Recorded Preview。
 
-本地 host/PostgreSQL、标准 Runner 网络构建、实际 named-volume 替换、受影响回归、exact-payload 检查与 scoped 独立审查已有父执行证据。lock-path 与 exit-boundary 两个 P2 已修复/复审。本地 option-1 H1 工程收尾已完成；发布、hosted CI、cold-cache、跨平台和真实模型声明仍明确不在此边界内。见[验收边界](docs/operations/system-acceptance.md)。
+本地 host/PostgreSQL、标准 Runner 网络构建、实际 named-volume 替换、受影响回归、exact-payload 检查与 scoped 独立审查已有父执行证据。lock-path 与 exit-boundary 两个 P2 已修复/复审。H1 本地工程与真实模型直连集成验收已完成；发布、hosted CI、cold-cache 和跨平台声明仍不在此边界内。见[验收边界](docs/operations/system-acceptance.md)。
 
-操作者**明确延期真实本地模型 trace/分析验收**。Reference Agent + fake Provider 不是 Ollama/vLLM 验收；Windows 安装交给操作者安排的其他 Agent。本轮不下载模型、不改 Windows/网络/防火墙、不部署、不启动 H2。
+H1-5 已使用已安装的 Windows llama.cpp 端点完成直连：新建 PostgreSQL 下 research/order 成功、checkout/fault 失败均保留，标准 Runner 镜像 research 也成功。四项 Runner-only 可选生成参数替代临时代理。见[验收记录](docs/history/h1-live-model-acceptance-2026-11-01.md)，不冒称 Ollama/vLLM、稳定通过率或分析器准确率。本轮不下载模型、不改 Windows/网络/防火墙、不公开部署、不启动 H2。
 
 尚未实现：H2 CLI/SDK 适配器、H3 trial group/pass^k、H4 OTel GenAI export、H5 真实分布一致性研究。当前校准仍为 `provisional_mechanics`、`publishable_accuracy=false`；后续自标注研究必须披露方法局限。
 
@@ -33,7 +33,7 @@ Phase 1 hosted CI 在 `8bd2ef0` 通过，其计数只属于该历史快照。H1 
 | P1 | 闭环深化后续 | 已完成 | 失败 Run 成为可归类、可对比的回归资产并门禁 Policy 激活。 |
 | P1 | 可靠性与校准加固（2026-09 至 2026-10） | 已完成 | CAS/锁顺序修复、analyzer v2、CI 六合同校准门；校准在 Phase 2 H5 重定义。 |
 | P0 | Phase 2 — Harness H0（门面与决策） | 进行中 | ADR、LICENSE、规范、学习地图和[任务清单](docs/agents/phase2-tasks.md)已在仓库内。仍开放：GitHub About、对外名称（H0-2）。 |
-| P0 | Phase 2 — Harness H1（Environment/Agent 拆分） | 完成（本地 option-1 工程边界） | 独立进程路径、Runner P2 修复、受影响回归、标准镜像/volume 验证和文档已收尾。真实模型验收明确延期，不是通过；hosted CI 与发布仍未建立。 |
+| P0 | Phase 2 — Harness H1（Environment/Agent 拆分） | 完成（本地工程 + 真实模型集成） | 独立进程路径、P2 修复、确定性回归、标准镜像/volume 与直连 reference Agent trace/分析已验收。模型失败保留；hosted CI 与发布仍未建立。 |
 | P1 | Phase 2 — Harness H2（外部 Agent） | 计划中 | Claude Code 适配器必做；Agents SDK / Codex 可选。 |
 | P1 | Phase 2 — Harness H3（trial 与 pass^k） | 计划中 | Trial group、pass^k 指标、Experiment 摘要 UI。 |
 | P2 | Phase 2 — Harness H4（OTel 导出） | 计划中 | OTLP GenAI 投影，默认关闭。 |
@@ -108,8 +108,8 @@ flowchart LR
 #### H1 — Environment/Agent 拆分（第 2–4 周）
 
 - **范围：** H1-1 从内置 Scenario 抽出 Environment 协议；H1-2 `app.env_server`（MCP、环境侧采集）；H1-3 Runner 双子进程监督与 `env_ready`；H1-4 `agent_id`、注册表、`GET /api/agents`、新建 Experiment 的 Agent 下拉；H1-5 参考 Agent 进程（默认 Ollama `qwen3:8b`，文档化 vLLM）；H1-6 有状态 `order-support.v1`。
-- **工程收尾：** fixture Golden、fake-Provider reference Agent、可信 CP completion、恢复、标准镜像/volume、受影响回归、文档及最终 exact-payload 审查已在本地完成。生成契约匹配当前模型；保留未提交 dirty-index gate 的公开处置，待获准交付基线重跑。
-- **明确延期：** 真实本地参考 Agent trace/分析未执行，待端点供应与操作者重新授权，不用 fake Provider 代替。
+- **工程收尾：** fixture Golden、fake-Provider reference Agent、可信 CP completion、恢复、标准镜像/volume、受影响回归、文档及最终 exact-payload 审查已在本地完成。原契约 gate 已在提交后的 canonical v2 基线上通过；旧 dirty-index 结果作为历史保留。
+- **H1-5 收尾（2026-11-01）：** 真实 llama.cpp 直连、四项有界 Runner-only 生成参数（ADR-0003 修订）、可重复采集命令与 trace/分析已完成。失败不修补，CI 仍只用 fixture/fake Provider，H2 不启动。
 - **P2 修订（ADR-0008）：** lock no-follow/非普通文件拒绝且不修改目标；reader/Agent-exit barrier、残留半行失败和自主回收断言。两个 scoped 复审通过；受影响镜像/runtime 回归及五次边界重复验证已有父执行证据。
 - **学习交付物：** `docs/learn/01-run-lifecycle.md`、`docs/learn/02-environment-and-mcp.md`、`docs/learn/04-runner-lease-fencing.md`。
 
@@ -156,7 +156,7 @@ trace UI 新功能、标注队列、数据集管理、多租户/鉴权、Kuberne
 ### 风险
 
 - MCP Python SDK API 漂移 — pin `mcp` 小版本；集中在 `env_server`。
-- 实际本地主机约 12 GB VRAM，不是最初假设的 16 GB。`qwen3:8b` 仅为候选，权重+KV cache、context/并发必须实测；真实模型验收延期。
+- 实际本地主机约 12 GB VRAM，不是最初假设的 16 GB。`qwen3:8b` 仍是未实测候选；已测 Swift/llama.cpp 显存余量很小，不能推广为普遍适配或稳定性保证。
 - Claude Code 适配器依赖主机凭据；H2-1 是未来切割线必做项，但不成为 CI 凭据依赖。
 - 环境侧采集缺少 Agent 内部信息 — 使用 `unknown` 维度（现有分析器行为）。
 - 双进程监督复杂度 — H1-3 先写 Rust kill 语义测试。

@@ -14,6 +14,6 @@
 | 6 | `06-pass-k.md` | H3 完成时 |
 | 7 | `07-otel-mapping.md` | H4 完成时 |
 
-还没写的章节不要找，它们尚未落地。当前生产 Runner 使用独立 Environment/MCP 与注册 Agent；CP 独占评分和终态。`01` 与 `04` 区分已集成代码、host/PostgreSQL、标准镜像/named-volume 与最终 exact-payload 验收；真实模型明确延期，不代表整个 H1 无保留验收。H2 及后续章节不提前实施。
+还没写的章节不要找，它们尚未落地。当前生产 Runner 使用独立 Environment/MCP 与注册 Agent；CP 独占评分和终态。`01` 与 `04` 区分已集成代码、host/PostgreSQL、标准镜像/named-volume 与最终 exact-payload 验收；真实 llama.cpp + PostgreSQL trace/分析已补齐，但保留实际模型失败；H1 本地完成不代表发布、hosted CI 或分析器准确率。H2 及后续章节不提前实施。
 
 建议第一遍只读 `00-map.md`，并沿其中的函数打开代码。不要从 `docs/history/` 读起，那里是带日期的验收记录。

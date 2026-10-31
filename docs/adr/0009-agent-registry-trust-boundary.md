@@ -55,8 +55,9 @@ quickstart points those variables at Ollama (`http://127.0.0.1:11434/v1`,
 model `qwen3:8b`). `qwen3:14b` is documented as optional for machines that
 can spare the weights plus KV cache; it is not the default. The local
 closeout host has about 12 GB VRAM, not the originally assumed 16 GB.
-Model runtime acceptance is explicitly deferred for this local closeout;
-configuration guidance is not a hardware-fit or tool-call compatibility result.
+The dated H1-5 record covers one already installed Swift/llama.cpp endpoint;
+configuration guidance and that finite run set are not a hardware-fit,
+accuracy, stable-pass-rate or universal tool-call compatibility result.
 Environment defaults and quickstart examples use ADR-0012's canonical v2 IDs,
 not the retired three v1 IDs. Missing `agent_id` still selects the fixture or
 reference agent by `execution_mode` (ADR-0007); this does not preserve old-v1

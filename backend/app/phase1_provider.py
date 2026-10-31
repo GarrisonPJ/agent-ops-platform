@@ -1,9 +1,15 @@
-"""Narrow OpenAI-compatible provider boundary for the Phase 1 Python agent."""
+"""Bounded OpenAI-compatible chat client and operator-only Provider settings.
+
+The registered reference Agent calls this boundary after MCP tool discovery.
+It must not rewrite tool facts, expose credentials, or take configuration from API inputs.
+Read ``reference_agent.py`` for the H1 loop and ADR-0003 for the trust boundary.
+"""
 
 from __future__ import annotations
 
 import asyncio
 import json
+import math
 import os
 from dataclasses import dataclass
 from time import perf_counter
@@ -35,6 +41,18 @@ class ProviderSettings:
     model: str
     timeout_ms: int
     max_retries: int
+    max_tokens: int | None = None
+    temperature: float | None = None
+    reasoning_effort: str | None = None
+    parallel_tool_calls: bool | None = None
+
+    def request_options(self) -> dict[str, object]:
+        """Omit unspecified options; never accept arbitrary request overrides."""
+        return {
+            name: value
+            for name in ("max_tokens", "temperature", "reasoning_effort", "parallel_tool_calls")
+            if (value := getattr(self, name)) is not None
+        }
 
     @classmethod
     def from_env(cls) -> ProviderSettings:
@@ -76,6 +94,20 @@ class ProviderSettings:
                 DEFAULT_MAX_RETRIES,
                 minimum=0,
                 maximum=MAX_RETRIES,
+            ),
+            max_tokens=(
+                _integer_env("AGENTOPS_PROVIDER_MAX_TOKENS", 1, minimum=1, maximum=32_768)
+                if os.getenv("AGENTOPS_PROVIDER_MAX_TOKENS", "").strip() else None
+            ),
+            temperature=_optional_temperature(),
+            reasoning_effort=_optional_choice_env(
+                "AGENTOPS_PROVIDER_REASONING_EFFORT",
+                {"none", "minimal", "low", "medium", "high", "xhigh"},
+            ),
+            parallel_tool_calls=(
+                None if (parallel := _optional_choice_env(
+                    "AGENTOPS_PROVIDER_PARALLEL_TOOL_CALLS", {"true", "false"}
+                )) is None else parallel == "true"
             ),
         )
 
@@ -178,6 +210,7 @@ class OpenAICompatibleProvider:
                         "messages": messages,
                         "tools": tools,
                         "tool_choice": "auto",
+                        **self.settings.request_options(),
                     },
                     headers={
                         "Authorization": f"Bearer {self.settings.api_key}",
@@ -389,6 +422,34 @@ async def run_provider_agent(
         model=settings.model,
     )
     return 1
+
+
+def _optional_choice_env(name: str, allowed: set[str]) -> str | None:
+    value = os.getenv(name, "").strip()
+    if not value:
+        return None
+    if value not in allowed:
+        raise ProviderError(
+            "PROVIDER_CONFIGURATION_ERROR", "Invalid Provider option",
+            retryable=False, attempts=0,
+        )
+    return value
+
+
+def _optional_temperature() -> float | None:
+    raw = os.getenv("AGENTOPS_PROVIDER_TEMPERATURE", "").strip()
+    if not raw:
+        return None
+    try:
+        value = float(raw)
+    except ValueError:
+        value = math.nan
+    if not math.isfinite(value) or not 0 <= value <= 2:
+        raise ProviderError(
+            "PROVIDER_CONFIGURATION_ERROR", "Invalid Provider temperature",
+            retryable=False, attempts=0,
+        )
+    return value
 
 
 def _integer_env(name: str, default: int, *, minimum: int, maximum: int) -> int:

@@ -4,8 +4,9 @@
 - Date: 2026-07-26
 - Amended: 2026-08-23 for registered Scenario-specific tool surfaces
 - Amended: 2026-10-17 by ADR-0007 — the provider loop moves out of the
-  Scenario into the registered `reference-openai-compatible.v1` agent; the
-  `AGENTOPS_PROVIDER_*` configuration and its trust rules are unchanged
+  Scenario into the registered `reference-openai-compatible.v1` agent
+- Amended: 2026-11-01 for H1-5 — bounded optional Runner-only generation
+  settings replace a temporary local-model request-options proxy
 
 ## Context
 
@@ -55,6 +56,33 @@ the deterministic Golden path.
   tested against a local fake compatible server; live calls are opt-in.
   Recorded Preview continues to replay persisted fixtures and never invokes
   provider logic.
+
+## H1-5 amendment: explicit generation options
+
+The installed llama.cpp endpoint needs bounded output and single-call generation
+for a reproducible reference-Agent run. A temporary HTTP proxy demonstrated these
+options, but is not a supported deployment dependency. Add four optional
+`AGENTOPS_PROVIDER_*` settings directly to the existing low-level client:
+
+- `MAX_TOKENS`: integer 1..32768, sent as `max_tokens`.
+- `TEMPERATURE`: finite number 0..2, sent as `temperature`.
+- `REASONING_EFFORT`: `none`, `minimal`, `low`, `medium`, `high`, or `xhigh`, sent
+  unchanged as `reasoning_effort`; individual endpoints may support fewer values.
+- `PARALLEL_TOOL_CALLS`: exact `true` or `false`, sent as a JSON boolean.
+
+Unset/blank settings omit the corresponding request fields, preserving the
+existing request shape. Invalid settings fail before a Provider request with the
+existing safe configuration-error category. No arbitrary JSON override, prompt,
+tool schema, response rewriting, automatic argument repair, or forced submission
+is admitted. These settings remain operator-only, forwarded by the Runner to the
+Agent, never accepted through Experiment/API/frontend inputs. They do not change
+world rules, evaluation budgets, scoring, or success gates. Providers can reject
+unsupported fields normally; do not silently retry with different semantics.
+
+Local-model acceptance records the exact settings and real success/failure.
+CI tests this boundary with fake Providers, without a GPU or external service.
+One successful real-model Run plus faithfully captured failures validates H1's
+integration, not model accuracy, universal compatibility, or a pass-rate claim.
 
 ## Consequences
 

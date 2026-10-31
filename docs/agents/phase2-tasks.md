@@ -1,6 +1,6 @@
 # Phase 2 任务清单
 
-状态日期：2026-10-31。决策在 `docs/adr/0007`–`0014`。里程碑在 `ROADMAP.md`。
+状态日期：2026-11-01（本地；实际运行时间见 UTC 验收记录）。决策在 `docs/adr/0007`–`0014`。里程碑在 `ROADMAP.md`。
 本文件是可执行任务的事实来源。`.scratch/` 只放本地证据，不放交接。
 
 规范：`docs/agents/development-standards.md`。
@@ -11,7 +11,7 @@
 
 **可以降级：** H2-2、H2-3、整个 H4、H5-2 至少标注 20 条。
 
-**当前集成状态：** H1-1..H1-6 的工程实现已接入生产 dispatch/completion；组件已分别审查，fixture/fake-Provider、隔离 PostgreSQL、标准 Runner 网络构建、实际 named-volume 替换、受影响回归和 exact-payload 文档收尾均有本地父证据。lock-path 与 exit-boundary 两个 P2 已修复并经只读独立复审；本地 option-1 H1 工程边界已完成，不能把它写成 hosted CI、发布或真实模型验收。操作者明确延期 H1-5 的真实本地模型 trace/分析验收，Windows 模型安装由其他 Agent 处理；延期不是验证成功。H2 未开工。H0 剩余人工事项不阻塞 H1。
+**当前集成状态：** H1-1..H1-6 的工程实现已接入生产 dispatch/completion；组件已分别审查，fixture/fake-Provider、隔离 PostgreSQL、标准 Runner 网络构建、实际 named-volume 替换、受影响回归和 exact-payload 文档收尾均有本地父证据。lock-path 与 exit-boundary 两个 P2 已修复并经只读独立复审。本轮已完成 H1-5：已有 Windows llama.cpp 端点直连，隔离 PostgreSQL 下 reference Agent 的 research/order 成功、checkout/fault 失败均保留，标准 Runner 镜像直连 research 也成功；不修改断言刷绿。976 项后端测试、Rust/前端/Recorded E2E 与原契约 gate 通过。H1 本地工程与真实模型集成边界完成，不等于 hosted CI、发布、全模型兼容或准确率证明。H2 未开工。H0 剩余人工事项不阻塞 H1。
 
 未开工的任务用 `docs/agents/triage-labels.md` 的词。`completed` 表示已经落地，不要重做。
 
@@ -74,11 +74,11 @@ H0 剩余只有 H0-1 的 GitHub 点击和 H0-2 的命名。命名未定不阻塞
 - 保留 ALL=min、ANY=max、WEIGHTED=加权均值与每条断言的 threshold；不得替换成通用 `all(item.passed)`，也不以含惩罚的 quality score 判定任务成功。人工 Policy 验证与激活规则不变。
 - CP 轨迹断言读取最新 Attempt 持久化的所有 world attempts（含拒绝），排除保留控制调用。拒绝投影为 `rejected_tool`、status `failed`，不能满足请求工具名的 used/args/sequence 断言；Environment 仅有效调用的内部 history 不能覆盖它。
 - 最终状态断言读取有界、可信、Environment 所有的 final-check 事实，由 CP 校验必需 operands 与注册 expectations；不采信 Agent 提供的期望值或分数。订单恰好一次的证明来自最终 ledger。usage 缺失保持 unknown，有报告也只是 Agent-reported。已审查 wire 为 Environment 所有的 `scenario_id` + `final_observation`，CP 使用注册 expectations；见 ADR-0012。
-- H1-3 只负责监督与事实转发，不实现 CP 评分策略或 Rust 第二评分器；H1-5/集成负责证据与 CP completion 的接线。组件验收不替代集成 Golden、PostgreSQL 专项；本地模型验收在本轮明确延期。
+- H1-3 只负责监督与事实转发，不实现 CP 评分策略或 Rust 第二评分器；H1-5/集成负责证据与 CP completion 的接线。组件验收不替代集成 Golden、PostgreSQL 专项；真实模型验收和结果边界见 [H1-5 记录](../history/h1-live-model-acceptance-2026-11-01.md)。
 
 ### H1-1 Environment 协议
 
-- Status: `completed`（协议抽取与规范 v2 已接入；本地 option-1 交付边界已收尾）
+- Status: `completed`（协议抽取与规范 v2 已接入；H1 本地交付边界已收尾）
 - 从 `backend/app/scenario_registry.py` 与 `backend/app/scenarios/` 抽出 ADR-0007 的 Environment 接口：`reset`、`tool_definitions`、`call`、`check`、`fault_schedule`。
 - 四个当前 Environment 提供统一接口；三世界规范 v2、订单 v1，不原地改变旧 v1 语义。
 - 生产路径已退休耦合世界循环；旧 demo/test helpers 仅用于历史回归，不是可选生产 fallback。
@@ -117,13 +117,13 @@ H0 剩余只有 H0-1 的 GitHub 点击和 H0-2 的命名。命名未定不阻塞
 
 ### H1-5 参考 agent 与本地模型 quickstart
 
-- Status: `ready-for-human`（工程实现与 fake-Provider 验证完成；真实模型验收由操作者明确延期）
+- Status: `completed`（工程、fake-Provider、真实 llama.cpp 直连 trace/分析与可复现 runbook 均完成）
 - 依赖：H1-2、H1-4。
 - `reference-openai-compatible.v1`：独立进程，通过 MCP 发现工具，用现有 `AGENTOPS_PROVIDER_*` 调 `/chat/completions`。
 - `fixture-agent.v1`：在规范 Environment 上跑确定性轨迹，不要求复现旧 v1 结果；退休三套旧注册和耦合 fixture/provider 循环，不留双路径。
 - 本任务/集成负责 ADR-0012 的可信轨迹/final-check 证据与 Python CP completion 接线、aggregate >= 1.0 成功门和终态一致性。精确 wire 已审查并接入；测试覆盖无 submit、check 失败、必需证据无效/缺失、拒绝轨迹、Agent 异常/非零退出、Environment 意外失败与上述计划内清理的区别，以及 ANY/ALL/WEIGHTED 语义，不能用 quality score 或通用 all(passed) 替代。
-- README 使用规范 v2，并链接 [local-model.md](../operations/local-model.md) 的已有端点配置/延期交接。实际主机约 12 GB VRAM；`qwen3:8b` 只是初始候选，不保证权重+KV cache、工具调用或时延。安装/下载、Windows/防火墙和 vLLM parser 配置不在本轮范围。
-- 工程验收：fixture Golden 与 reference Agent + fake Provider 通过。真实 Ollama/vLLM trace/分析尚未执行、明确延期；恢复此项时验证 Run、世界事实、分析与 GPU/连通性，不以 fake Provider 替代。无 GPU 的 CI 不跑此项。
+- README 使用规范 v2，并链接 [local-model.md](../operations/local-model.md) 的直连配置和 `scripts/local_model_acceptance.py`。按 ADR-0003 修订提供四项可选、校验有界的 Runner-only 生成参数；未设置保持旧请求，不修补模型响应或工具参数。Compose/示例配置同步，API/浏览器不接收这些参数。
+- 工程验收：fixture Golden、reference Agent + fake Provider 及新增配置/采集测试通过。真实 Windows llama.cpp + Swift + 隔离 PostgreSQL 下 research/order 成功、checkout/fault 按既定规则失败；标准镜像 host-network research 成功。[记录](../history/h1-live-model-acceptance-2026-11-01.md)保留模型、工具事实、submit/check、终态、分析、GPU/连通性范围。H1 不要求模型每题成功；不冒称 Ollama/vLLM、准确率或稳定通过率。无 GPU 的 CI 不跑 live 模型，安装/下载、Windows/防火墙变更不在本轮范围。
 
 ### H1-6 有状态环境 `order-support.v1`
 
@@ -142,13 +142,13 @@ H0 剩余只有 H0-1 的 GitHub 点击和 H0-2 的命名。命名未定不阻塞
 
 ### H1-C 工程收尾（本轮唯一活跃工程任务）
 
-- Status: `completed`（本地 option-1 工程边界完成；不授权 H2）
+- Status: `completed`（H1 本地工程与真实模型集成边界完成；不授权 H2）
 - ADR-0008 先行修订后修复 capacity/per-Run lock symlink 与非普通文件；拒绝不改写目标。
 - Reader-prefix 与 observed-Agent-exit barrier 证明重构恰好一次；覆盖残留半行、clean/fragment EOF、自然退出、超长输出、final upload/heartbeat 和 Runner 自主回收。
 - 两个 P2 的 scoped 独立复审已通过；父执行 Rust 59 项 Runner 测试/Clippy、五次边界重复、完整后端/前端/Recorded E2E、重建标准镜像、全新 volume replacement 和最终 exact-payload 文档复审均完成。
 - 已整理历史 handoff/旧规划引用，保留 ADR ID，并区分 accepted decision、当前实现、父证据与历史记录。规范任务继续只在此维护。
-- 保留 `make check-contracts` 原门禁：当前未提交 `.v1`→`.v2` 默认差异已公开；current-model/fixture 字节已核对，`make check-contracts` 的预期 exit 2 已留证，在获准交付基线上再跑，不擅自 stage/commit。
-- 真实模型验收明确延期，不安装模型、不改 Windows/网络/防火墙。最新边界见 [system-acceptance.md](../operations/system-acceptance.md)。
+- 保留 `make check-contracts` 原门禁，已在提交后的 canonical v2 基线上通过；历史 dirty-index exit 2 不再是当前 blocker，没有生成 schema 差异。
+- H1-5 真实模型直连验收现已完成，没有安装模型或改变 Windows/网络/防火墙。原 P2 scoped 复审不冒充本轮增量独立复审；新增增量有确定性测试与父 diff review。最新边界见 [system-acceptance.md](../operations/system-acceptance.md)。
 
 ### H1 学习交付
 

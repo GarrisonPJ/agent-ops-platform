@@ -17,7 +17,7 @@ Experiment → Baseline → Trace → Analysis → Candidate Policy
 
 H1 集成已实现独立的 Environment/MCP 与 fixture/reference Agent 进程、Rust 租约/Attempt fencing 监督、运维 TOML Agent 注册表、CP 独占评分/完成裁决，以及四个内置 Environment。协议 v1 仍用 `scenario_id`；三个规范世界使用 **v2**，`order-support.v1` 保持自己的身份。旧三个世界 v1 ID 被拒绝，不提供别名或迁移。
 
-**当前工作树的本地 option-1 H1 工程收尾已完成。** 这不等于发布、hosted CI、cold-cache、跨平台或公开部署验收。操作者已明确延期真实本地模型的 trace/分析验收；不声称 Ollama/vLLM 或 GPU 验证成功。H2 外部适配器、H3 重复 trial/**pass^k**、H4 **OTel 导出**、H5 真实模型分布准确率研究均是未来工作，不是当前功能。参见[任务清单](docs/agents/phase2-tasks.md)、[里程碑](ROADMAP.zh-CN.md)与[验收边界](docs/operations/system-acceptance.md)。
+**H1 本地工程与真实模型集成验收已完成。** 已安装的 Windows llama.cpp 经 reference Agent 完成 research 和有状态订单 Run；checkout/fault 失败如实保留。这不等于所有模型兼容、发布、hosted CI、cold-cache、跨平台或公开部署验收。H2 外部适配器、H3 重复 trial/**pass^k**、H4 **OTel 导出**、H5 真实模型分布准确率研究均是未来工作，不是当前功能。参见[任务清单](docs/agents/phase2-tasks.md)、[里程碑](ROADMAP.zh-CN.md)与[验收边界](docs/operations/system-acceptance.md)。
 
 Langfuse、Phoenix 擅长 trace 存储与浏览；本项目负责确定性世界、监督执行/恢复、失败机制和人工策略门禁。未来互操作见 ADR-0011，当前没有 OTel exporter。校准是六合同确定性机制门，**不是已发布的准确率结论**。
 
@@ -58,9 +58,14 @@ AGENTOPS_PROVIDER_API_KEY=local-placeholder
 AGENTOPS_PROVIDER_MODEL=qwen3:8b
 AGENTOPS_PROVIDER_TIMEOUT_MS=60000
 AGENTOPS_PROVIDER_MAX_RETRIES=1
+# 可选；空值/未设置时不发送。先确认端点支持。
+AGENTOPS_PROVIDER_MAX_TOKENS=256
+AGENTOPS_PROVIDER_TEMPERATURE=0
+AGENTOPS_PROVIDER_REASONING_EFFORT=none
+AGENTOPS_PROVIDER_PARALLEL_TOOL_CALLS=false
 ```
 
-这是配置示例，不是已验证模型结果。`127.0.0.1` 指 Runner 自己的网络命名空间；容器到 Windows/宿主机服务的路由必须另行验证，不要为此扩大监听或关闭防火墙。先用适中 context/并发，显存预算包含权重**和** KV cache。[本地模型交接](docs/operations/local-model.md)定义延期验收与连通性检查。CI 使用 fake Provider，不下载模型。
+这是配置示例，不是已验证模型结果。`127.0.0.1` 指 Runner 自己的网络命名空间；容器到 Windows/宿主机服务的路由必须另行验证，不要为此扩大监听或关闭防火墙。先用适中 context/并发，显存预算包含权重**和** KV cache。[本地模型 runbook](docs/operations/local-model.md)提供直连配置、有界生成参数及 `scripts/local_model_acceptance.py`；[验收记录](docs/history/h1-live-model-acceptance-2026-11-01.md)说明实际 llama.cpp 结果，不冒称 Ollama/vLLM 通过。CI 使用 fake Provider，不下载模型。
 
 ## 架构与信任边界
 
@@ -117,9 +122,9 @@ cd frontend && npm run e2e:recorded
 
 CI 基线为 Linux Node 22、Python 3.12、Rust 1.96、PostgreSQL 16 与锁定依赖。PostgreSQL 专项必须用全新独占库；SQLite/skip 不能替代并发证据。[本地 runbook](docs/operations/reliability-and-local-validation.md)说明工具链、代理、Runner 递归依赖验证、校准/恢复和证据边界。
 
-`make check-contracts` 导出 schema 后与 Git index 对比；未提交的规范切换会报告预期的 v1→v2 默认值差异。这**不是 gate 全绿**：应另核对生成字节与当前 Pydantic 模型，并在获准的交付基线上重跑原 gate。不要为掩盖差异回退 v2、stage 或削弱检查。
+`make check-contracts` 导出 schema 后与 Git index 对比，已在提交后的规范 v2 基线上通过；旧 dirty-index 默认差异是历史记录。交付前继续运行原 gate，不为隐藏 drift 回退 v2、stage 生成差异或削弱检查。
 
-历史 Phase 1 hosted CI 在 `8bd2ef0` 通过，不验证当前 H1 工作树。标准本地 Runner 构建/运行、离线派生镜像、host 测试、实际 volume 替换和真实模型都是不同声明。当前本地收尾有标准网络构建镜像与全新 volume 替换的父证据，但不声称 hosted CI、cold-cache/fresh-base 可复现或真实模型成功。[当前验收](docs/operations/system-acceptance.md)与[带日期历史](docs/history/)分开记录。
+历史 Phase 1 hosted CI 在 `8bd2ef0` 通过，不验证当前 H1 工作树。标准本地 Runner 构建/运行、离线派生镜像、host 测试、实际 volume 替换和真实模型都是不同声明。当前本地收尾有标准网络构建镜像与全新 volume 替换的父证据，本轮另有 host PostgreSQL 及标准 Runner 镜像 host-network 的真实模型直连验收；仍不声称 hosted CI 或 cold-cache/fresh-base 可复现。[当前验收](docs/operations/system-acceptance.md)与[带日期历史](docs/history/)分开记录。
 
 ## 仓库与阅读地图
 

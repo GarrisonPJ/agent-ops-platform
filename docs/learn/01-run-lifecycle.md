@@ -96,7 +96,7 @@ Compose 用 named `phase1-token-handoff` volume 保存 `/run/agentops/token-hand
 
 本地生产 Runner/API/新建 PostgreSQL 验证覆盖了三个 v2 Golden、订单 fixture/reference + fake Provider、
 Runner kill/replacement、同 capability 保留与权威 ACK 清理、旧 lease 三个写入口拒绝。
-标准网络构建与 named-volume 替换另有本地验证；这些均不代表 hosted CI、cold-cache、Windows 或整个 H1 发布验收。真实模型 trace/分析由操作者明确延期，fake Provider 不代替它。
+标准网络构建与 named-volume 替换另有本地验证；这些均不代表 hosted CI、cold-cache、Windows 或整个 H1 发布验收。H1-5 已另行完成真实 llama.cpp + PostgreSQL 的 trace/分析验收；research/order 成功、checkout/fault 失败均保留，fake Provider 与真实模型证据不混用。
 
 恢复门使用专用 `config/agents.recovery.toml`，API 和 Runner 配置同一组 ID/命令，显式选择
 `recovery-fixture.v1`。正常 registry 仍只有 fixture/reference；不是 H2 新产品 adapter。

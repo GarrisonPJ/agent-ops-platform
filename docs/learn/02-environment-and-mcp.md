@@ -4,7 +4,7 @@
 通过 MCP 调工具、由 Environment 捕获事实、CP 持久化并独占评分/终态。镜像配置包含
 MCP 2.3/httpx2 closure 和 operator registry；配置不等于运行证据。Host/PostgreSQL
 闭环、标准 Runner 网络构建与实际 named-volume 替换均有分开的本地验证；最终
-exact-payload/交付验收仍需独立，真实模型验收明确延期。三个默认世界使用 v2，旧三个 v1 execution ID 不提供兼容。
+exact-payload 审查与本地交付验证保持各自边界；H1-5 已完成真实 llama.cpp 直连 trace/分析（research/order 成功，checkout/fault 失败保留），不是模型准确率证明。三个默认世界使用 v2，旧三个 v1 execution ID 不提供兼容。
 
 ## 从输入到 ready
 
@@ -199,7 +199,8 @@ Recorded Preview 由真实 v2 Golden 执行重新生成；recorder 只归一化�
 JSONL fixture 和内存 SQLite 的 baseline → analysis → candidate → replay →
 comparison → human activate 闭环。它不是实际 PostgreSQL/Runner/MCP Golden E2E。
 默认三场景 Golden 已使用 v2。独立 reference Agent 走真实 MCP；本地 fake Provider
-进程验证覆盖六次世界调用、七次 Provider 请求与恰好一笔退款，不代表真实模型验收。
+进程验证覆盖六次世界调用、七次 Provider 请求与恰好一笔退款。真实模型另有有限的
+H1-5 记录；两类证据不混用，也不把有限样本写成准确率或稳定通过率。
 
 ## 独立 Agent 与剩余边界
 
