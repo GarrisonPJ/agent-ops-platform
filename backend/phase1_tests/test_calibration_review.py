@@ -16,9 +16,9 @@ async def test_review_packet_balances_strata_without_exposing_analysis(api) -> N
     _, factory = api
     async with factory() as db:
         for scenario_id, status in (
-            ("checkout-api-latency.v1", "failed"),
-            ("checkout-api-latency.v1", "failed"),
-            ("multi-step-research.v1", "succeeded"),
+            ("checkout-api-latency.v2", "failed"),
+            ("checkout-api-latency.v2", "failed"),
+            ("multi-step-research.v2", "succeeded"),
         ):
             experiment_id, run_id = new_id(), new_id()
             db.add(
@@ -84,10 +84,10 @@ async def test_review_packet_balances_strata_without_exposing_analysis(api) -> N
         packet = await build_review_packet(db, limit=2, source_snapshot="test snapshot")
 
     assert packet["eligible_count"] == 3
-    assert packet["analyzer_revision"] == "failure-analyzer.v2"
+    assert packet["analyzer_revision"] == "failure-analyzer.v3"
     assert {case["scenario_id"] for case in packet["cases"]} == {
-        "checkout-api-latency.v1",
-        "multi-step-research.v1",
+        "checkout-api-latency.v2",
+        "multi-step-research.v2",
     }
     assert all(
         case["trajectory"]["steps"][0]["observation"] == "The call failed."

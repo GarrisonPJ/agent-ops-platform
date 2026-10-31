@@ -8,7 +8,7 @@ import pytest
 from sqlalchemy import func, select, text, update
 
 from app.calibration_report import LabelSet, ReviewPacket, ReviewRecord, report_labeled_runs
-from app.phase1_models import Experiment, Run, RunEvent
+from app.phase1_models import Experiment, Run, RunAnalysis, RunEvent
 from scripts import controlled_calibration_capture
 from scripts.controlled_calibration_capture import CONTRACTS, capture_cases, export_artifacts
 
@@ -46,10 +46,29 @@ async def test_controlled_capture_persists_context_contracts_and_fake_provider_e
     high = trajectories[by_name["context_pressure"]["run_id"]]
     low = trajectories[by_name["context_low_pressure"]["run_id"]]
     unknown = trajectories[by_name["context_unknown"]["run_id"]]
-    assert all(step["context_window"] == {"used": 8191, "limit": 8192} for step in high["steps"])
-    assert all(step["context_window"] == {"used": 1200, "limit": 8192} for step in low["steps"])
-    assert all(step["context_window"] is None for step in unknown["steps"])
+    for trajectory in (high, low, unknown):
+        assert len(trajectory["steps"]) == 3
+        assert all(step["context_window"] is None for step in trajectory["steps"])
+    assert high["agent_usage"]["source"] == low["agent_usage"]["source"] == "agent_reported"
+    assert high["agent_usage"]["context_window"] == {"used": 8191, "limit": 8192}
+    assert low["agent_usage"]["context_window"] == {"used": 1200, "limit": 8192}
+    assert unknown["agent_usage"]["context_window"] is None
     assert high["run_status"] == low["run_status"] == unknown["run_status"] == "succeeded"
+    # CP completion and offline reporting must invoke the same diagnostic rules.
+    async with factory() as db:
+        for case in captured:
+            analysis = await db.get(RunAnalysis, case["run_id"])
+            stored_run = await db.get(Run, case["run_id"])
+            assert set(analysis.dimensions) == set(case["expected_dimensions"])
+            if case["name"] == "context_pressure":
+                evidence = next(item for item in analysis.evidence if item["dimension"] == "context")
+                assert evidence["step_index"] is None
+                assert evidence["details"]["source"] == "agent_reported"
+            if case["name"] in {"provider_timeout", "provider_invalid_response"}:
+                assert stored_run.status == "failed"
+                assert stored_run.metrics["assertions"]["aggregate"] < 1.0
+            else:
+                assert stored_run.metrics["assertions"]["aggregate"] == 1.0
     success = trajectories[by_name["provider_success"]["run_id"]]
     assert len(success["steps"]) == 3
     assert all(step["context_window"] is None for step in success["steps"])
@@ -73,10 +92,31 @@ async def test_controlled_capture_persists_context_contracts_and_fake_provider_e
     assert "controlled-fake-provider-secret" not in (tmp_path / "packet.json").read_text()
 
     async with factory() as db:
-        event = await db.scalar(select(RunEvent).where(RunEvent.run_id == by_name["context_pressure"]["run_id"], RunEvent.event_type == "step_completed").limit(1))
-        await db.execute(update(RunEvent).where(RunEvent.id == event.id).values(payload={**event.payload, "context_window": {"used": 1200, "limit": 8192}}))
+        events = (await db.scalars(select(RunEvent).where(
+            RunEvent.run_id == by_name["context_pressure"]["run_id"],
+            RunEvent.event_type == "step_completed",
+        ))).all()
+        event = next(item for item in events if item.payload["environment"].get("control") == "report_usage")
+        original = event.payload
+        environment = original["environment"]
+        altered = {**original, "environment": {**environment, "usage": {
+            **environment["usage"], "context_window": {"used": 1200, "limit": 8192},
+        }}}
+        await db.execute(update(RunEvent).where(RunEvent.id == event.id).values(payload=altered))
         await db.commit()
         with pytest.raises(ValueError, match="trajectory digest"):
+            await report_labeled_runs(db, LabelSet.model_validate_json((tmp_path / "provisional-labels.json").read_text()),
+                                      packet=ReviewPacket.model_validate(packet), review_record=ReviewRecord.model_validate(record),
+                                      packet_sha256=record["packet"]["packet_sha256"], labels_sha256=record["packet"]["labels_sha256"], require_binding=True)
+        await db.execute(update(RunEvent).where(RunEvent.id == event.id).values(payload=original))
+        # Ignored legacy per-world metadata cannot change canonical context, but
+        # the complete persisted event digest must still detect its mutation.
+        world = next(item for item in events if item.payload["environment"]["kind"] == "world")
+        await db.execute(update(RunEvent).where(RunEvent.id == world.id).values(payload={
+            **world.payload, "context_window": {"used": 1200, "limit": 8192},
+        }))
+        await db.commit()
+        with pytest.raises(ValueError, match="event-stream digest"):
             await report_labeled_runs(db, LabelSet.model_validate_json((tmp_path / "provisional-labels.json").read_text()),
                                       packet=ReviewPacket.model_validate(packet), review_record=ReviewRecord.model_validate(record),
                                       packet_sha256=record["packet"]["packet_sha256"], labels_sha256=record["packet"]["labels_sha256"], require_binding=True)

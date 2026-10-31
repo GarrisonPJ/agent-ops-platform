@@ -173,7 +173,7 @@ async def test_report_reconstructs_persisted_run_events(api) -> None:
                 id=experiment_id,
                 name="Calibration",
                 task="Investigate checkout latency",
-                scenario_id="checkout-api-latency.v1",
+                scenario_id="checkout-api-latency.v2",
                 scenario_params={},
             )
         )
@@ -184,7 +184,7 @@ async def test_report_reconstructs_persisted_run_events(api) -> None:
                 kind="baseline",
                 status="failed",
                 metrics={},
-                evaluation_spec={"scenario_id": "checkout-api-latency.v1"},
+                evaluation_spec={"scenario_id": "checkout-api-latency.v2"},
             )
         )
         db.add(RunnerJob(run_id=run_id, attempt=1))
@@ -234,7 +234,7 @@ async def test_report_binds_labels_to_packet_and_review_metadata(api) -> None:
                 id=experiment_id,
                 name="Calibration binding",
                 task="Investigate checkout latency",
-                scenario_id="checkout-api-latency.v1",
+                scenario_id="checkout-api-latency.v2",
                 scenario_params={},
             )
         )
@@ -245,7 +245,7 @@ async def test_report_binds_labels_to_packet_and_review_metadata(api) -> None:
                 kind="baseline",
                 status="failed",
                 metrics={},
-                evaluation_spec={"scenario_id": "checkout-api-latency.v1"},
+                evaluation_spec={"scenario_id": "checkout-api-latency.v2"},
             )
         )
         db.add(RunnerJob(run_id=run_id, attempt=1))
@@ -299,7 +299,7 @@ async def test_report_binds_labels_to_packet_and_review_metadata(api) -> None:
             "cases": [
                 {
                     "run_id": run_id,
-                    "scenario_id": "checkout-api-latency.v1",
+                    "scenario_id": "checkout-api-latency.v2",
                     "execution_mode": "fixture",
                     "kind": "baseline",
                     "task": "Investigate checkout latency",
@@ -328,7 +328,7 @@ async def test_report_binds_labels_to_packet_and_review_metadata(api) -> None:
             "cases": [
                 {
                     "run_id": run_id,
-                    "scenario_id": "checkout-api-latency.v1",
+                    "scenario_id": "checkout-api-latency.v2",
                     "execution_mode": "fixture",
                     "kind": "baseline",
                     "task": "Investigate checkout latency",
@@ -516,7 +516,7 @@ def test_strict_binding_requires_and_matches_analyzer_revision() -> None:
     )
     case = {
         "run_id": str(run_id),
-        "scenario_id": "checkout-api-latency.v1",
+        "scenario_id": "checkout-api-latency.v2",
         "execution_mode": "fixture",
         "kind": "baseline",
         "task": "Investigate checkout latency",
@@ -524,7 +524,7 @@ def test_strict_binding_requires_and_matches_analyzer_revision() -> None:
     }
     review_case = {
         "run_id": str(run_id),
-        "scenario_id": "checkout-api-latency.v1",
+        "scenario_id": "checkout-api-latency.v2",
         "execution_mode": "fixture",
         "kind": "baseline",
         "task": "Investigate checkout latency",
@@ -613,7 +613,7 @@ def test_strict_binding_requires_canonical_source_snapshot_digest() -> None:
             "cases": [
                 {
                     "run_id": str(run_id),
-                    "scenario_id": "checkout-api-latency.v1",
+                    "scenario_id": "checkout-api-latency.v2",
                     "execution_mode": "fixture",
                     "kind": "baseline",
                     "task": "Investigate checkout latency",
@@ -640,7 +640,7 @@ def test_strict_binding_requires_canonical_source_snapshot_digest() -> None:
             "cases": [
                 {
                     "run_id": str(run_id),
-                    "scenario_id": "checkout-api-latency.v1",
+                    "scenario_id": "checkout-api-latency.v2",
                     "execution_mode": "fixture",
                     "kind": "baseline",
                     "task": "Investigate checkout latency",
@@ -689,7 +689,7 @@ def test_review_record_rejects_publishable_agent_labels() -> None:
                 "cases": [
                     {
                         "run_id": str(uuid4()),
-                        "scenario_id": "checkout-api-latency.v1",
+                        "scenario_id": "checkout-api-latency.v2",
                         "execution_mode": "fixture",
                         "kind": "baseline",
                         "task": "Investigate checkout latency",
@@ -712,7 +712,7 @@ def test_review_record_rejects_incomplete_human_gate() -> None:
         "cases": [
             {
                 "run_id": str(uuid4()),
-                "scenario_id": "checkout-api-latency.v1",
+                "scenario_id": "checkout-api-latency.v2",
                 "execution_mode": "fixture",
                 "kind": "baseline",
                 "task": "Investigate checkout latency",
@@ -755,7 +755,7 @@ def test_review_record_requires_two_human_reviewers_for_publishable_accuracy() -
                 "cases": [
                     {
                         "run_id": str(uuid4()),
-                        "scenario_id": "checkout-api-latency.v1",
+                        "scenario_id": "checkout-api-latency.v2",
                         "execution_mode": "fixture",
                         "kind": "baseline",
                         "task": "Investigate checkout latency",
@@ -782,7 +782,7 @@ def test_publishable_review_requires_case_evidence_and_uncertainty() -> None:
         "cases": [
             {
                 "run_id": str(uuid4()),
-                "scenario_id": "checkout-api-latency.v1",
+                "scenario_id": "checkout-api-latency.v2",
                 "execution_mode": "fixture",
                 "kind": "baseline",
                 "task": "Investigate checkout latency",
@@ -814,7 +814,7 @@ def test_publishable_accuracy_requires_strict_binding() -> None:
             "cases": [
                 {
                     "run_id": str(run_id),
-                    "scenario_id": "checkout-api-latency.v1",
+                    "scenario_id": "checkout-api-latency.v2",
                     "execution_mode": "fixture",
                     "kind": "baseline",
                     "task": "Investigate checkout latency",
@@ -839,7 +839,7 @@ def test_publishable_accuracy_requires_strict_binding() -> None:
             "cases": [
                 {
                     "run_id": str(run_id),
-                    "scenario_id": "checkout-api-latency.v1",
+                    "scenario_id": "checkout-api-latency.v2",
                     "execution_mode": "fixture",
                     "kind": "baseline",
                     "task": "Investigate checkout latency",
@@ -899,7 +899,7 @@ def test_cli_require_binding_rejects_missing_packet_digest(tmp_path, monkeypatch
             "cases": [
                 {
                     "run_id": run_id,
-                    "scenario_id": "checkout-api-latency.v1",
+                    "scenario_id": "checkout-api-latency.v2",
                     "execution_mode": "fixture",
                     "kind": "baseline",
                     "task": "Investigate checkout latency",
@@ -931,7 +931,7 @@ def test_cli_require_binding_rejects_missing_packet_digest(tmp_path, monkeypatch
                 "cases": [
                     {
                         "run_id": run_id,
-                        "scenario_id": "checkout-api-latency.v1",
+                        "scenario_id": "checkout-api-latency.v2",
                         "execution_mode": "fixture",
                         "kind": "baseline",
                         "task": "Investigate checkout latency",
@@ -982,7 +982,7 @@ async def test_report_rejects_missing_and_nonterminal_runs(api) -> None:
                 id=experiment_id,
                 name="Calibration",
                 task="Investigate checkout latency",
-                scenario_id="checkout-api-latency.v1",
+                scenario_id="checkout-api-latency.v2",
                 scenario_params={},
             )
         )
@@ -993,7 +993,7 @@ async def test_report_rejects_missing_and_nonterminal_runs(api) -> None:
                 kind="baseline",
                 status="queued",
                 metrics={},
-                evaluation_spec={"scenario_id": "checkout-api-latency.v1"},
+                evaluation_spec={"scenario_id": "checkout-api-latency.v2"},
             )
         )
         await db.commit()

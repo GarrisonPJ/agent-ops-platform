@@ -16,7 +16,7 @@ from app.scenario_assertions import AssertionSuite, evaluate_assertion_suite
 
 # Bump this explicit semantic revision when analyzer behavior changes. It is
 # source-controlled rather than derived from the working tree.
-ANALYZER_REVISION = "failure-analyzer.v2"
+ANALYZER_REVISION = "failure-analyzer.v3"
 
 # ── Data structures ────────────────────────────────────────────────────────────────
 
@@ -244,6 +244,10 @@ def _assertion_failure_evidence(
     if assertion_result is None and (assertion_suite is None or not assertion_suite.assertions):
         return []
     result = assertion_result if assertion_result is not None else evaluate_assertion_suite(assertion_suite, trajectory)
+    # ADR-0013: absence of tools before a Provider failure is execution evidence,
+    # not an observed planning choice. The caller's assertion result stays intact.
+    if not trajectory.get("steps") and trajectory.get("provider_error") is True:
+        return []
     evidence: list[FailureEvidence] = []
     classification_by_assertion = {
         "tool-used": FailureClassification.TOOL_SELECTION_ERROR,
@@ -268,6 +272,30 @@ def _assertion_failure_evidence(
             )
         )
     return evidence
+
+
+def _reported_context_evidence(trajectory: dict) -> list[FailureEvidence]:
+    """Interpret only explicit cumulative Agent claims, never measured steps."""
+    usage = trajectory.get("agent_usage")
+    if not isinstance(usage, dict) or usage.get("source") != "agent_reported":
+        return []
+    window = usage.get("context_window")
+    if not isinstance(window, dict):
+        return []
+    used, limit = window.get("used"), window.get("limit")
+    # Reject malformed offline inputs as unknown rather than coercing claims.
+    if (type(used) is not int or type(limit) is not int
+            or not 0 <= used <= 10_000_000 or not 1 <= limit <= 10_000_000):
+        return []
+    ratio = used / limit
+    if ratio <= 0.95:
+        return []
+    return [FailureEvidence(
+        dimension="context", step_index=None,
+        reason=f"Agent-reported context usage ratio {ratio:.2%} exceeds 95%",
+        severity=min(ratio, 1.0),
+        details={"source": "agent_reported", "ratio": ratio},
+    )]
 
 
 def _run_level_failure_evidence(trajectory: dict) -> list[FailureEvidence]:
@@ -312,7 +340,9 @@ def analyze_trajectory(
         Dict with ``steps`` (list of step dicts), ``status`` (str), and
         optionally ``max_steps`` (int).  Step dicts should contain at least
         ``index``, ``action`` (dict or None), ``observation``, ``latency_ms``,
-        and optionally ``context_window``.
+        and optionally ``context_window``. Canonical trajectories may also have
+        cumulative ``agent_usage`` with explicit ``source="agent_reported"``;
+        its context evidence is run-level, not a per-step measurement.
 
     Returns
     -------
@@ -324,19 +354,20 @@ def analyze_trajectory(
 
     if total_steps == 0:
         run_level_evidence = _run_level_failure_evidence(trajectory)
+        run_level_evidence.extend(_reported_context_evidence(trajectory))
         run_level_evidence.extend(_assertion_failure_evidence(trajectory, assertion_suite, assertion_result))
+        classifications = {
+            item.failure_type: 1.0
+            for item in run_level_evidence
+            if item.failure_type is not None
+        }
         return FailureReport(
             dimensions={item.dimension: 1.0 for item in run_level_evidence},
             dominant=run_level_evidence[0].dimension if run_level_evidence else None,
             evidence=run_level_evidence,
-            classification_rates={
-                item.failure_type: 1.0
-                for item in run_level_evidence
-                if item.failure_type is not None
-            },
-            dominant_classification=(
-                run_level_evidence[0].failure_type if run_level_evidence else None
-            ),
+            classification_rates=classifications,
+            dominant_classification=next(iter(classifications), None),
+            needs_human_review=len({item.dimension for item in run_level_evidence}) >= 3,
         )
 
     # Gather evidence from all detectors
@@ -347,18 +378,24 @@ def analyze_trajectory(
     all_evidence.extend(_detect_budget(steps, trajectory))
     all_evidence.extend(_assertion_failure_evidence(trajectory, assertion_suite, assertion_result))
     all_evidence.extend(_run_level_failure_evidence(trajectory))
+    all_evidence.extend(_reported_context_evidence(trajectory))
 
     if not all_evidence:
         return FailureReport()
 
     # Compute per-dimension failure rates
-    dim_failure_steps: dict[str, set[int]] = {}
+    dim_failure_steps: dict[str, set[int | None]] = {}
     for ev in all_evidence:
         dim_failure_steps.setdefault(ev.dimension, set()).add(ev.step_index)
 
     dimensions: dict[str, float] = {}
     for dim, step_indices in dim_failure_steps.items():
-        dimensions[dim] = len(step_indices) / total_steps
+        # A cumulative context claim is one run-level signal, not one affected
+        # world step divided by the number of calls (ADR-0013).
+        dimensions[dim] = (
+            1.0 if dim == "context" and None in step_indices
+            else len(step_indices) / total_steps
+        )
 
     # Determine dominant dimension
     dominant: str | None = None

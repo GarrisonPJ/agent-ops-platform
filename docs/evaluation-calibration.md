@@ -1,8 +1,8 @@
 # Evaluation calibration
 
-## Scope and status (2026-10-17)
+## Scope and status
 
-The failure analyzer is rule-based (`failure-analyzer.v2`). It classifies terminal
+The failure analyzer is rule-based (`failure-analyzer.v3`). It classifies terminal
 Runs along four dimensions: `planning`, `execution`, `context`, and `budget`.
 Labels distinguish positive dimensions, assessed negatives, and `unknown_dimensions`
 when evidence is insufficient. Reports use evaluation scope
@@ -48,6 +48,17 @@ strict-mode behavior; maintain existing contracts only.
 | Controlled capture manifest | `controlled_calibration_capture` / e2e harness | Six-contract regression gate evidence |
 
 ## Analyzer regression gate
+
+[ADR-0013](adr/0013-h1-analyzer-v3-canonical-diagnostics.md) adapts the
+shared analyzer to canonical H1 traces: explicit cumulative `agent_reported`
+context above 95% produces run-level context evidence (`step_index=null`),
+not measured world-step usage. Low or absent reports add no positive signal.
+Provider errors with zero world calls retain execution evidence without
+inferring planning from missing-tool assertions; assertion results, scores,
+and CP terminal gates stay unchanged. The controlled high/low cases use real
+`report_usage` calls; all six fixed label sets and 2-known/4-unknown context
+coverage remain unchanged. Generate fresh v3 packets, never rewrite historical
+v1/v2 packets. This is an H1 diagnostic integration repair, not the H5 study.
 
 `scripts/controlled_calibration_e2e.py` makes the six-case controlled gate
 repeatable without manually provisioning the capture database. Supply
@@ -120,7 +131,8 @@ agent-generated provisional labels as independent review.
 
 ## Agreement study (Phase 2 H5)
 
-**Goal:** Measure agreement between author labels and `failure-analyzer.v2` on
+**Goal:** Measure agreement between author labels and the explicitly recorded
+current analyzer revision on
 real Runs (successes and failures), and publish bounded metrics with explicit
 limitations.
 
@@ -140,8 +152,8 @@ and F1; coverage including unknowns; disagreement list with the labeling rule
 that failed; known biases (single self-labeler, correlated pairs, analysis-blind
 but not outcome-blind packet). Methodology must state author-generated labels.
 
-**Feedback:** Poor agreement should drive analyzer rule changes, a bump to
-`failure-analyzer.v3`, and a rerun of the six-contract regression gate. Never tune
+**Feedback:** Poor agreement should drive separately approved analyzer rule
+changes, a semantic revision bump, and a rerun of the six-contract regression gate. Never tune
 labels to match the analyzer.
 
 ## Prepare labels

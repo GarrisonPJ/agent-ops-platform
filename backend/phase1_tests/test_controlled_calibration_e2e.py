@@ -282,7 +282,7 @@ async def test_harness_restores_captured_file_and_cleans_both_databases_on_failu
             raise RecoveryError("strict report failed with private-token")
         return json.dumps(report)
 
-    manifest = DatabaseManifest("current-head", {"runs": 6, "run_events": 30}, 1, "captured-run", [])
+    manifest = DatabaseManifest("current-head", {"runs": 6, "run_events": 32}, 1, "captured-run", [])
     monkeypatch.setattr(e2e, "_capture_database", source_database)
     monkeypatch.setattr(controlled_calibration_capture, "run_capture", capture)
     monkeypatch.setattr(e2e, "restored_backup", restore)

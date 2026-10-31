@@ -150,7 +150,9 @@ async def persist(client, run, claim, records, offset=0):
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "usage",
-    [None, {}, {"token_prompt": 30}, {"token_prompt": 30, "token_completion": 9}],
+    [None, {}, {"token_prompt": 30}, {"token_prompt": 30, "token_completion": 9},
+     {"context_window": {"used": 8191, "limit": 8192}},
+     {"context_window": {"used": 1200, "limit": 8192}}],
 )
 async def test_env_server_persist_reconstruct_controls_unknown_usage_and_cp_authority(
     api, usage
@@ -184,7 +186,8 @@ async def test_env_server_persist_reconstruct_controls_unknown_usage_and_cp_auth
         await session.dispatch(
             {
                 "name": "report_usage",
-                "arguments": {"token_prompt": 1000, "token_completion": 1000},
+                "arguments": {"token_prompt": 1000, "token_completion": 1000,
+                              "context_window": {"used": 9999, "limit": 10_000}},
             }
         )
         await session.dispatch({"name": "report_usage", "arguments": usage})
@@ -223,7 +226,8 @@ async def test_env_server_persist_reconstruct_controls_unknown_usage_and_cp_auth
             "context_window": None,
             **(usage or {}),
         }
-        assert metrics["agent_usage"] == expected_usage
+        assert metrics["agent_usage"] == trajectory["agent_usage"] == expected_usage
+        assert all(step["context_window"] is None for step in trajectory["steps"])
         assert metrics["token_prompt"] == expected_usage["token_prompt"]
         assert metrics["token_completion"] == expected_usage["token_completion"]
         total = 39 if usage and "token_completion" in usage else None
@@ -231,7 +235,7 @@ async def test_env_server_persist_reconstruct_controls_unknown_usage_and_cp_auth
         assert metrics["environment"] == {"finalized": True, "check_called": True}
         expected = compute_score(
             trajectory,
-            assertion_suite=assertion_suite_for_scenario("checkout-api-latency.v1"),
+            assertion_suite=assertion_suite_for_scenario("checkout-api-latency.v2"),
         )
         assert all(item["passed"] for item in expected["assertions"]["assertions"])
     # Finalization never makes a Run successful: the normal lease/CAS completion
@@ -288,7 +292,7 @@ async def test_env_server_rejections_are_world_steps_but_never_executed_tool_ass
     assert trajectory["steps"][-1]["rejection"] == "finalized"
     result = compute_score(
         trajectory,
-        assertion_suite=assertion_suite_for_scenario("checkout-api-latency.v1"),
+        assertion_suite=assertion_suite_for_scenario("checkout-api-latency.v2"),
     )
     assert result["assertions"]["assertions"][0]["score"] == 0
     assert result["assertions"]["assertions"][1]["score"] == 0
@@ -315,6 +319,7 @@ async def test_env_server_reconstruction_discards_abandoned_attempt_check_and_us
                         "source": "agent_reported",
                         "token_prompt": 999,
                         "token_completion": 999,
+                        "context_window": {"used": 9999, "limit": 10_000},
                     },
                 }
             },
@@ -357,6 +362,7 @@ async def test_env_server_reconstruction_discards_abandoned_attempt_check_and_us
     assert metrics["environment"] == {"finalized": False, "check_called": False}
     assert metrics["total_tokens"] is None
     assert metrics["agent_usage"]["token_prompt"] is None
+    assert trajectory["agent_usage"]["context_window"] is None
 
 
 @pytest.mark.asyncio

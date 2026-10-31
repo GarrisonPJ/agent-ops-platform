@@ -164,7 +164,7 @@ async def run(database_url: str, token: str, output: Path) -> dict[str, object]:
                 source_manifest = await capture_manifest(connection, manifest["cases"][0]["run_id"])
             finally:
                 await connection.close()
-            if source_manifest.table_counts.get("runs") != 6 or source_manifest.table_counts.get("run_events") != 30:
+            if source_manifest.table_counts.get("runs") != 6 or source_manifest.table_counts.get("run_events") != 32:
                 raise RecoveryError("unexpected captured Run or event count")
             stage = "restore"
             async with restored_backup(source_url, restore_name, snapshot) as restored_url:
@@ -192,7 +192,7 @@ async def run(database_url: str, token: str, output: Path) -> dict[str, object]:
                 stage = "cleanup_restore"
             stage = "cleanup_source"
         summary.update(
-            status="ok", case_count=6, event_count=30,
+            status="ok", case_count=6, event_count=32,
             source_snapshot=snapshot_digest,
             schema_revision=source_manifest.revision,
             binding=restored_report["binding"]["status"],

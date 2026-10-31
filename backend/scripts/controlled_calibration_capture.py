@@ -12,6 +12,7 @@ import asyncio
 import hashlib
 import json
 import os
+import secrets
 import threading
 import time
 from dataclasses import dataclass
@@ -28,6 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.calibration_report import LabelSet, ReviewPacket, ReviewRecord, report_labeled_runs
 from app.calibration_review import build_review_packet, write_packet
 from app.database_recovery import backup_database
+from app.env_server import EnvironmentSession
 from app.failure_analyzer import ANALYZER_REVISION
 from app.migrations import application_alembic_head
 from app.phase1_database import make_engine
@@ -56,8 +58,8 @@ class CaseContract:
 
 
 CONTRACTS = (
-    CaseContract("context_pressure", "fixture", "positive", ("context",), "Each injected step records 8191/8192 context-window use, above 95%; the full checkout tool sequence succeeds."),
-    CaseContract("context_low_pressure", "fixture", "negative", (), "Each injected step records 1200/8192 context-window use; observations contain no truncation signal and the full tool sequence succeeds."),
+    CaseContract("context_pressure", "fixture", "positive", ("context",), "An explicit cumulative Agent-reported usage control records 8191/8192 context-window use, above 95%; the full checkout tool sequence succeeds."),
+    CaseContract("context_low_pressure", "fixture", "negative", (), "An explicit cumulative Agent-reported usage control records 1200/8192 context-window use; observations contain no truncation signal and the full tool sequence succeeds."),
     CaseContract("context_unknown", "fixture", "unknown", (), "Context-window measurement is absent; observations contain no truncation signal. No context signal is supported, but absence of pressure is not established."),
     CaseContract("provider_success", "provider", "unknown", (), "The loopback Fake Provider selects all three contracted checkout tools with valid arguments, then returns a nonempty final response; no context measurement is available."),
     CaseContract("provider_timeout", "provider", "unknown", ("execution",), "The loopback Fake Provider delays its first response beyond the configured timeout; PROVIDER_TIMEOUT must persist, demonstrating an execution failure with no completed tool step.", "PROVIDER_TIMEOUT"),
@@ -124,6 +126,10 @@ async def require_empty_database(factory: async_sessionmaker[AsyncSession]) -> N
                 raise ValueError(f"capture requires empty domain tables: {table.name}")
 
 
+def _with_attempt(payload: dict[str, object], attempt: int) -> dict[str, object]:
+    return {**payload, "attempt": attempt}
+
+
 async def capture_cases(
     client: httpx.AsyncClient, factory: async_sessionmaker[AsyncSession], token: str
 ) -> list[dict[str, object]]:
@@ -139,16 +145,29 @@ async def capture_cases(
         created.raise_for_status()
         queued = await client.post(f"/api/experiments/{created.json()['id']}/runs", json={})
         queued.raise_for_status()
-        claim_response = await client.post("/api/internal/runner/jobs/claim", headers=headers, json={"runner_id": "controlled-capture"})
+        claim_response = await client.post(
+            "/api/internal/runner/jobs/claim",
+            headers=headers,
+            json={"runner_id": "controlled-capture"},
+        )
         claim_response.raise_for_status()
         claim = claim_response.json()
         run_id = claim["run"]["run_id"]
+        attempt = claim["attempt"]
         if run_id != queued.json()["id"]:
             raise ValueError("isolated capture claimed an unexpected Run")
         spec = EvaluationSpec.model_validate(claim["run"]["evaluation_spec"])
-        emitted: list[tuple[str, dict[str, object]]] = []
+        uploaded_facts: list[tuple[str, dict[str, object]]] = []
         requests = 0
+        environment_records: list[tuple[str, dict[str, object]]] = []
+        environment = EnvironmentSession(
+            spec,
+            secrets.token_hex(32),
+            lambda kind, payload: environment_records.append((kind, payload)),
+        )
+
         if case.mode == "provider":
+            provider_events: list[tuple[str, dict[str, object]]] = []
             with FakeProvider(case) as server, patch.dict(os.environ, {
                 "AGENTOPS_PROVIDER_BASE_URL": server.url,
                 "AGENTOPS_PROVIDER_API_KEY": "controlled-fake-provider-secret",
@@ -157,38 +176,114 @@ async def capture_cases(
                 "AGENTOPS_PROVIDER_MAX_RETRIES": "0",
                 "NO_PROXY": "127.0.0.1,localhost", "no_proxy": "127.0.0.1,localhost",
             }):
-                exit_code = await run_provider_agent(spec, lambda kind, payload: emitted.append((kind, payload)))
+                exit_code = await run_provider_agent(
+                    spec, lambda kind, payload: provider_events.append((kind, payload))
+                )
                 requests = server.request_count
+            for kind, payload in provider_events:
+                if kind != "step_completed":
+                    continue
+                await environment.dispatch(payload["tool_call"])
+                environment_kind, environment_payload = environment_records.pop()
+                if environment_kind != "step_completed":
+                    raise ValueError("provider adapter did not capture an Environment step")
+                for field in ("decision_summary", "latency_ms", "token_prompt", "token_completion"):
+                    if field in payload:
+                        environment_payload[field] = payload[field]
+                uploaded_facts.append((environment_kind, _with_attempt(environment_payload, attempt)))
+            if not case.provider_error:
+                await environment.dispatch({"name": "submit_result", "arguments": {}})
+                environment_kind, environment_payload = environment_records.pop()
+                uploaded_facts.append((environment_kind, _with_attempt(environment_payload, attempt)))
+            else:
+                # Preserve only the bounded diagnostic. A Provider failure is
+                # not an Environment call and must not fabricate a world/control
+                # event or a final-check tuple.
+                for kind, payload in provider_events:
+                    if kind == "process_output" and "provider_error" in payload:
+                        uploaded_facts.append((kind, _with_attempt(payload, attempt)))
         else:
-            for index, (name, arguments, observation) in enumerate(TOOLS):
-                payload: dict[str, object] = {
-                    "index": index, "decision_summary": "Controlled checkout tool observation.",
-                    "tool_call": {"name": name, "arguments": arguments},
-                    "observation": observation, "latency_ms": 1,
-                    "token_prompt": 100, "token_completion": 10,
-                }
-                if case.context_state != "unknown":
-                    payload["context_window"] = {"used": 8191 if case.context_state == "positive" else 1200, "limit": 8192}
-                emitted.append(("step_completed", payload))
+            for name, arguments, _observation in TOOLS:
+                await environment.dispatch({"name": name, "arguments": arguments})
+                kind, payload = environment_records.pop()
+                if kind != "step_completed":
+                    raise ValueError("fixture adapter did not capture an Environment step")
+                payload = dict(payload)
+                payload.update({
+                    "decision_summary": "Controlled checkout tool observation.",
+                    "latency_ms": 1,
+                    "token_prompt": 100,
+                    "token_completion": 10,
+                })
+                uploaded_facts.append((kind, _with_attempt(payload, attempt)))
+            if case.context_state != "unknown":
+                await environment.dispatch({"name": "report_usage", "arguments": {
+                    "source": "agent_reported",
+                    "context_window": {
+                        "used": 8191 if case.context_state == "positive" else 1200,
+                        "limit": 8192,
+                    },
+                }})
+                kind, payload = environment_records.pop()
+                uploaded_facts.append((kind, _with_attempt(payload, attempt)))
+            await environment.dispatch({"name": "submit_result", "arguments": {}})
+            kind, payload = environment_records.pop()
+            uploaded_facts.append((kind, _with_attempt(payload, attempt)))
             exit_code = 0
+
         status = "failed" if case.provider_error else "succeeded"
         if (exit_code != 0) != (status == "failed"):
             raise ValueError(f"unexpected controlled Agent exit: {case.name}")
-        errors = [payload["provider_error"]["code"] for _, payload in emitted if "provider_error" in payload]
+        errors = [
+            payload["provider_error"]["code"]
+            for _, payload in uploaded_facts
+            if "provider_error" in payload
+        ]
         if errors != ([case.provider_error] if case.provider_error else []):
             raise ValueError(f"unexpected controlled Provider error: {case.name}")
-        pairs = [("run_started", {"attempt": claim["attempt"]}), *emitted,
-                 ("run_failed" if exit_code else "run_completed", {"attempt": claim["attempt"], "exit_code": exit_code})]
-        events = [{"schema_version": 1, "run_id": run_id, "sequence": index,
-                   "occurred_at": datetime.now(timezone.utc).isoformat(), "type": kind, "payload": payload}
-                  for index, (kind, payload) in enumerate(pairs, start=1)]
-        uploaded = await client.post(f"/api/internal/runner/runs/{run_id}/events", headers=headers,
-                                     json={"runner_id": "controlled-capture", "lease_id": claim["lease_id"], "events": events})
+        pairs = [("run_started", {"attempt": attempt, "source": "environment"}), *uploaded_facts]
+        events = [
+            {
+                "schema_version": 1,
+                "run_id": run_id,
+                "sequence": index,
+                "occurred_at": datetime.now(timezone.utc).isoformat(),
+                "type": kind,
+                "payload": payload,
+            }
+            for index, (kind, payload) in enumerate(pairs, start=1)
+        ]
+        uploaded = await client.post(
+            f"/api/internal/runner/runs/{run_id}/events",
+            headers=headers,
+            json={
+                "runner_id": "controlled-capture",
+                "lease_id": claim["lease_id"],
+                "events": events,
+            },
+        )
         uploaded.raise_for_status()
         if uploaded.json()["accepted_through"] != len(events):
             raise ValueError("Runner API did not accept the complete event sequence")
-        completed = await client.post(f"/api/internal/runner/jobs/{claim['lease_id']}/complete", headers=headers,
-                                      json={"runner_id": "controlled-capture", "status": status})
+        execution = {
+            "run_id": run_id,
+            "attempt": attempt,
+            "eligible": not bool(case.provider_error),
+            "submitted": not bool(case.provider_error),
+            "check_succeeded": not bool(case.provider_error),
+            "planned_environment_teardown": True,
+            "failure": "agent_exit" if case.provider_error else None,
+        }
+        completed = await client.post(
+            f"/api/internal/runner/jobs/{claim['lease_id']}/complete",
+            headers=headers,
+            json={
+                "runner_id": "controlled-capture",
+                "status": status,
+                "failure_kind": "provider_failure" if case.provider_error else None,
+                "execution": execution,
+            },
+        )
         completed.raise_for_status()
         if completed.json()["status"] != status:
             raise ValueError(f"unexpected persisted terminal status: {case.name}")
@@ -240,8 +335,8 @@ async def export_artifacts(
     write_packet(output / "capture-manifest.json", {
         "captured_at": datetime.now(timezone.utc).isoformat(), "schema_revision": application_alembic_head(),
         "source_snapshot": source_snapshot, "script_sha256": file_digest(Path(__file__)),
-        "boundary": "ASGI authenticated Runner API, injected context measurements and loopback Fake Provider; no Rust supervision or external model.",
-        "context_contract": "positive: observed pressure; negative: observed low use with no truncation signal; unknown: measurement absent, no supported signal. Unknown cases are excluded from assessed context counts and disagreements, and remain visible in report coverage.",
+        "boundary": "ASGI authenticated Runner API, explicit Agent-reported context controls and loopback Fake Provider; no measured context, Rust supervision or external model.",
+        "context_contract": "positive: Agent-reported pressure; negative: Agent-reported low use with no truncation signal; unknown: report absent, no supported signal. Reports are claims, not measured usage. Unknown cases are excluded from assessed context counts and disagreements, and remain visible in report coverage.",
         "publishable_accuracy": False, "cases": captured,
     })
     if report["disagreements"]:
