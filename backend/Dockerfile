@@ -10,7 +10,7 @@ COPY --from=ghcr.io/astral-sh/uv:0.11.14 /uv /uvx /bin/
 
 WORKDIR /app
 
-COPY pyproject.toml uv.lock ./
+COPY backend/pyproject.toml backend/uv.lock ./
 RUN uv sync --no-dev --frozen
 
 # ---- runtime ----
@@ -19,11 +19,13 @@ FROM python:3.12-slim
 WORKDIR /app
 
 COPY --from=builder /app/.venv /app/.venv
-COPY app/ /app/app/
-COPY alembic/ /app/alembic/
-COPY alembic.ini /app/alembic.ini
+COPY backend/app/ /app/app/
+COPY backend/alembic/ /app/alembic/
+COPY backend/alembic.ini /app/alembic.ini
+COPY config/agents.toml config/agents.recovery.toml /app/config/
 
-ENV PATH="/app/.venv/bin:$PATH"
+ENV PATH="/app/.venv/bin:$PATH" \
+    AGENTOPS_AGENT_REGISTRY=/app/config/agents.toml
 
 EXPOSE 8000
 

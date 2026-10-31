@@ -42,6 +42,9 @@ jobs:
           cache-dependency-glob: backend/uv.lock
       - name: Install locked dependencies
         run: uv sync --frozen
+      - name: Verify Runner agent dependency lock
+        working-directory: ${{ github.workspace }}
+        run: uv run --project backend python scripts/verify_runner_requirements.py
       - name: Verify generated protocol schemas
         run: |
           PYTHONPATH=. uv run python scripts/export_protocol_schema.py
@@ -74,6 +77,9 @@ jobs:
     env:
       DATABASE_URL: postgresql+asyncpg://agentops:agentops@localhost:5432/agentops_recovery_source
       RESTORE_DATABASE_NAME: agentops_restore_ci
+      AGENTOPS_PROVIDER_BASE_URL: http://127.0.0.1:9/v1
+      AGENTOPS_PROVIDER_API_KEY: ci-fake-provider-key
+      AGENTOPS_PROVIDER_MODEL: ci-fake-provider
       RETENTION_POSTGRES_URL: postgresql+asyncpg://agentops:agentops@localhost:5432/agentops_recovery_source
     steps:
       - uses: actions/checkout@v4
@@ -192,7 +198,12 @@ jobs:
           token="$(openssl rand -hex 32)"
           echo "::add-mask::$token"
           echo "RUNNER_TOKEN=$token" >> "$GITHUB_ENV"
-      - name: Start real stack
+      - name: Start real stack with deterministic fixture configuration
+        env:
+          AGENTOPS_AGENT_REGISTRY: /etc/agentops/agents.toml
+          AGENTOPS_PROVIDER_BASE_URL: ""
+          AGENTOPS_PROVIDER_API_KEY: ""
+          AGENTOPS_PROVIDER_MODEL: ""
         run: docker compose -f infra/docker/docker-compose.phase1.yml up -d --build
       - name: Run Golden closed loop
         run: python3 scripts/golden_e2e.py

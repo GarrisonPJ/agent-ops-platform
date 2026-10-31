@@ -8,9 +8,14 @@
 !backend/
 !backend/app/
 !backend/app/**
+!backend/alembic/
+!backend/alembic/**
+!backend/alembic.ini
 !backend/pyproject.toml
 !backend/uv.lock
 !runner-requirements.lock
+!config/
+!config/agents.toml
 
 runner/target/
 runner/**/target/
