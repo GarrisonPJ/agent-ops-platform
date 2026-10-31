@@ -1,6 +1,6 @@
 # Phase 2 任务清单
 
-状态日期：2026-10-24。决策在 `docs/adr/0007`–`0012`。里程碑在 `ROADMAP.md`。
+状态日期：2026-10-31。决策在 `docs/adr/0007`–`0014`。里程碑在 `ROADMAP.md`。
 本文件是可执行任务的事实来源。`.scratch/` 只放本地证据，不放交接。
 
 规范：`docs/agents/development-standards.md`。
@@ -11,7 +11,7 @@
 
 **可以降级：** H2-2、H2-3、整个 H4、H5-2 至少标注 20 条。
 
-**基线状态：** H1-1 已在 `4ee7adc72ca4e3acce99acd0145659e5d34ba603` 接受。H1-2 的独立组件待审，H1-6 的独立组件已接受但 E2E 延后；两者均未并入本基线，不表示 H1 已交付。其他任务要等依赖落地后再领，一次只领一个。H0 剩下的两项是人工操作，不阻塞 H1。
+**当前集成状态：** H1-1..H1-6 的工程实现已接入生产 dispatch/completion；组件已分别审查，fixture/fake-Provider、隔离 PostgreSQL、标准 Runner 网络构建、实际 named-volume 替换、受影响回归和 exact-payload 文档收尾均有本地父证据。lock-path 与 exit-boundary 两个 P2 已修复并经只读独立复审；本地 option-1 H1 工程边界已完成，不能把它写成 hosted CI、发布或真实模型验收。操作者明确延期 H1-5 的真实本地模型 trace/分析验收，Windows 模型安装由其他 Agent 处理；延期不是验证成功。H2 未开工。H0 剩余人工事项不阻塞 H1。
 
 未开工的任务用 `docs/agents/triage-labels.md` 的词。`completed` 表示已经落地，不要重做。
 
@@ -66,27 +66,27 @@ H0 剩余只有 H0-1 的 GitHub 点击和 H0-2 的命名。命名未定不阻塞
 先读 ADR-0007、0008、0009，再读 `docs/learn/00-map.md` 里的 Phase 1 路径。
 不要在 H1 里做 pass^k 或 OTel。
 
-### H1 共用契约（2026-10-24 已批准，待实现）
+### H1 共用契约（已批准并接入当前集成）
 
 - 遵循 [ADR-0012](../adr/0012-h1-canonical-cutover-and-control-plane-success.md)：一次性不兼容升级，三个规范 ID 为 `checkout-api-latency.v2`、`multi-step-research.v2`、`api-fault-orchestration.v2`；API 省略 ID、UI 默认、quickstart 均走规范 v2（checkout 默认 `.v2`）。退休对应三个 v1 执行注册与耦合 fixture/provider 循环，不保留双路径。`order-support.v1` 与通用语义版本身份规则不变。
 - 不做旧 v1 兼容、迁移、别名、重评分、历史 replay 保留或跨版本可比性工作；保留准确的 Phase 1 历史说明。旧记录可丢弃不等于允许访问或删除现有数据：不做自动 reset、破坏性迁移、删表或数据库/文件/volume 删除。另行请求的运维 reset 独立处理；实现验证使用全新隔离数据。
 - Python Control Plane 独占权威评估、Run 状态与数据库。成功必须同时满足：有效 submit、check 成功、必需可信证据充分有效、注册 suite aggregate >= 该版本固定的 1.0、没有异常执行失败。缺失/无效必需证据、check 失败、未有效 submit、Agent 异常/非零退出或终态完成前 Environment 意外失败均不能成功。有效 submit、check 成功并捕获必要证据后，Runner 请求终止健康 Environment（含 SIGTERM 后共享两秒宽限期届满再 SIGKILL）属于计划内生命周期，不是异常执行失败；不要求两个子进程都自然零退出。该例外不覆盖前述失败、取消、超时、output-limit 或 lease failure；终态事件与 CP completion 必须一致，不信任 Agent/check 自报分数或状态。
 - 保留 ALL=min、ANY=max、WEIGHTED=加权均值与每条断言的 threshold；不得替换成通用 `all(item.passed)`，也不以含惩罚的 quality score 判定任务成功。人工 Policy 验证与激活规则不变。
 - CP 轨迹断言读取最新 Attempt 持久化的所有 world attempts（含拒绝），排除保留控制调用。拒绝投影为 `rejected_tool`、status `failed`，不能满足请求工具名的 used/args/sequence 断言；Environment 仅有效调用的内部 history 不能覆盖它。
-- 最终状态断言读取有界、可信、Environment 所有的 final-check 事实，由 CP 校验必需 operands 与注册 expectations；不采信 Agent 提供的期望值或分数。订单恰好一次的证明来自最终 ledger。usage 缺失保持 unknown，有报告也只是 Agent-reported。精确的 additive wire 字段/类型留给后续独立审查，不在此发明。
-- H1-3 只负责监督与事实转发，不实现 CP 评分策略或 Rust 第二评分器；H1-5/集成负责证据与 CP completion 的接线。组件验收不替代集成 Golden、PostgreSQL 专项或本地模型验收。
+- 最终状态断言读取有界、可信、Environment 所有的 final-check 事实，由 CP 校验必需 operands 与注册 expectations；不采信 Agent 提供的期望值或分数。订单恰好一次的证明来自最终 ledger。usage 缺失保持 unknown，有报告也只是 Agent-reported。已审查 wire 为 Environment 所有的 `scenario_id` + `final_observation`，CP 使用注册 expectations；见 ADR-0012。
+- H1-3 只负责监督与事实转发，不实现 CP 评分策略或 Rust 第二评分器；H1-5/集成负责证据与 CP completion 的接线。组件验收不替代集成 Golden、PostgreSQL 专项；本地模型验收在本轮明确延期。
 
 ### H1-1 Environment 协议
 
-- Status: `completed`（抽取已在本基线接受；不是规范 v2 切换已完成）
+- Status: `completed`（协议抽取与规范 v2 已接入；本地 option-1 交付边界已收尾）
 - 从 `backend/app/scenario_registry.py` 与 `backend/app/scenarios/` 抽出 ADR-0007 的 Environment 接口：`reset`、`tool_definitions`、`call`、`check`、`fault_schedule`。
-- 已完成抽取：三个现有 Scenario 提供 Environment 接口；本抽取阶段保留原 `scenario_id`。后续规范切换按 ADR-0012 使用新 v2 身份，不原地改变 v1 语义。
-- 抽取阶段保留 `run_fixture`/`run_provider`；H1-5 接上独立 agent 后按共用契约退休耦合循环和对应 v1 执行注册，不要求保留旧执行结果。
+- 四个当前 Environment 提供统一接口；三世界规范 v2、订单 v1，不原地改变旧 v1 语义。
+- 生产路径已退休耦合世界循环；旧 demo/test helpers 仅用于历史回归，不是可选生产 fallback。
 - 验收：现有 `phase1_tests` 与三个 Scenario 的断言测试仍绿；新接口有单测覆盖 `reset` 同 seed 同观察。
 
 ### H1-2 `app.env_server`
 
-- Status: `needs-triage`（独立组件实现待审，未并入本基线）
+- Status: `completed`（Environment MCP、采集与可信 final-check 已集成并审查）
 - 依赖：H1-1。
 - `python -m app.env_server`：`mcp` 固定 2.3.x，`MCPServer`，`transport="streamable-http"`，只绑 `127.0.0.1`。
 - middleware 把每次 `tools/call` 写成 JSONL `step_completed`。实现 `submit_result` 与 `report_usage`。
@@ -97,7 +97,7 @@ H0 剩余只有 H0-1 的 GitHub 点击和 H0-2 的命名。命名未定不阻塞
 
 ### H1-3 Runner 双进程监督
 
-- Status: `ready-for-agent`
+- Status: `completed`（含 lock-path / exit-boundary 修复复审、受影响镜像与最终回归）
 - 依赖：H1-2 的 `env_ready` 约定。
 - 先写 `runner/crates/agentops-runner` 的测试，再改实现：先拉起 env，读到 `env_ready`，再拉起 agent；取消时进程组一起收到 SIGTERM，两秒后 SIGKILL。
 - 协议 crate 增加本地监督消息 `env_ready`。它不是 RunEvent，持久化事件里不得出现原始 token。
@@ -106,7 +106,7 @@ H0 剩余只有 H0-1 的 GitHub 点击和 H0-2 的命名。命名未定不阻塞
 
 ### H1-4 `agent_id`、注册表、前端下拉
 
-- Status: `ready-for-agent`
+- Status: `completed`（Rust/Python registry 与前端选择已集成并审查）
 - 依赖：H1-3 能根据 id 解析命令。
 - 运维 TOML 注册表；`GET /api/agents` 只返回元数据；`EvaluationSpec.agent_id` 可选，缺省规则见 ADR-0009。
 - 未知 id 在创建 Run 时返回与未知 `scenario_id` 相同风格的结构化错误。
@@ -117,21 +117,38 @@ H0 剩余只有 H0-1 的 GitHub 点击和 H0-2 的命名。命名未定不阻塞
 
 ### H1-5 参考 agent 与本地模型 quickstart
 
-- Status: `ready-for-agent`
+- Status: `ready-for-human`（工程实现与 fake-Provider 验证完成；真实模型验收由操作者明确延期）
 - 依赖：H1-2、H1-4。
 - `reference-openai-compatible.v1`：独立进程，通过 MCP 发现工具，用现有 `AGENTOPS_PROVIDER_*` 调 `/chat/completions`。
 - `fixture-agent.v1`：在规范 Environment 上跑确定性轨迹，不要求复现旧 v1 结果；退休三套旧注册和耦合 fixture/provider 循环，不留双路径。
-- 本任务/集成负责 ADR-0012 的可信轨迹/final-check 证据与 Python CP completion 接线、aggregate >= 1.0 成功门和终态一致性。精确 additive wire 另行审查；测试覆盖无 submit、check 失败、必需证据无效/缺失、拒绝轨迹、Agent 异常/非零退出、Environment 意外失败与上述计划内清理的区别，以及 ANY/ALL/WEIGHTED 语义，不能用 quality score 或通用 all(passed) 替代。
-- README quickstart 使用规范 v2（checkout 默认 `checkout-api-latency.v2`），增加 Ollama 小节：默认 `qwen3:8b`；`qwen3:14b` 标为 16 GB 上的可选项，不写“保证放得下”。vLLM 启动参数写 `--enable-auto-tool-choice --tool-call-parser hermes`（Qwen3-Coder 用 `qwen3_xml`，不要混用）。
-- 验收：Golden E2E 用 fixture agent 全绿。本地有 Ollama 时，参考 agent 能跑出一条带分析的 trace；没有 GPU 的 CI 不跑这一条。
+- 本任务/集成负责 ADR-0012 的可信轨迹/final-check 证据与 Python CP completion 接线、aggregate >= 1.0 成功门和终态一致性。精确 wire 已审查并接入；测试覆盖无 submit、check 失败、必需证据无效/缺失、拒绝轨迹、Agent 异常/非零退出、Environment 意外失败与上述计划内清理的区别，以及 ANY/ALL/WEIGHTED 语义，不能用 quality score 或通用 all(passed) 替代。
+- README 使用规范 v2，并链接 [local-model.md](../operations/local-model.md) 的已有端点配置/延期交接。实际主机约 12 GB VRAM；`qwen3:8b` 只是初始候选，不保证权重+KV cache、工具调用或时延。安装/下载、Windows/防火墙和 vLLM parser 配置不在本轮范围。
+- 工程验收：fixture Golden 与 reference Agent + fake Provider 通过。真实 Ollama/vLLM trace/分析尚未执行、明确延期；恢复此项时验证 Run、世界事实、分析与 GPU/连通性，不以 fake Provider 替代。无 GPU 的 CI 不跑此项。
 
 ### H1-6 有状态环境 `order-support.v1`
 
-- Status: `ready-for-agent`（独立组件已接受，未并入本基线；集成/E2E 待完成）
+- Status: `completed`（有状态世界、MCP Agent 与订单恰好一次断言已集成验证）
 - 依赖：H1-1。
-- 一个内存订单库，身份保持 `order-support.v1`。Outcome 断言至少包括“退款恰好一次”；证明来自最终 ledger，而不是工具请求次数。CP 按注册 expectations 验证必需的可信 final-check operands，不采信 Agent 提供的期望值/分数；具体 wire 在集成时审查。
+- 一个内存订单库，身份保持 `order-support.v1`。Outcome 断言至少包括“退款恰好一次”；证明来自最终 ledger，而不是工具请求次数。CP 按注册 expectations 验证必需的可信 final-check operands，不采信 Agent 提供的期望值/分数；wire 已按 ADR-0012 审查并接入。
 - 故障注入沿用现有 Scenario 的做法。
 - 验收：fixture agent 下 baseline 失败、replay 成功，与 checkout Golden 同一套闭环测试形状。
+
+### H1 集成诊断修订（ADR-0013，已批准）
+
+- 仅把共享分析器升为 `failure-analyzer.v3`：显式 `agent_reported` context 作为 Run 级诊断证据；仅在零世界调用且有 Provider error 时，不从缺失工具断言推断 planning。
+- 校准高/低 context 样本通过真实 `report_usage` 控制调用采集；六组标签和 unknown 覆盖保持不变，不伪造步骤。
+- 不改 CP 入口、断言/评分/终态门或校准绑定机制；不回写历史包、不重评分，不提前启动 H5 研究。
+- 验证双断言入口、非空规划反例、usage 覆盖/Attempt 隔离及两类 digest 防篡改；新生成 v3 校准包并独立审查。
+
+### H1-C 工程收尾（本轮唯一活跃工程任务）
+
+- Status: `completed`（本地 option-1 工程边界完成；不授权 H2）
+- ADR-0008 先行修订后修复 capacity/per-Run lock symlink 与非普通文件；拒绝不改写目标。
+- Reader-prefix 与 observed-Agent-exit barrier 证明重构恰好一次；覆盖残留半行、clean/fragment EOF、自然退出、超长输出、final upload/heartbeat 和 Runner 自主回收。
+- 两个 P2 的 scoped 独立复审已通过；父执行 Rust 59 项 Runner 测试/Clippy、五次边界重复、完整后端/前端/Recorded E2E、重建标准镜像、全新 volume replacement 和最终 exact-payload 文档复审均完成。
+- 已整理历史 handoff/旧规划引用，保留 ADR ID，并区分 accepted decision、当前实现、父证据与历史记录。规范任务继续只在此维护。
+- 保留 `make check-contracts` 原门禁：当前未提交 `.v1`→`.v2` 默认差异已公开；current-model/fixture 字节已核对，`make check-contracts` 的预期 exit 2 已留证，在获准交付基线上再跑，不擅自 stage/commit。
+- 真实模型验收明确延期，不安装模型、不改 Windows/网络/防火墙。最新边界见 [system-acceptance.md](../operations/system-acceptance.md)。
 
 ### H1 学习交付
 
@@ -146,7 +163,7 @@ H0 剩余只有 H0-1 的 GitHub 点击和 H0-2 的命名。命名未定不阻塞
 
 ### H2-1 Claude Code 适配器（必须）
 
-- Status: `ready-for-agent`（等 H1-4 注册表落地后再开工）
+- Status: `ready-for-agent`（未来任务；H1 收尾后仍需另行授权，本轮不启动）
 - 注册 `claude-code.v1`。适配脚本从环境变量生成 `--mcp-config`，调用 `claude -p`、`--output-format stream-json`、`--max-turns`。
 - `--tools ""` 关掉内置工具；MCP 工具不受 `--tools` 影响。不要用 `--allowedTools` 充当白名单（它只是自动批准）。
 - CI 不安装、不调用 `claude`。
@@ -226,7 +243,7 @@ H0 剩余只有 H0-1 的 GitHub 点击和 H0-2 的命名。命名未定不阻塞
 ### H5-1 文档拆分（已完成正文）
 
 - Status: `completed`
-- 机制冻结。若 H5-2 证明规则不够，只允许改分析器规则并升到 `failure-analyzer.v3`，然后重跑六合同门。不要加新的绑定字段。
+- 机制冻结。H1 的 ADR-0013 已将分析器升至 `failure-analyzer.v3`；H5 若发现新规则问题，须新 ADR/新 revision，并重跑六合同门。不要加新的绑定字段。
 
 ### H5-2 自标注
 
@@ -256,7 +273,7 @@ H0 剩余只有 H0-1 的 GitHub 点击和 H0-2 的命名。命名未定不阻塞
 ### H6-3 Recorded demo
 
 - Status: `ready-for-agent`
-- 更新 `VITE_MOCK_API` 的 fixture，覆盖新 Environment。公网托管仍然可选，不作为验收条件。
+- H1 已刷新真实 checkout v2 Recorded Preview（ADR-0014）；H6 只补后续实际交付能力的演示，不重复造数据。公网托管不是验收条件。
 
 ---
 

@@ -1,6 +1,6 @@
 # AgentOps Workbench Roadmap
 
-本文件是工程里程碑的事实来源。`CONTEXT.md` 负责领域词汇与不变量；`docs/adr/` 中的 ADR 负责已接受的架构决策。实施跟踪位于被 Git 忽略的本地证据目录（不在仓库中）。带日期的验证与收口记录见 [`docs/history/`](docs/history/)。
+本文件是工程里程碑的事实来源。`CONTEXT.md` 负责领域词汇与不变量；`docs/adr/` 中的 ADR 负责已接受的架构决策。可执行任务只在 [docs/agents/phase2-tasks.md](docs/agents/phase2-tasks.md) 跟踪；本地证据不是第二 tracker。带日期的验证与收口记录见 [`docs/history/`](docs/history/)。
 
 ## 方向（2026-10-17）
 
@@ -12,25 +12,15 @@
 
 到 2026-10，trace UI、数据集版本化、轨迹断言、replay 对比、失败 Run 转回归用例等已在 Langfuse、Phoenix、Braintrust 等产品中商品化；行业在整合而非扩张通用评估平台。对自托管用户仍稀缺的是：可对外部 Agent 可复现运行的 harness、可重置环境上的 pass^k、OTel GenAI 导出，以及确定性失败分类与校准叙事。Phase 1 交付了扎实闭环，但将环境与 Agent 耦合在一个类中，因此只能评估内置 Python Agent。**项目不再以通用评估平台自居。**
 
-## 当前状态
+## 当前状态（2026-10-31）
 
-Phase 1 已完成，并在 `8bd2ef0`（2026-10-15）通过 CI 验证。该提交上 GitHub Actions 六个 Job 全绿：`backend`、`database-recovery`、`frontend`、`rust`、`compose`、`golden-e2e`。该 HEAD 计数：265 项后端测试（PostgreSQL 下无 skip）、34 项前端单测、2 项 recorded E2E、15 项 Rust Runner 测试。
+Phase 1 hosted CI 在 `8bd2ef0` 通过，其计数只属于该历史快照。H1 已集成独立 Environment/MCP 与注册 fixture/reference Agent、生产 Rust dispatch/completion、可信 final-check、CP 独占评分、checkout/research/fault v2 与 `order-support.v1`、analyzer-v3 机制，以及真实 Recorded Preview。
 
-- Experiment 可在三个版本化内置 Scenario 上创建确定性 baseline 与 replay Run。
-- FastAPI 负责持久化、lease、评分、分析与 Policy 决策；PostgreSQL 存储 run、job、事件、分析、policy 与 regression case。
-- Rust Runner 监督白名单 Python Agent，含 lease 恢复、取消与有界事件重试。
-- React 覆盖 experiment、trace、analysis、improve、replay 与显式人工 Policy 激活。
-- 协议 v1 fixture 在 Python、TypeScript、Rust 中校验；CI 覆盖迁移、数据库恢复、Compose 与 Golden 闭环。
-- 机器可读运维状态、retention/脱敏与进程外健康探测已就位。
-- 确定性失败分类与 regression case 重放门禁 Policy 激活。
+本地 host/PostgreSQL、标准 Runner 网络构建、实际 named-volume 替换、受影响回归、exact-payload 检查与 scoped 独立审查已有父执行证据。lock-path 与 exit-boundary 两个 P2 已修复/复审。本地 option-1 H1 工程收尾已完成；发布、hosted CI、cold-cache、跨平台和真实模型声明仍明确不在此边界内。见[验收边界](docs/operations/system-acceptance.md)。
 
-**系统尚不能做的事**
+操作者**明确延期真实本地模型 trace/分析验收**。Reference Agent + fake Provider 不是 Ollama/vLLM 验收；Windows 安装交给操作者安排的其他 Agent。本轮不下载模型、不改 Windows/网络/防火墙、不部署、不启动 H2。
 
-- 受支持路径上只能评估内置 Python Agent。
-- 无外部 Agent 路径（无 `agent_id`、API 无运维侧 Agent 注册表）。
-- 无重复 trial 或 pass^k 聚合。
-- 无 OTel GenAI 导出。
-- 校准报告为 `publishable_accuracy=false`，因为可发布准确率曾定义为需要独立人工标注。
+尚未实现：H2 CLI/SDK 适配器、H3 trial group/pass^k、H4 OTel GenAI export、H5 真实分布一致性研究。当前校准仍为 `provisional_mechanics`、`publishable_accuracy=false`；后续自标注研究必须披露方法局限。
 
 ## 里程碑
 
@@ -43,7 +33,7 @@ Phase 1 已完成，并在 `8bd2ef0`（2026-10-15）通过 CI 验证。该提交
 | P1 | 闭环深化后续 | 已完成 | 失败 Run 成为可归类、可对比的回归资产并门禁 Policy 激活。 |
 | P1 | 可靠性与校准加固（2026-09 至 2026-10） | 已完成 | CAS/锁顺序修复、analyzer v2、CI 六合同校准门；校准在 Phase 2 H5 重定义。 |
 | P0 | Phase 2 — Harness H0（门面与决策） | 进行中 | ADR、LICENSE、规范、学习地图和[任务清单](docs/agents/phase2-tasks.md)已在仓库内。仍开放：GitHub About、对外名称（H0-2）。 |
-| P0 | Phase 2 — Harness H1（Environment/Agent 拆分） | 计划中 | MCP `app.env_server`、Runner 双进程监督、`agent_id` 注册表、本地模型参考 Agent、`order-support.v1`。 |
+| P0 | Phase 2 — Harness H1（Environment/Agent 拆分） | 完成（本地 option-1 工程边界） | 独立进程路径、Runner P2 修复、受影响回归、标准镜像/volume 验证和文档已收尾。真实模型验收明确延期，不是通过；hosted CI 与发布仍未建立。 |
 | P1 | Phase 2 — Harness H2（外部 Agent） | 计划中 | Claude Code 适配器必做；Agents SDK / Codex 可选。 |
 | P1 | Phase 2 — Harness H3（trial 与 pass^k） | 计划中 | Trial group、pass^k 指标、Experiment 摘要 UI。 |
 | P2 | Phase 2 — Harness H4（OTel 导出） | 计划中 | OTLP GenAI 投影，默认关闭。 |
@@ -92,7 +82,7 @@ flowchart LR
   Otel --> Langfuse[Langfuse / Phoenix]
 ```
 
-环境即 MCP server；工具 trace 在环境侧采集，Agent 无需实现内部 JSONL 协议。
+此图是完整 Phase 2 目标，不是当前能力清单：H1 实现 Environment/注册 Agent 双进程；Trials、外部适配器、pass^k 和 OTel 属于后续阶段。工具事实由 MCP Environment 采集，Agent 不发可信 JSONL。
 
 ### 决策
 
@@ -100,7 +90,10 @@ flowchart LR
 - [ADR-0008](docs/adr/0008-environment-mcp-server-and-env-side-capture.md) — `app.env_server` 为 MCP Streamable HTTP，middleware 采集、`submit_result`、Runner 双进程监督。
 - [ADR-0009](docs/adr/0009-agent-registry-trust-boundary.md) — 运维 TOML Agent 注册表、`GET /api/agents`、`EvaluationSpec.agent_id`；Runner 只执行已注册 argv。
 - [ADR-0010](docs/adr/0010-trial-groups-and-pass-k.md) — Trial group、组内固定环境 seed、tau-bench 估计 pass^k、组级 Policy 校验。
-- [ADR-0011](docs/adr/0011-otel-genai-export.md) — 终态后 OTel GenAI span 导出（`AGENTOPS_OTEL_EXPORT=1`），`RunEvent` 仍为事实源。
+- [ADR-0011](docs/adr/0011-otel-genai-export.md) — 未来 H4 OTel GenAI 导出，`RunEvent` 仍为事实源。
+- [ADR-0012](docs/adr/0012-h1-canonical-cutover-and-control-plane-success.md) — H1 规范 v2 不兼容切换、CP 可信证据和 aggregate 成功门；不授权历史迁移、重评分或删除。
+- [ADR-0013](docs/adr/0013-h1-analyzer-v3-canonical-diagnostics.md) — 两项有界 v3 诊断修订，保持评分和校准绑定。
+- [ADR-0014](docs/adr/0014-h1-recorded-preview-canonical-events.md) — 真实 v2 Recorded Preview、保留 accepted control、生命周期时间戳，不改评分。
 
 ### 阶段
 
@@ -115,7 +108,9 @@ flowchart LR
 #### H1 — Environment/Agent 拆分（第 2–4 周）
 
 - **范围：** H1-1 从内置 Scenario 抽出 Environment 协议；H1-2 `app.env_server`（MCP、环境侧采集）；H1-3 Runner 双子进程监督与 `env_ready`；H1-4 `agent_id`、注册表、`GET /api/agents`、新建 Experiment 的 Agent 下拉；H1-5 参考 Agent 进程（默认 Ollama `qwen3:8b`，文档化 vLLM）；H1-6 有状态 `order-support.v1`。
-- **验收：** `fixture-agent.v1` 下 Golden E2E 全绿；本地参考 Agent 产出 trace 与分析；`make contracts` 更新契约。
+- **工程收尾：** fixture Golden、fake-Provider reference Agent、可信 CP completion、恢复、标准镜像/volume、受影响回归、文档及最终 exact-payload 审查已在本地完成。生成契约匹配当前模型；保留未提交 dirty-index gate 的公开处置，待获准交付基线重跑。
+- **明确延期：** 真实本地参考 Agent trace/分析未执行，待端点供应与操作者重新授权，不用 fake Provider 代替。
+- **P2 修订（ADR-0008）：** lock no-follow/非普通文件拒绝且不修改目标；reader/Agent-exit barrier、残留半行失败和自主回收断言。两个 scoped 复审通过；受影响镜像/runtime 回归及五次边界重复验证已有父执行证据。
 - **学习交付物：** `docs/learn/01-run-lifecycle.md`、`docs/learn/02-environment-and-mcp.md`、`docs/learn/04-runner-lease-fencing.md`。
 
 #### H2 — 外部 Agent 适配器（第 5–6 周）
@@ -161,8 +156,8 @@ trace UI 新功能、标注队列、数据集管理、多租户/鉴权、Kuberne
 ### 风险
 
 - MCP Python SDK API 漂移 — pin `mcp` 小版本；集中在 `env_server`。
-- 16GB 显存限制 — 默认 Ollama `qwen3:8b`；14B 作为可选文档化配置。
-- Claude Code 适配器依赖主机 API key — 可选，不进 CI。
+- 实际本地主机约 12 GB VRAM，不是最初假设的 16 GB。`qwen3:8b` 仅为候选，权重+KV cache、context/并发必须实测；真实模型验收延期。
+- Claude Code 适配器依赖主机凭据；H2-1 是未来切割线必做项，但不成为 CI 凭据依赖。
 - 环境侧采集缺少 Agent 内部信息 — 使用 `unknown` 维度（现有分析器行为）。
 - 双进程监督复杂度 — H1-3 先写 Rust kill 语义测试。
 - 范围膨胀 — 计划外工作须先新 ADR 并更新本 roadmap。

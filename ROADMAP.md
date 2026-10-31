@@ -1,6 +1,6 @@
 # AgentOps Workbench Roadmap
 
-This file is the source of truth for engineering milestones. `CONTEXT.md` owns domain vocabulary and invariants; ADRs in `docs/adr/` own accepted architecture decisions. Implementation tracking lives in a git-ignored local evidence directory (not in the repository). Dated verification and closeout records live in [`docs/history/`](docs/history/).
+This file is the source of truth for engineering milestones. `CONTEXT.md` owns domain vocabulary and invariants; ADRs in `docs/adr/` own accepted architecture decisions. Executable implementation tracking lives in [docs/agents/phase2-tasks.md](docs/agents/phase2-tasks.md); local evidence is not a second tracker. Dated verification and closeout records live in [`docs/history/`](docs/history/).
 
 ## Direction (2026-10-17)
 
@@ -12,25 +12,15 @@ This file is the source of truth for engineering milestones. `CONTEXT.md` owns d
 
 Trace UI, dataset versioning, trajectory assertions, replay diffs, and failed-run-to-regression workflows are commodity in Langfuse, Phoenix, Braintrust, and similar products; the industry is consolidating rather than expanding generic eval platforms. What remains scarce for self-hosted users is a reproducible harness that runs **external** agents against resettable environments, reports pass^k, exports OTel GenAI spans, and keeps a deterministic failure taxonomy with a calibration story. Phase 1 delivered a solid closed loop but coupled environment and agent in one class, so only the built-in Python agent could be evaluated. **The project no longer presents itself as a general evaluation platform.**
 
-## Current state
+## Current state (2026-10-31)
 
-Phase 1 is complete and CI-verified on `8bd2ef0` (2026-10-15). GitHub Actions on that commit is green for all six jobs: `backend`, `database-recovery`, `frontend`, `rust`, `compose`, `golden-e2e`. Counts at that HEAD: 265 backend tests (no skips with PostgreSQL), 34 frontend unit tests, 2 recorded E2E tests, 15 Rust Runner tests.
+Phase 1 hosted CI passed on `8bd2ef0`; its counts belong to that snapshot, not current H1. H1 integration now has separate Environment/MCP and registered fixture/reference Agent processes, production Rust dispatch/completion, trusted final checks, CP-owned scoring, canonical checkout/research/fault v2 plus `order-support.v1`, analyzer-v3 mechanics, and genuine Recorded Preview.
 
-- Experiments create deterministic baseline and replay Runs across three versioned built-in Scenarios.
-- FastAPI owns persistence, leases, scoring, analysis, and policy decisions; PostgreSQL stores runs, jobs, events, analyses, policies, and regression cases.
-- The Rust Runner supervises an allowlisted Python agent with lease recovery, cancellation, and bounded event retries.
-- React covers experiment, trace, analysis, improve, replay, and explicit human policy activation.
-- Protocol v1 fixtures are validated in Python, TypeScript, and Rust; CI exercises migrations, database recovery, Compose, and the Golden closed loop.
-- Machine-readable operations state, retention/redaction, and out-of-process health probes are in place.
-- Deterministic failure classification and regression-case replay gate policy activation.
+Local host/PostgreSQL, standard Runner network build, actual named-volume replacement, affected regressions, exact-payload checks and independent scoped reviews have parent evidence. The lock-path and exit-boundary P2s are repaired/reviewed. Local option-1 H1 engineering closeout is complete; release, hosted-CI, cold-cache, cross-platform and live-model claims remain explicitly outside this boundary. See [acceptance boundaries](docs/operations/system-acceptance.md).
 
-**What the system cannot do yet**
+The operator **explicitly deferred real-local-model trace/analysis acceptance**. Reference-Agent fake-Provider success is not Ollama/vLLM acceptance; Windows installation belongs to a separate operator-assigned Agent. No model download, Windows/network/firewall change, deployment, or H2 work is authorized by this closeout.
 
-- Only the built-in Python agent can be evaluated on the supported path.
-- No external agent path (no `agent_id`, no operator agent registry in the API).
-- No repeated trials or pass^k aggregation.
-- No OTel GenAI export.
-- Calibration reports carry `publishable_accuracy=false` because publishable accuracy was defined to require independent human labels.
+Not implemented: external CLI/SDK adapters (H2), trial groups/pass^k (H3), OTel GenAI export (H4), and the real-distribution agreement study (H5). Calibration remains `provisional_mechanics`, `publishable_accuracy=false`; self-labeling limits must be stated in any later study.
 
 ## Milestones
 
@@ -43,7 +33,7 @@ Phase 1 is complete and CI-verified on `8bd2ef0` (2026-10-15). GitHub Actions on
 | P1 | Closed-loop depth follow-up | Complete | Failed Runs become classified, comparison-ready regression assets that gate policy activation. |
 | P1 | Reliability and calibration hardening (2026-09 to 2026-10) | Complete | CAS/lock-order fixes, analyzer v2, six-contract calibration gate in CI; calibration redefined in Phase 2 H5. |
 | P0 | Phase 2 — Harness H0 (facade and decisions) | In progress | ADRs, LICENSE, standards, learn map, and [task list](docs/agents/phase2-tasks.md) are in-repo. Still open: GitHub About, public name (H0-2). |
-| P0 | Phase 2 — Harness H1 (Environment/Agent split) | Planned | MCP `app.env_server`, Runner two-process supervision, `agent_id` registry, reference agent on local models, `order-support.v1`. |
+| P0 | Phase 2 — Harness H1 (Environment/Agent split) | Complete (local option-1 engineering boundary) | Split production path, Runner P2 repairs, affected regressions, standard image/volume validation and documentation are closed. Real-model acceptance explicitly deferred, not passed; hosted CI and release remain unestablished. |
 | P1 | Phase 2 — Harness H2 (external agents) | Planned | Claude Code adapter required; Agents SDK / Codex optional. |
 | P1 | Phase 2 — Harness H3 (trials and pass^k) | Planned | Trial groups, pass^k metrics, experiment summary UI. |
 | P2 | Phase 2 — Harness H4 (OTel export) | Planned | OTLP GenAI projection, default off. |
@@ -92,7 +82,7 @@ flowchart LR
   Otel --> Langfuse[Langfuse / Phoenix]
 ```
 
-Environments are MCP servers; tool traces are captured on the environment side so agents do not need to speak the internal JSONL protocol.
+This is the full Phase 2 target, not a current-capability diagram: H1 implements the Environment/registered-Agent pair; Trials, external adapters, pass^k and OTel remain later stages. Environments are MCP servers and capture world facts; Agents do not emit trusted JSONL.
 
 ### Decisions
 
@@ -101,7 +91,10 @@ Environments are MCP servers; tool traces are captured on the environment side s
 - [ADR-0009](docs/adr/0009-agent-registry-trust-boundary.md) — Operator TOML agent registry, `GET /api/agents`, `EvaluationSpec.agent_id`; Runner executes only registered argv commands.
 - [ADR-0010](docs/adr/0010-trial-groups-and-pass-k.md) — Trial groups, fixed environment seed per group, pass^k via tau-bench estimator, group-aware policy validation.
 - [ADR-0011](docs/adr/0011-otel-genai-export.md) — Post-terminal OTel GenAI span export (`AGENTOPS_OTEL_EXPORT=1`), `RunEvent` store remains source of truth.
-- [ADR-0012](docs/adr/0012-h1-canonical-cutover-and-control-plane-success.md) (2026-10-24) — Approved one-time incompatible H1 cutover to the three canonical v2 defaults, retiring their v1 registrations/loops; Control Plane-only trusted-evidence success with registered aggregate >= version-fixed 1.0. `order-support.v1`, semantic identity, and human Policy gates remain unchanged. No migration, compatibility path, or data reset/deletion is authorized; validation uses fresh isolated data. H1-3 owns supervision; H1-5/integration wires evidence and completion. This records the contract, not shipped H1 or Golden/PostgreSQL/live-model acceptance.
+- [ADR-0012](docs/adr/0012-h1-canonical-cutover-and-control-plane-success.md) (2026-10-24) — Approved one-time incompatible H1 cutover to the three canonical v2 defaults, retiring their v1 registrations/loops; Control Plane-only trusted-evidence success with registered aggregate >= version-fixed 1.0. `order-support.v1`, semantic identity, and human Policy gates remain unchanged. No migration, compatibility path, or data reset/deletion is authorized; validation uses fresh isolated data. H1-3 owns supervision; H1-5/integration wires evidence and completion. This records the contract; current local H1 Golden/PostgreSQL evidence is described in system acceptance, while live-model acceptance remains deferred.
+
+- [ADR-0014](docs/adr/0014-h1-recorded-preview-canonical-events.md) — Genuine canonical Recorded Preview: ID/timestamp-only normalization, preserved accepted control, lifecycle chronology, no scoring changes.
+- [ADR-0013](docs/adr/0013-h1-analyzer-v3-canonical-diagnostics.md) — Approved narrow H1 analyzer-v3 adaptation: run-level Agent-reported context diagnostics and no missing-tool planning attribution for pre-tool Provider failure. Six labels, scoring/success gates and calibration binding stay unchanged; fresh packets only, no historical rescoring.
 
 ### Stages
 
@@ -116,7 +109,10 @@ Executable tasks and acceptance criteria: [docs/agents/phase2-tasks.md](docs/age
 #### H1 — Environment/Agent split (weeks 2–4)
 
 - **Scope:** H1-1 Environment protocol from built-in Scenarios; H1-2 `app.env_server` (MCP, env-side capture); H1-3 Runner dual subprocess supervision and `env_ready`; H1-4 `agent_id`, registry, `GET /api/agents`, New Experiment agent dropdown; H1-5 reference agent process (Ollama `qwen3:8b` default, vLLM documented); H1-6 stateful `order-support.v1`.
-- **Acceptance:** Golden E2E green with `fixture-agent.v1`; local reference agent run produces trace and analysis; contracts updated via `make contracts`.
+- **Diagnostic integration repair:** Implement ADR-0013's two analyzer-v3 rules and real `report_usage` calibration capture; retain all six fixed contracts and strict binding. This is not H5 research or new calibration mechanics.
+- **Engineering closeout:** fixture Golden, fake-Provider reference Agent, trusted CP completion, recovery, standard-image/volume, affected regressions, documentation and final exact-payload review passed locally. Contract generation matches current models; preserve the unchanged dirty-index contract-gate disposition until an authorized delivery baseline.
+- **Explicit deferral:** a real local reference-Agent trace/analysis remains unperformed by operator choice. Reopen only after an endpoint is supplied and approved; it is not replaced by fake-Provider evidence.
+- **P2 amendment (ADR-0008):** no-follow/nonregular lock validation without target mutation; deterministic reader/Agent-exit barriers, incomplete-tail failure and direct-child reaping assertions. Both scoped reviews passed; affected image/runtime regression and five-repeat boundary validation are parent evidence.
 - **Learning deliverable:** `docs/learn/01-run-lifecycle.md`, `docs/learn/02-environment-and-mcp.md`, `docs/learn/04-runner-lease-fencing.md`.
 
 #### H2 — External agent adapters (weeks 5–6)
@@ -162,8 +158,8 @@ Trace UI features, annotation queues, dataset management, multi-tenancy/auth, Ku
 ### Risks
 
 - MCP Python SDK API drift — pin `mcp` minor version; isolate in `env_server`.
-- 16GB VRAM limits — default Ollama `qwen3:8b`; document 14B as optional.
-- Claude Code adapter needs host API key — optional, not in CI.
+- Actual local GPU has about 12 GB VRAM, not the initial 16 GB assumption. `qwen3:8b` is a starting candidate; weights, KV cache, context and concurrency must be measured. Real-model acceptance is deferred.
+- Claude Code adapter needs host credentials; H2-1 is required in the future cut line, but never a CI credential dependency.
 - Environment-side capture misses agent internals — use `unknown` dimensions (existing analyzer behavior).
 - Dual subprocess supervision complexity — Rust kill-semantics tests before feature work (H1-3).
 - Scope creep — plan-outside work requires a new ADR and roadmap update first.

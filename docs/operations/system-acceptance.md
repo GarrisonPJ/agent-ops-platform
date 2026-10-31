@@ -1,130 +1,50 @@
-# Current-version system acceptance
+# System acceptance: current procedure and evidence limits
 
-Date: 2026-10-15. Status: local engineering acceptance passed with the limits below.
+This is the current H1 acceptance entry, not the 2026-10-15 acceptance of an older implementation. That record is archived in [history](../history/system-acceptance-2026-10-15.md). Executable status lives only in [phase2-tasks.md](../agents/phase2-tasks.md); this document describes checks and their authority.
 
-**Later policy (2026-10-17):** this file is a dated record. The sentence below
-that independent human labels remain pending described the publication rule on
-that day. Phase 2 replaced that gate with an author-labeled agreement study.
-Current rules: `docs/evaluation-calibration.md`. Do not block Harness work on
-this paragraph.
+## Current boundary (2026-10-31)
 
-This acceptance covers the implemented single-machine/trusted-intranet system.
-It prioritizes reliable execution and correct evaluation mechanics. Independent
-human labels and adjudication remain pending and do not block engineering
-acceptance. External Provider execution and hosted CI are separate checks.
+H1 engineering implementation is integrated. The two Runner P2 repairs have scoped independent review, and parent affected regressions, exact-payload checks and the standard-image replacement run below passed. Local option-1 engineering closeout is complete; this document keeps release, hosted-CI, cold-cache, cross-platform and live-model limits explicit rather than treating individual green tests as broader acceptance.
 
-## Source and execution boundary
+The operator **explicitly deferred real-local-model trace/analysis acceptance** and assigned Windows model installation elsewhere. No Ollama/vLLM inference, GPU utilization, other-WSL/container-to-Windows connectivity, or successful model task is claimed. Fake-Provider reference-Agent tests are not substitutes. See the [model handoff](local-model.md).
 
-The initial candidate is `6a7ac512df74dd6153f67611e34bf8d4120dc050`.
-The accepted code fixes are local commits `3f10485` (PostgreSQL lock order) and
-`5a65d4a` (native SSE subscription); final runtime checks use those source bytes.
-The current acceptance uses a disposable four-service Compose project with the
-standard API, Runner and Web Dockerfiles, temporary credentials, isolated ports
-and no source mounts. Docker layer cache is allowed. `DOCKER_BUILDKIT=0` is a
-host builder workaround. A ports/credentials override does not replace any
-application build or mount application source.
-The standard Web Dockerfile starts the Vite development server. Its browser
-acceptance and the isolated Linux Node 22 production-build check are separate
-evidence; production Web deployment is outside this acceptance.
+No staging, commit, push, deployment, H2, existing-data reset/deletion, or public access is part of this local engineering closeout.
 
-Local logs, source manifests and machine-readable results are retained in a
-local evidence directory (not in the repository). These artifacts are local
-evidence; a fresh checkout must repeat the checks below. Historical acceptance
-records remain unchanged.
+## Parent validation checkpoints
 
-The refreshed image IDs start with `sha256:5a1ac2557641` (API),
-`sha256:f05db781a723` (Runner) and `sha256:207a8ed99e43` (Web).
-`stack/final-runtime-identity.json` records all full image IDs, 147 workspace
-file hashes and source hashes read inside the containers. Its SHA-256 is
-`5685e6150bb12015eda1b5b60a60d50b9435d3fbcb25f878ba5a7586f2e7670b`.
-An independent review checked those hashes and confirmed no application mounts.
-`source-commit-binding.json` additionally verifies that all 147 manifest files
-match committed code at `5a65d4ae6a3f606d481aff7d6f6b8e74fda37cef`.
+All counts below are local parent execution, not reviewer-executed tests or hosted CI. Earlier failed attempts remain failed evidence; subsequent passes do not rewrite them.
 
-Execution owners were `root` (backend/Rust), `calibration_ci_design`
-(standard stack/database/faults) and `calibration_ci_wiring_docs` (frontend/live
-browser). `calibration_postgres_audit` independently reviewed source changes
-and execution evidence. These are agent engineering reviews; independent human
-calibration review and adjudication remain pending.
+| Boundary | Latest demonstrated check | Not established by it |
+|---|---|---|
+| CP/backend | Full suite from `backend/`: **931 passed**, zero skips, fresh PostgreSQL 16 database; retention/state contention included | Populated historical migration preservation, hosted CI, live models |
+| Rust | Locked offline fmt/Clippy (`-D warnings`), workspace **15 protocol + 3 Golden + 59 Runner tests**; exit-boundary subset repeated five times | Exhaustive schedules, other platforms, a second scorer |
+| P2 security/framing | Red symlink and retained-tail reproductions; no-follow/nonregular descriptor validation; prefix-consumed + observed-Agent-exit barriers, exact sequences, clean/fragment EOF, natural exit, output cap, pre-fallback child-reaping assertion; scoped independent review **OK** | Malicious same-user isolation or universal simultaneous-failure precedence |
+| Frontend | Linux **Node 24.15.0**: format/typecheck, **60 tests / 7 files**, build; separate CI-mode Chromium rerun **2 passed** | Re-execution on CI's Node 22, hosted browser deployment or all browsers. First combined invocation timed out in E2E; its owned Vite group was stopped before rerun |
+| Standard Runner image | Original standard network build performed online Cargo/pip work; closeout rebuild of unchanged Dockerfile refreshed Rust after P2 repair. `pip check`, imports, CLI and uid/mode smoke passed | Cold-cache/no-cache/fresh-base build or network-reproducibility guarantee. Dependency/base layers reused; historical offline-derived images remain separate |
+| Actual fresh named volume | Rebuilt Runner + standard API: three canonical v2 Golden loops; different Runner container, recovery Attempt 2 success, same capability digest, uid 10001, directory 0700/record 0600, record deletion after authoritative ACK | Graceful daemon shutdown; bounded Compose stop can exit 137. Resources were stopped/retained, not deleted |
+| Dependency/Compose | Recursive **31-pin** Linux/Python 3.12 closure, standard and recovery Compose configs | Other Python/platform dependency graphs |
+| Contracts | Current generated schemas exactly match Pydantic bytes; all JSON parses; reviewed schema delta is only canonical checkout default `.v1`→`.v2` | A green dirty-index `make check-contracts`: it still exits **2** until an authorized delivery baseline contains that intentional delta |
+| Earlier v3 calibration/restore | Six fixed cases, **32 actual events**, source/restored strict binding/report match; context known 2 / unknown 4, `provisional_mechanics`, `publishable_accuracy=false`; backup/restore at schema `0009_experiment_agent_id`, 15 foreign keys | New model accuracy, independent labeling or a rerun after every documentation-only change |
+| Recorded Preview | Actual canonical v2 baseline/replay recording; scores 0.13333333333333333 → 1.0, six → three world calls, one accepted finalization each, nullable telemetry and lifecycle-bounded ordered timestamps | ID-only relabeling, live models, or TypeScript scoring authority |
 
-## Acceptance matrix
+The first closeout smoke used the wrong executable name `agentops-runner` and exited 127 after successful dependency/import checks; the corrected `agentops` invocation passed. This was a probe error, not an image-path repair. Nonfatal bundle-size/buildx warnings remain tooling/optimization debt, not hidden failures or H2 work.
 
-| Area | Result | Evidence and limits |
-| --- | --- | --- |
-| Backend, protocol and PostgreSQL | Passed | Final source: **265 passed in 58.62s**, no skips, with PostgreSQL enabled; protocol export matched tracked contracts. `control-plane/final-2/summary.json`. |
-| Rust | Passed | Workspace fmt, Clippy with warnings denied and locked tests; 30 tests across protocol, fixtures and Runner. No Rust changes in this acceptance. |
-| Frontend and Recorded Preview | Passed | Linux Node 22, clean lockfile installation and production audit (0 vulnerabilities); final format, typecheck, **34 unit tests**, build and **two Recorded E2E tests** passed. `browser/frontend-fixed-checks.json`, `fixed-recorded-results.json`, `make-fmt.result.json`. |
-| Standard images and three Golden loops | Passed | Refreshed all three standard images after fixes; checkout, multi-step research and API fault orchestration all passed baseline/replay/comparison/explicit activation. `stack/final-standard-build.result.json`, `final-golden-three-scenarios.result.json`. |
-| Live browser and event stream | Passed | Actual checkout workflow: baseline, Trace, Analysis, Improve, replay, comparison and explicit activation. First activation returned `409 REGRESSION_REPLAY_PENDING`; case replay succeeded before a second explicit activation. Interrupting a real stream after sequence 1 caused a native error and automatic application reconnection with `after=1`; received sequences 1–9 were continuous and unique. Three-Scenario UI coverage and whole-device offline/online recovery are not claimed. `browser/live-acceptance.json`, `live-cursor-reconnect.json`. |
-| Cancellation, recovery and lease fencing | Passed | Running cancellation reached `cancelled`; terminal retry did not change facts. Original recovery assertions passed after Runner kill/lease expiry/replacement, ending in successful Attempt 2. While another Attempt 2 was still nonterminal, old heartbeat/events/completion all returned `403 INVALID_LEASE` and changed no facts. `stack/real-runner-recovery.json`, `real-cancellation-stale-lease.json`. |
-| Migrations and retention | Passed | Fresh PostgreSQL migration up/down-to-base/up reached `0008_regression_cases`; owned database removed. Final backend suite included real PostgreSQL retention and concurrency checks. `stack/migration-cycle.json`. |
-| Application backup/restore | Passed | Freeze writes in the disposable stack, retain a real dump, restore into an owned database and compare revision, all public-table counts (22 Runs / 150 events), 15 foreign keys and a selected Run's nine-event ordered trace. Restore database removed; application database/volume preserved. `stack/acceptance-summary.json`. |
-| Controlled calibration | Passed, provisional | Six Runs / 30 events captured in real PostgreSQL and restored from the actual dump; reports match, binding is `bound`, unknown coverage is preserved, `publishable_accuracy=false`. Agent-authored contract labels cannot establish independent accuracy. `controlled-calibration/`. |
+## Repeat without damaging existing resources
 
-## Defects found during acceptance
+1. Record source identity, dirty paths/index state, exact commands/tool versions, image IDs, deadlines and exit codes. Freeze copied bytes and hashes, including untracked files and deletions; a Git HEAD alone does not identify a dirty payload.
+2. Use fresh owned PostgreSQL databases and isolated Compose project/volumes/network. Set `DATABASE_URL` and `RETENTION_POSTGRES_URL` only to those resources. Run backend tests from `backend/`; a root invocation can fail subprocess imports or Alembic setup and is not accepted evidence.
+3. Run `make fmt` after Rust/frontend edits, Rust locked fmt/Clippy/workspace tests, frontend format/typecheck/unit/build/Recorded E2E, recursive requirements validation and both Compose configs. Use fixture/fake Providers; no GPU/model/key CI dependency.
+4. Export protocol schemas. Compare generated bytes to current Pydantic models and inspect the approved default delta. Keep `make check-contracts` unchanged and disclose its dirty-index result. On an authorized clean delivery baseline, rerun that gate and hosted CI; do not stage or revert semantics merely to produce green output.
+5. Rebuild affected standard Dockerfiles; do not replace them with offline/source-mounted variants without explicitly changing the evidence claim. Repeat Golden baseline/replay/comparison/human activation and controlled Runner kill/recreation. Observe capability digests only, never raw capability values.
+6. For cancellation/fencing, require rejected old heartbeat/event/completion without changed facts. For recovery, prove a different container, later Attempt, contiguous sequences, same Run capability and valid-ACK cleanup. Readiness before kill must be an observed marker, not a sleep guess.
+7. Independent reviewers inspect immutable exact payloads read-only; execution/hashes supplied by the parent remain attributed to the parent. Scope their verdicts. Parent alone decides acceptance and records residual limits; no component review automatically accepts whole H1.
+8. Bound subprocess/process-group lifetime, preserve failed logs, stop only invocation-owned services, retain existing application resources. Record stop-137 separately from child-group cleanup. Use [backup/restore](backup-restore.md) and [calibration](../evaluation-calibration.md) procedures for those gates.
 
-- **Fixed: PostgreSQL deadlock.** Cancellation and completion acquired
-  Run/RunnerJob locks in opposite orders. Cancellation and claim now follow
-  Job-to-Run order. Independent-connection regressions use `pg_blocking_pids`
-  to prove actual contention and verify terminal convergence and one-time
-  effects. The original code deadlocks in both cancellation/completion orders;
-  a cancellation-only fix deadlocks against queued claim. All three final
-  regressions pass. Two overly strict response assertions were corrected to
-  allow a post-commit refresh to observe a later legal state; final database
-  and side-effect assertions remain strict. Failed attempts are retained.
-- **Fixed: missing live Trace events.** The API emits named SSE events, which
-  do not invoke `EventSource.onmessage`. The frontend now registers all protocol
-  event types and removes listeners on terminal/error/unsubscribe. Before-fix
-  browser evidence showed an empty Trace for a six-step Run; the refreshed
-  standard Web renders those six steps and process output. Subscription-boundary
-  regressions cover named dispatch and cleanup, separately from parser tests.
+## Claims that remain separate
 
-## Cleanup and retained evidence
+- **Delivery baseline:** uncommitted payload validation is not commit/publication/hosted CI. The intentional contract-index delta is disclosed, not silently waived.
+- **Real model:** explicitly deferred, not passed. Reopen H1-5 with a supplied approved endpoint and actual persisted trace/analysis.
+- **Research:** calibration mechanics cannot support representative accuracy; H5 is future work.
+- **Safety/platform:** trusted single-host operation is not public/multi-user security, malicious Agent sandboxing, Windows-native Runner support, or exhaustive parser/scheduling equivalence.
 
-The stack executor verified that all ten invocation-owned temporary databases
-were removed while the application database remained present. The browser/CLI
-processes were closed, and the separate backend-verification PostgreSQL was
-stopped with its container and mounts preserved. The disposable Compose project
-is shut down after independent review; its application volume, images, dumps
-and local evidence remain available. `stack/stack-shutdown.json` records zero
-remaining project containers/networks and preservation of the volume/images,
-separately from the immutable runtime manifests.
-
-The closeout credential scan found no temporary credential matches in 1,023
-shareable files or either decompressed dump. Private connection settings are
-excluded from those shareable artifacts and retained with restrictive modes.
-
-## Repeat the checks
-
-Use the [local validation runbook](reliability-and-local-validation.md) for
-Linux Node 22, proxy handling, backend/Rust checks and the PostgreSQL calibration
-gate. Use the [backup/restore runbook](backup-restore.md) for disposable recovery.
-PostgreSQL concurrency tests must use a newly owned test database with
-`RETENTION_POSTGRES_URL`; never point those tests at an
-application database.
-
-Build the standard Compose stack in a uniquely named project using temporary
-credentials. Run `scripts/golden_e2e.py` for all three registered Scenarios.
-Run `scripts/recovery_e2e.py` only against that disposable stack: it kills and
-replaces the Runner. Verify the real browser workflow separately from
-`frontend/tests/phase1-recorded.spec.ts` and preserve event order, replay results
-and explicit policy decisions. After source fixes, rebuild affected images and
-repeat the affected acceptance checks.
-
-## Remaining gates
-
-- Local engineering acceptance is complete for this source snapshot and scope.
-- Non-blocking UI follow-up: a RegressionCase card can retain its earlier
-  queued/running projection until navigation or reload. Opening its replay
-  shows the actual Run; activation still enforces the persisted server gate.
-  Automatic card polling was not verified or added in this acceptance.
-- GitHub Actions on `8bd2ef0` passed all six jobs (backend,
-  database-recovery, frontend, rust, compose, golden-e2e).
-- External Provider checks remain opt-in and were not requested here.
-- Phase 2 H5 calibration: the six-contract controlled capture remains the CI
-  regression gate (`provisional_mechanics`, `publishable_accuracy=false`). An
-  author-labeled agreement study on ~40 real Runs must publish a confusion matrix
-  with stated self-labeling limitations before accuracy claims.
-- Deployment credentials and access controls are addressed when actual
-  trusted-intranet deployment begins. Phase 2 — Harness is defined in
-  [ROADMAP.md](../../ROADMAP.md).
+Current commands and proxy/toolchain advice: [reliability-and-local-validation.md](reliability-and-local-validation.md). Current architecture: [closed-loop architecture](../agentops_closed_loop_architecture.md). Historical results are not relabeled as current evidence.

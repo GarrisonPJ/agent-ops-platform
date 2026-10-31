@@ -32,7 +32,8 @@ Each Scenario implements a narrow protocol stable surface:
 - metadata and tool allowlist;
 - initial state construction from `EvaluationSpec` (including optional
   `scenario_params` within bounded size);
-- single-step execution semantics for fixture and opt-in provider modes;
+- deterministic world execution; H1 separates fixture/reference decisions
+  from world logic per ADR-0007;
 - terminal scoring through a controlled assertion vocabulary (not ad-hoc
   scoring functions): trajectory assertions (`tool-used`, `tool-args-match`,
   `tool-sequence`, `step-count`) and result assertions (`equals`, `contains`,
@@ -64,8 +65,8 @@ version rather than mutating an existing id.
 - UI lists Scenarios from the registry; it does not become a second source of
   truth for what may execute.
 
-Phase 1.4 follow-on tickets (local tracker
-`.scratch/archive/completed-trackers-20261005/phase1.4-scenario-onboarding/`)
-will add versioned `<name>.v<N>`
-identity and a controlled assertion vocabulary to this boundary without
-opening arbitrary code execution.
+Phase 1.4 implemented versioned identity and the controlled assertion
+vocabulary. ADR-0012 later approved the incompatible H1 canonical v2
+cutover; it does not authorize migration, rescoring, or deletion of historical
+data. The current contributor procedure is
+[scenario-development.md](../agents/scenario-development.md).

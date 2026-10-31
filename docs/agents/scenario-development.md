@@ -1,161 +1,118 @@
-# Adding a built-in Scenario
+# Adding a built-in Environment
 
-> **Status (H1-1 extraction):** Registration now includes a per-Run **Environment** factory alongside the retained Phase 1 `ScenarioHandler`. The isolated Environment interface is `reset`, `tool_definitions`, `call`, `check`, and declared `fault_schedule` ([ADR-0007](../adr/0007-environment-agent-split.md)). Existing fixture/provider execution still uses `run_fixture` / `run_provider`; it has not switched to the new world. H1-2 now provides isolated MCP serving via `app.env_server` ([wire/capture contract](../learn/02-environment-and-mcp.md)); Runner wiring and independent agents remain later H1 work ([ADR-0008](../adr/0008-environment-mcp-server-and-env-side-capture.md)). Promotion must resolve the existing fixture/provider world differences under the versioning rule before replacing those paths.
+This guide describes the current canonical split, following ADR-0006/0007/0008/0012.
+Protocol v1 retains the field name `scenario_id`; prose calls the world an Environment.
+Adding another world is separate scoped work, not implicit authorization to expand H1 or H2.
 
-This guide describes the current allowlisted registration seam and retained Phase 1 execution paths. It follows [ADR-0006](../adr/0006-scenario-registry-boundary.md): explicit Python registration, no arbitrary code execution, and Runner passthrough via `EvaluationSpec` only.
+## 1. Version and register the world
 
-## Prerequisites
+- Choose `<name>.v<N>`. Changed semantics require a new identity, not in-place changes,
+  aliases, migration, historical rescoring, or implicit replay upgrades.
+- Only Runs with the same Environment identity are score-comparable.
+- Current built-ins are checkout/research/fault v2 and `order-support.v1`.
+  The three retired v1 IDs fail `SCENARIO_NOT_REGISTERED`.
+- Register explicitly in `backend/app/scenarios/__init__.py`; there is no dynamic
+  import or arbitrary-command API.
 
-- Choose a **versioned** id: `<name>.v<N>` (for example `inventory-restock.v1`). Semantic changes require a new version; never mutate an existing id in place.
-- Only Runs that share the same `scenario_id` are score-comparable.
-- Study the three legacy examples under `backend/app/scenarios/`: checkout (Golden reference), multi-step research, and API fault orchestration. `order_support.py` is the additive H1-6 stateful example; only its fixture compatibility handler uses the new world, and its provider path deliberately returns failure without making a request until H1-5 integration.
+`register_scenario(metadata, handler, environment_factory)` still has three arguments.
+Metadata owns declared params, tools, default task, assertions and combination.
+The retained `ScenarioHandler` provides candidate policy patches and legacy direct
+execution regressions. Its `run_fixture`/`run_provider` are not production dispatch.
+Do not delete those regressions or use their name-only Provider adapter for stateful tools.
 
-## 1. Implement the Scenario module
+## 2. Implement the Environment interface
 
-Create `backend/app/scenarios/<slug>.py` with:
+Read `backend/app/environment.py`, `scenario_registry.create_environment()` and
+`scenarios/order_support.py`.
 
-1. **Metadata** — versioned id, human name, description, default task, tool allowlist, optional `ScenarioParamDef` entries, and terminal `ScenarioAssertion` entries with an `AssertionCombination` mode.
-2. **Fixture path** — deterministic baseline (should fail analyzably) and replay (should succeed in fewer steps when `policy` is present on the spec).
-3. **Provider path** — expose only this Scenario's explicit tool definitions and deterministic tool executor through the shared bounded `run_provider_agent()` client. Checkout, multi-step research, and API fault orchestration are the reference integrations. Do not silently delegate `provider` mode to the fixture path.
-4. **`candidate_policy_patch()`** — typed `PolicyPatch` using only tools from the union in `ALLOWED_POLICY_TOOLS` (`phase1_schemas.py`).
-5. **Environment factory** — a constructor or callable with signature `(params: dict[str, str]) -> Environment`, implementing `app.environment.Environment`. Keep mutable state and history on each new instance, not on the registered handler. World observations must depend on seed and actions, not policy or execution mode.
+- Factory receives only a fresh normalized `dict[str, str]` of declared params.
+- `reset(seed)` rebuilds instance-local state/history. Same seed and actions reproduce
+  observations; no world state is cached on a registry entry or handler.
+- `tool_definitions()` exposes only this world's tools; returned data must not mutate
+  another instance's definitions.
+- `call(name, arguments)` validates strictly and rejects atomically. World rules depend
+  on seed/state/actions, not Policy, execution mode, Run identity or Agent claims.
+- `check()` returns immutable bounded trajectory/outcome evidence, not score or status.
+- `fault_schedule` declares deterministic world faults; it is not Agent-controlled.
 
-Reuse `emit_step()` from `scenarios/_helpers.py` so events match the existing analyzer and scoring pipeline.
+Production `app.env_server` owns MCP auth, budgets, source-separated call capture and
+reserved `report_usage`/`submit_result`. Do not call `emit_step()` from an independent
+Agent or fabricate world facts in a diagnostic adapter. Refused world attempts remain
+facts; reserved controls are excluded from world step-count and tool assertions.
 
-### Assertion vocabulary
+## 3. Declare assertions and final state
 
-Declare terminal scoring in metadata using `backend/app/scenario_assertions.py`:
+Use `backend/app/scenario_assertions.py`:
 
-| Type | Purpose |
+| Assertion | Meaning |
 |---|---|
-| `tool-used` | A named tool appears in the trajectory. |
-| `tool-args-match` | A tool call matches expected arguments. |
-| `tool-sequence` | Tool names appear in the required order. |
-| `step-count` | Step count respects `min_steps` / `max_steps`. |
-| `equals` / `contains` / `json-match` | Final observation matches expected text or JSON. |
+| `tool-used` | A named accepted tool appears |
+| `tool-args-match` | Bounded projected arguments match |
+| `tool-sequence` | Required named tools occur in order |
+| `step-count` | All world attempts, including refusals, satisfy bounds |
+| `equals` / `contains` / `json-match` | Trusted final observation satisfies outcome |
 
-Each assertion supports `weight` and `threshold`. Combine assertions with `AssertionCombination.ALL`, `WEIGHTED`, or `ANY`. `compute_score()` uses the weighted aggregate as `success_reward` when assertions are present.
+Thresholds and weights remain authoritative. `ALL` uses minimum, `ANY` maximum,
+`WEIGHTED` weighted mean; do not replace these with a generic all-passed check.
+CP success requires registered aggregate `>= 1.0` plus valid submission/check/current
+Attempt evidence and no overriding execution failure. Quality score and analyzer
+classifications are separate from that gate.
 
-Example excerpt:
+For stateful worlds, `check().final_observation` is a canonical immutable snapshot,
+at most 4,000 characters; reject oversized snapshots rather than truncate JSON.
+The Environment emits it in the accepted submit control's `final_check` tuple with
+its own `scenario_id`. CP validates raw provenance/Attempt before normalization and
+requires submission/check/final-check in the same event. Do not trust Agent arguments,
+expected results, score, evaluations, aggregate or status in that tuple.
 
-```python
-from app.scenario_assertions import AssertionCombination, ScenarioAssertion
+`order-support.v1` illustrates why tool calls are not outcomes: the first refund writes
+one ledger receipt but returns timeout-after-commit. Retry returns the same receipt.
+Its `ALL` suite requires the sequence, at most six world attempts and exactly one full
+refund in the final ledger. Two refund calls are not two refunds. This changes none
+of the other suites' combinations and introduces no second scorer.
 
-CHECKOUT_ASSERTIONS = (
-    ScenarioAssertion(type="tool-sequence", sequence=("check_service_health", "query_service_metrics", "fetch_service_logs"), weight=2.0),
-    ScenarioAssertion(type="step-count", max_steps=4, weight=1.0),
-)
+## 4. Keep Agent decisions separate
 
-register_scenario(
-    ScenarioMetadata(
-        id="checkout-api-latency.v1",
-        ...,
-        assertions=CHECKOUT_ASSERTIONS,
-        assertion_combination=AssertionCombination.WEIGHTED,
-    ),
-    CheckoutScenario(),
-    CheckoutEnvironment,
-)
-```
+`fixture_agent.py` is the deterministic MCP client for baseline/replay; the reference
+Agent sends the same Environment tool definitions to an explicitly configured local
+OpenAI-compatible Provider. Neither imports world/scoring/CP internals nor emits
+trusted RunEvents. Never silently run fixture decisions in Provider mode.
 
-The three arguments are `register_scenario(metadata, handler, environment_factory)`.
-Pass the Environment constructor/callable, not a shared Environment instance.
-`create_environment(spec)` validates registration and the declared params, passes
-only a **fresh normalized** `dict[str, str]` to that factory, and then calls
-`environment.reset(spec.seed)`. The factory does not receive the full spec,
-policy, execution mode, or Run identity. `reset` must rebuild all per-Run state
-and history; the same seed and action sequence must reproduce observations.
-Use `create_environment(spec)` for the isolated world rather than caching a world
-on the registry or bypassing its validation/reset. This does not reroute the
-three legacy `run_fixture` / `run_provider` paths.
+A new fixture script needs its own reviewed Agent-side decision flow. Candidate policy
+patches must remain typed, bounded and within `ALLOWED_POLICY_TOOLS`; instruction-only
+patches need not expand the allowlist. Do not add external adapter support as part of
+this guide; that is H2.
 
-### Stateful outcome evidence (`order-support.v1`)
+## 5. Wire contracts and workbench
 
-`OrderSupportEnvironment.reset()` rebuilds an instance-local single-order store
-and clears history. Its fixed tools accept only `order_id="order-1001"`;
-`request_refund` also requires `reason="shipping_failed"`. Argument rejection
-changes neither state nor history. Valid but ineligible operations return JSON
-observations without changing the order. Payment authorization is idempotent;
-the first authorized shipment fails before dispatch. The first eligible refund
-writes one receipt and returns a simulated timeout-after-commit observation.
-Retries return the same receipt, never a second refund. There are no clocks,
-network calls, customer inputs, or real payment operations.
+1. API validates registration and declared params when creating experiments and Runs.
+   `_evaluation_spec()` persists immutable identity/params; Runner supplies the spec
+   independently to Environment and registered Agent.
+2. CP calls `candidate_policy_for_scenario()` rather than embedding world-specific
+   policy logic in `phase1_service.py`.
+3. Add a protocol fixture and tests; run `make contracts`. New world tools require a
+   bounded durable tool/argument projection as well as any policy allowlist change.
+4. `GET /api/scenarios` exposes metadata. Update recorded workbench fixtures/handlers;
+   do not invent aliases in frontend fallback logic.
+5. Update `CONTEXT.md`, the scoped task and Chinese learning chapter. A semantic
+   boundary change needs an ADR before implementation.
 
-`check()` separates trajectory evidence from outcome evidence and returns a
-canonical, bounded `final_observation` snapshot of the current ledger (the three
-legacy worlds leave that optional field `None`). The order-only outcome adapter
-reuses `json-match` against this snapshot; it does not append a synthetic step.
-Every valid order call also emits its current JSON snapshot, so the existing
-Control Plane reconstruction and registered assertion suite can inspect the
-last persisted observation without a new persistence field or scorer. Python
-`durable_events.py` projects only the four fixed tool names and arguments into
-the trace. Rust transports these event payloads without scoring them.
+## 6. Verification checklist
 
-The order suite deliberately declares `ALL`, requiring the initial
-inspect/authorize/ship sequence, at most six steps, one ledger receipt, full
-refund amount, refunded payment, and failed shipment. This does not change the
-other suites' `WEIGHTED`/`ANY` semantics. `EnvironmentCheck` is evidence only;
-the Control Plane still owns scores, Run status, and human Policy activation.
-The candidate is instruction-only (`tool_priority={}`), preserving the existing
-policy-tool allowlists. The retained order fixture baseline repeats inspection
-six times and fails; replay resolves the fault and verifies the ledger in six
-steps. Focused acceptance is `phase1_tests/test_order_support.py`, including an
-isolated SQLite closed loop; the default three-scenario Golden script remains
-unchanged until the independent fixture-agent path exists.
+- Registry: identity, duplicate, unknown, declared/required params, retired-ID rejection.
+- World: reset determinism, fresh-instance isolation, atomic argument rejection,
+  deterministic fault progression, immutable check and tamper-sensitive final ledger.
+- Environment/MCP: auth/Origin, bounded spec/readiness, controls, refused attempts,
+  repeated submit/frozen world and real final-check capture.
+- Agent: real MCP calls, baseline/replay, no trusted stdout, strict tool/Provider
+  validation, timeout/retry and bounded output, local fake Provider only.
+- CP: normalize/persist/reconstruct, latest Attempt isolation, assertion combinations,
+  scoring/terminal ownership and malformed/contradictory evidence refusal.
+- Full Golden: baseline → analysis → candidate → replay → comparison → human activate,
+  using production Rust dispatch/API and a new isolated PostgreSQL database.
+- Preserve legacy tests; fixture/fake Provider CI must not require GPU, network keys
+  or a real model. Run contracts, `make fmt`, backend/Rust/frontend gates and diff checks.
 
-For H1-2, serve these exact definitions/calls and preserve the canonical final
-snapshot when capturing tools and running `check()`. For H1-5, move the order
-script to the fixture agent and connect reference/provider execution to the
-Environment; do not use the legacy name-only provider adapter for stateful
-mutations. Neither handoff waives the existing three-world promotion/version
-gate. See [the Environment chapter](../learn/02-environment-and-mcp.md).
-
-Register at module import time and import the module from `backend/app/scenarios/__init__.py`.
-
-## 2. Wire the Control Plane
-
-- **Experiment creation** — `create_experiment()` calls `ensure_registered_scenario()` for id, params, and version pattern validation.
-- **Run creation** — `create_baseline_run()` and `replay_policy()` re-validate the Experiment's Scenario before enqueueing a RunnerJob.
-- **EvaluationSpec** — `_evaluation_spec()` copies persisted `scenario_params` onto each Run; the Runner passes the full JSON spec to `demo_agent` on stdin.
-- **Policy generation** — `_create_candidate()` calls `candidate_policy_for_scenario()`; no Scenario-specific patch should remain in `phase1_service.py`.
-
-Params are stored on `experiments.scenario_params` (Alembic revision `0007`). No new migration is required unless you add Experiment fields.
-
-## 3. Update contracts
-
-1. Add a golden fixture under `contracts/v1/fixtures/evaluation-spec.<scenario-id>.json`.
-2. Extend `backend/phase1_tests/test_protocol_contract.py` to load it.
-3. Run `make contracts` from the repo root.
-4. If new policy tools are introduced, extend `ALLOWED_POLICY_TOOLS` in `phase1_schemas.py` and `ALLOWED_TOOLS` in `runner/crates/agentops-protocol/src/lib.rs`. An instruction-only patch need not expand them. Also check the independent durable event tool/argument projection in `backend/app/durable_events.py`; new tools require a bounded allowlisted projection to survive persisted trajectory reconstruction.
-
-## 4. Expose the Scenario in the workbench
-
-1. `GET /api/scenarios` lists registry metadata automatically.
-2. `NewExperimentPage` renders the registry list, versioned ids, and required `scenario_params` fields.
-3. Update recorded handlers under `frontend/src/services/recorded/` when `VITE_MOCK_API=true`.
-
-## 5. Test checklist
-
-- Registry unit tests: registered lookup, unknown id rejection, param validation, non-versioned id rejection.
-- Environment tests in `phase1_tests/test_environment.py`: same-seed reset/call/check determinism, fresh-instance isolation, and valid/invalid tool arguments. Preserve the legacy fixture/provider contracts until their promotion is approved.
-- Assertion unit tests in `phase1_tests/test_scenario_assertions.py` for new assertion combinations if needed.
-- Agent tests in `phase1_tests/test_demo_agent.py` for baseline/replay fixture semantics.
-- Provider tests in `phase1_tests/test_provider_agent.py` with the local fake compatible server: success sequence, persisted event fields, unsupported-tool rejection, timeout/retry, and safe errors. Never call an external API in CI.
-- API tests: `POST /api/experiments` and `POST /api/experiments/{id}/runs` with valid/invalid `scenario_id` and `scenario_params`.
-- Extend `scripts/golden_e2e.py` (or add a scenario entry to `GOLDEN_SCENARIOS`) so CI exercises the full closed loop without external APIs.
-- `make test` / CI matrix: backend, rust, frontend, compose, golden-e2e.
-
-## 6. Document the change
-
-- Add the Scenario row to **Built-in scenarios** in `CONTEXT.md`.
-- Keep `ROADMAP.md` honest: record a new Scenario as a bounded follow-up; Phase 2 — Harness milestones and acceptance live in [ROADMAP.md](../../ROADMAP.md) (do not redefine them here).
-
-## Toy Scenario walkthrough
-
-To sanity-check the flow before shipping a fourth production Scenario:
-
-1. Copy `multi_step_research.py` to `toy_echo.py` with id `toy-echo.v1`, one tool `echo_message`, and a baseline that calls it six times.
-2. Add one `tool-sequence` assertion and a `step-count` ceiling for replay.
-3. Implement `ToyEchoEnvironment(params)` and register with `register_scenario(metadata, ToyEchoScenario(), ToyEchoEnvironment)`; import the module, add a contract fixture, and a single `test_demo_agent.py` case.
-4. Confirm `POST /api/experiments` rejects missing params and `GET /api/scenarios` lists the toy entry.
-5. Delete or leave unimported until the Scenario is product-ready — the registry rejects duplicate ids, so do not register throwaway Scenarios in `__init__.py` for long-lived branches.
+Component tests, host-process tests, standard image installation, container replacement
+and live-model acceptance are different claims. Record exactly which boundary passed;
+never treat a Dockerfile or Compose config check as runtime acceptance.

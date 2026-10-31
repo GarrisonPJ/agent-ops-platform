@@ -7,7 +7,7 @@ Experiment → Baseline → Trace → Analysis → Candidate Policy
            → Replay → Comparison → Human Activate or Reject
 ```
 
-This file defines the vocabulary and invariants of the implemented Phase 1 loop. Phase 2 — Harness (ADR-0007..0012, started 2026-10-17) splits the Environment from the Agent-under-test; Phase 2 terms below are marked `(Phase 2, planned)` and become binding when their stage ships; milestones in [ROADMAP.md](ROADMAP.md).
+This file defines the vocabulary and invariants of the current Phase 1 + H1 integration. Environment/Agent separation is implemented; terms explicitly marked future belong to H2–H5 and are not current capabilities. ADR acceptance records a decision, not release acceptance. Milestones: [ROADMAP.md](ROADMAP.md); the single executable task list: [phase2-tasks.md](docs/agents/phase2-tasks.md).
 
 ## Domain vocabulary
 
@@ -29,14 +29,14 @@ This file defines the vocabulary and invariants of the implemented Phase 1 loop.
 | Policy | Experiment-scoped candidate patch derived from one failed baseline and optionally validated by one replay. |
 | PolicyPatch | Phase 1 patch with only `instruction_patch`, `tool_priority`, and `max_steps`. |
 | Scenario | Phase 1 name of an Environment (ADR-0007). Protocol v1 keeps the field `scenario_id`. A built-in, allowlisted evaluation world with stable metadata, tool surface, fixture semantics, terminal assertions, and optional bounded `scenario_params`. |
-| Environment | (Phase 2, planned) Successor of Scenario: task, tools, deterministic state/observations, seed, fault schedule, limits, terminal `check()` with trajectory + outcome assertions; identity `<name>.v<N>`. |
-| Agent-under-test | (Phase 2, planned) Registered executable receiving task prompt + Environment endpoint; kinds `fixture`, `reference`, or `external`. |
-| Agent Registry | (Phase 2, planned) Operator-side TOML; `GET /api/agents` returns metadata only; the Runner refuses unknown ids. |
-| Environment Server | (Phase 2, planned) `app.env_server`: MCP Streamable HTTP on loopback, per-Run token, env-side `step_completed` capture; reserved tools `submit_result` and `report_usage`. |
-| Trial Group | (Phase 2, planned) `k` Runs sharing one spec except `run_id` / `trial_index`; Environment seed fixed across trials. |
-| pass^k | (Phase 2, planned) Unbiased estimator `C(c,k) / C(n,k)` over completed trials in a group; published metrics state `k`. |
-| Calibration gate | (Phase 2, planned) Six controlled contracts regression-testing the analyzer in CI; mechanics, not accuracy. |
-| Agreement study | (Phase 2, planned) Author-labeled sample of real Runs vs analyzer output; published confusion matrix and stated biases. |
+| Environment | (H1 implemented) Successor of Scenario: task, tools, deterministic state/observations, seed, fault schedule, limits, terminal `check()` with trajectory + outcome assertions; identity `<name>.v<N>`. |
+| Agent-under-test | Registered executable receiving task prompt + Environment endpoint; H1 ships `fixture` and `reference`. External adapters are future H2. |
+| Agent Registry | (H1 implemented) Operator-side TOML; `GET /api/agents` returns metadata only; the Runner refuses unknown ids. |
+| Environment Server | (H1 implemented) `app.env_server`: MCP Streamable HTTP on loopback, per-Run token, env-side `step_completed` capture; reserved tools `submit_result` and `report_usage`. |
+| Trial Group | (Future H3) `k` Runs sharing one spec except `run_id` / `trial_index`; Environment seed fixed across trials. |
+| pass^k | (Future H3) Unbiased estimator `C(c,k) / C(n,k)` over completed trials in a group; published metrics state `k`. |
+| Calibration gate | (Implemented) Six controlled contracts regression-testing the analyzer in CI; mechanics, not accuracy. |
+| Agreement study | (Future H5) Author-labeled sample of real Runs vs analyzer output; published confusion matrix and stated biases. |
 | Scenario Registry | Control-plane allowlist of Scenarios exposed through `GET /api/scenarios`. Only registered Scenarios may appear on Experiments or Runs. |
 | ScenarioAssertion | Controlled terminal scoring primitive (`tool-used`, `tool-args-match`, `tool-sequence`, `step-count`, `equals`, `contains`, `json-match`) declared on a Scenario. Assertions carry `weight`, `threshold`, and combine via `all`, `weighted`, or `any`. |
 | Recorded Preview | Offline-development and regression adapter that replays Golden E2E fixtures and never implements backend business rules. |
@@ -95,34 +95,37 @@ claimed/running/cancelling -- exhausted attempts --> failed or cancelled
 21. Heartbeat, event persistence, and completion fence the RunnerJob lease with a row lock; an expired or recovered lease cannot write a later Attempt's state. A terminal RegressionCase replay is never reused as another Policy's replay gate.
 22. Activation serializes Policies for one Experiment while preserving the one-active-Policy invariant; startup and authentication resolve one Runner token snapshot, and Compose requires an explicit token.
 
-## Phase 2 planned invariants
+## Implemented H1 invariants
 
 23. Clients select a registered `agent_id`; commands exist only in the operator registry. The Runner refuses unregistered ids and never receives a command from the API.
 24. For any agent, `step_completed` is emitted by the Environment Server from observed tool calls, never accepted from the agent.
 25. Agent-internal signals that are not reported are recorded as unknown dimensions, never inferred.
-26. Trials in a group share the EvaluationSpec except `run_id` and `trial_index`, with a fixed Environment seed.
-27. Group metrics use the unbiased pass^k estimator; every published number states `k`. Validation for `k > 1` requires non-decreasing pass^k and positive mean score delta (extends invariant 7).
-28. OTel export is a lossy projection; RunEvent remains the source of truth and export is never read back.
 29. H1 makes the one-time incompatible canonical cutover in ADR-0012: the three legacy worlds become v2 defaults, including omitted-ID API/UI/quickstart paths; their v1 execution registrations and coupled loops retire. `order-support.v1` and the generic semantic-version identity rule remain unchanged. No aliases, migration, rescoring, historical replay preservation, cross-version comparison, or automatic data cleanup are included.
 30. Control Plane alone determines task success: valid submission, successful check, sufficient valid required trusted evidence, registered suite aggregate >= version-fixed 1.0, and no abnormal execution failure. Missing/invalid required evidence, failed check, no valid submit, Agent abnormal/nonzero exit, or unexpected Environment failure before terminal completion cannot succeed. Runner-requested teardown of a healthy Environment after valid submission, successful check, and necessary evidence capture is planned lifecycle, not abnormal execution failure, including SIGTERM then SIGKILL after the shared two-second grace; H1-3 distinguishes it from unexpected failure. Neither child must exit naturally with zero. This exception cannot override those failure gates, cancellation, timeout, output-limit failure, or lease fencing; terminal events and completion agree. Exit zero, EOF, readiness, and submission/check markers alone never establish success. Preserve ALL=min, ANY=max, WEIGHTED=weighted mean and per-assertion thresholds; neither universal `all(item.passed)` nor penalized quality score is the success gate. Agent/check-reported scores or status are not authoritative; Rust only supervises/relays.
-31. Control Plane scores latest-Attempt persisted world attempts including refusals, excluding reserved controls. Rejections project as `rejected_tool`/`failed` and cannot satisfy named used/args/sequence assertions; valid-only Environment history is not the scoring trajectory. Final outcomes use bounded trusted Environment-owned final-check facts, validated against registered expectations, never Agent-supplied expectations or scores. Exactly-once order proof comes from the final ledger; missing usage stays unknown and reports remain Agent-reported. Exact additive wire details require later review.
+31. Control Plane scores latest-Attempt persisted world attempts including refusals, excluding reserved controls. Rejections project as `rejected_tool`/`failed` and cannot satisfy named used/args/sequence assertions; valid-only Environment history is not the scoring trajectory. Final outcomes use bounded trusted Environment-owned final-check facts, validated against registered expectations, never Agent-supplied expectations or scores. Exactly-once order proof comes from the final ledger; missing usage stays unknown and reports remain Agent-reported. The accepted final-check tuple contains only Environment-owned `scenario_id` and `final_observation`; integration acceptance remains separate.
 
-These become binding when the implementing stage ships and are then merged into Core invariants.
+## Future stage invariants (not implemented)
+
+The original numbering is retained for ADR references. These do not describe current functionality.
+
+26. H3: trials in a group share the EvaluationSpec except `run_id` and `trial_index`, with a fixed Environment seed.
+27. H3: group metrics use the unbiased pass^k estimator; published numbers state `k`. Validation for `k > 1` requires non-decreasing pass^k and positive mean score delta (extends invariant 7).
+28. H4: OTel export is a lossy projection; RunEvent remains authoritative and export is never read back.
 
 ## Built-in scenarios
 
-The registry currently includes three legacy built-ins and the component-accepted H1-6 `order-support.v1` Environment. The v1 descriptions below record Phase 1 behavior; their planned H1 replacement IDs are `checkout-api-latency.v2`, `multi-step-research.v2`, and `api-fault-orchestration.v2` ([ADR-0012](docs/adr/0012-h1-canonical-cutover-and-control-plane-success.md)), not yet integrated defaults. Checkout remains the Golden reference path. The order fixture compatibility handler uses its stateful world; its provider path is unavailable pending the independent Agent integration. This component merge does not establish integrated H1 acceptance.
+The integration registry now uses the three canonical v2 defaults from [ADR-0012](docs/adr/0012-h1-canonical-cutover-and-control-plane-success.md), plus `order-support.v1`. Their retired v1 IDs are rejected, not aliases. Production dispatch selects an independent fixture/reference Agent and a separate Environment process. Checkout remains the Golden reference path; order-support uses the stateful world and independent MCP Agents. This describes the current integration payload, not whole-H1 acceptance or a historical data upgrade.
 
 | Scenario ID | Purpose |
 |---|---|
-| `checkout-api-latency.v1` | Golden checkout latency investigation (health → metrics → logs). |
-| `multi-step-research.v1` | Search, fetch, and answer loop with deliberate baseline repetition. |
-| `api-fault-orchestration.v1` | Retry and degrade around injected upstream 503 faults. |
-| `order-support.v1` | Stateful in-memory order support; refund exactly once after shipping fails (fixture compatibility only). |
+| `checkout-api-latency.v2` | Golden checkout latency investigation (health → metrics → logs). |
+| `multi-step-research.v2` | Search, fetch, and answer loop with deliberate baseline repetition. |
+| `api-fault-orchestration.v2` | Retry and degrade around injected upstream 503 faults. |
+| `order-support.v1` | Stateful in-memory order support; refund exactly once after shipping fails. |
 
 Scenario metadata, tool allowlists, and contributor steps live in [docs/agents/scenario-development.md](docs/agents/scenario-development.md).
 
-### Golden scenario (`checkout-api-latency.v1`)
+### Golden scenario (`checkout-api-latency.v2`)
 
 Available tools:
 
@@ -156,9 +159,8 @@ SSE clients reconnect with `after=<lastSequence>`. The API replays later persist
 | React | Workflow UI and client-side presentation state | Scoring, analysis, policy compilation, run state machine |
 | Control Plane | Domain state, persistence, leases, scoring, analysis, policy decisions, and explicit operator maintenance | Child process supervision |
 | Rust Runner | Process group, JSONL transport, heartbeat, retry, cancel, timeout | Database access, scoring, policy logic |
-| Python Agent (Phase 1) | Deterministic fixture behavior or narrow provider orchestration for the allowlisted scenario | Run lifecycle, persistence, arbitrary tools, or arbitrary execution |
-| Environment Server (Phase 2) | Tools, deterministic observations, fault schedule, assertions, env-side capture, step budget | Run lifecycle, persistence, agent decisions |
-| Agent-under-test (Phase 2) | Decisions about which tool to call | Persistence, scoring, lifecycle, or emitting trusted events |
+| Environment Server (H1) | Tools, deterministic observations, fault schedule, assertions, env-side capture, step budget | Run lifecycle, persistence, agent decisions |
+| Agent-under-test (H1) | Decisions about which tool to call | Persistence, scoring, lifecycle, or emitting trusted events |
 | PostgreSQL | Durable system facts, including RegressionCases and their replay references | Workflow behavior |
 
 Frontend state follows the project convention:
@@ -175,7 +177,7 @@ MCP is used only as the loopback Environment transport (ADR-0008), not as an ope
 
 ## Current evolution boundary
 
-Phase 1 is complete and CI-verified on `8bd2ef0`. Phase 2 — Harness started 2026-10-17. H1 plans the Environment/Agent split with two-process supervision (ADR-0007, ADR-0008) and the explicitly approved breaking canonical cutover and Control Plane success contract ([ADR-0012](docs/adr/0012-h1-canonical-cutover-and-control-plane-success.md)); later Harness stages remain additive. H1-1, H1-2, the additive H1-3 supervisor, and H1-6 are component-accepted and included in this integration worktree; production claim/completion still uses the Phase 1 path, and H1-6 E2E is deferred. Human Policy validation/activation and generic semantic-version identity remain unchanged. Disposable old records do not authorize existing-data access, reset, or deletion; later implementation validates with fresh isolated data. H1-3 owns supervision, while H1-5/integration wires trusted evidence and Control Plane completion. H1 is not shipped; no integrated Golden, PostgreSQL, or live-model acceptance is claimed. See [ROADMAP.md](ROADMAP.md).
+Phase 1 hosted CI is historical evidence at `8bd2ef0`. H1 now integrates split supervision, registry dispatch, canonical v2 worlds, trusted final checks, CP-owned success and validated authoritative ACKs (ADR-0007/0008/0009/0012). ADR-0013 limits analyzer-v3 diagnostic adaptations; ADR-0014 governs genuine Recorded Preview normalization. The two Runner closeout P2 fixes have scoped independent review, affected regressions and exact-payload parent evidence. Local option-1 H1 engineering closeout is complete; standard-image/volume evidence is distinct from offline-derived images, host tests, hosted CI and live models. The operator explicitly deferred real-local-model acceptance; no model installation or Windows/network/firewall change is part of this closeout. No historical rescoring, existing-data reset/deletion, or H2 work is authorized. Human Policy activation and semantic identity remain unchanged. See [acceptance boundaries](docs/operations/system-acceptance.md).
 
 Roadmap changes do not alter domain invariants by themselves. Update this file and add an ADR before a milestone changes state ownership, recovery semantics, trust boundaries, or activation rules.
 
@@ -195,3 +197,5 @@ Roadmap changes do not alter domain invariants by themselves. Update this file a
 | [0010](docs/adr/0010-trial-groups-and-pass-k.md) | Trial groups and pass^k | Accepted |
 | [0011](docs/adr/0011-otel-genai-export.md) | OpenTelemetry GenAI export | Accepted |
 | [0012](docs/adr/0012-h1-canonical-cutover-and-control-plane-success.md) | H1 canonical cutover and Control Plane success contract | Accepted |
+| [0013](docs/adr/0013-h1-analyzer-v3-canonical-diagnostics.md) | Narrow H1 analyzer-v3 diagnostics | Accepted |
+| [0014](docs/adr/0014-h1-recorded-preview-canonical-events.md) | Canonical Recorded Preview event provenance and chronology | Accepted |

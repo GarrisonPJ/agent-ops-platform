@@ -24,9 +24,9 @@ from app.scenario_registry import (
 )
 
 
-CHECKOUT_ID = "checkout-api-latency.v1"
-RESEARCH_ID = "multi-step-research.v1"
-FAULT_ID = "api-fault-orchestration.v1"
+CHECKOUT_ID = "checkout-api-latency.v2"
+RESEARCH_ID = "multi-step-research.v2"
+FAULT_ID = "api-fault-orchestration.v2"
 PARAMS = {
     CHECKOUT_ID: {},
     RESEARCH_ID: {"topic": "checkout latency"},

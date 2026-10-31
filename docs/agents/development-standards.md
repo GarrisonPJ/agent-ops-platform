@@ -1,17 +1,17 @@
 # Development standards (Phase 2)
 
-These rules bind Phase 2 — Harness work. Phase 1 invariants in `CONTEXT.md`
-still bind. If a task needs to break one, stop and write an ADR first.
+These rules bind Phase 2 — Harness work. Current invariants in `CONTEXT.md`
+bind, including the implemented H1 boundaries. If a task needs to break one, stop and write an ADR first.
 
 ## Where truth lives
 
 | Question | Read |
 |---|---|
 | What does this word mean? | `CONTEXT.md`. In prose say Environment; in protocol fields say `scenario_id`. |
-| Why is the boundary this shape? | `docs/adr/`. ADR-0007..0011 are accepted and not yet implemented at `8bd2ef0`. |
+| Why is the boundary this shape? | `docs/adr/`. Accepted is a decision status, not implementation proof: H1 is integrated; H3/H4 decisions remain future. |
 | What is in or out of this milestone? | `ROADMAP.md`, then the task in `docs/agents/phase2-tasks.md`. |
 | How does a run actually move? | `docs/learn/00-map.md` (current code), then the ADR for the stage you are in. |
-| How do I add an Environment today? | `docs/agents/scenario-development.md` until H1 replaces it. |
+| How do I add an Environment today? | `docs/agents/scenario-development.md` (current Environment interface and assertions). |
 
 `.scratch/` is git-ignored local evidence. Do not cite it from tracked docs.
 Do not invent a second tracker.

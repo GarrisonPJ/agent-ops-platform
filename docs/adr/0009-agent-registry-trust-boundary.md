@@ -2,8 +2,8 @@
 
 - Status: Accepted
 - Date: 2026-10-17
-- Implementation: Phase 2 H1 for the registry; H2 for external adapters.
-  Not in code at `8bd2ef0`.
+- Implementation: H1 registry integrated; H2 external adapters remain future.
+  This was absent from historical `8bd2ef0`.
 - Amended: 2026-10-24 by [ADR-0012](0012-h1-canonical-cutover-and-control-plane-success.md)
   (canonical defaults and Control Plane-only task success).
 - Depends on: [ADR-0006](0006-scenario-registry-boundary.md),
@@ -53,7 +53,10 @@ Provider URL, API key, and model for the reference agent stay in
 `AGENTOPS_PROVIDER_*` on the Runner (ADR-0003). The reference agent's README
 quickstart points those variables at Ollama (`http://127.0.0.1:11434/v1`,
 model `qwen3:8b`). `qwen3:14b` is documented as optional for machines that
-can spare the weights plus KV cache; it is not the default on 16 GB GPUs.
+can spare the weights plus KV cache; it is not the default. The local
+closeout host has about 12 GB VRAM, not the originally assumed 16 GB.
+Model runtime acceptance is explicitly deferred for this local closeout;
+configuration guidance is not a hardware-fit or tool-call compatibility result.
 Environment defaults and quickstart examples use ADR-0012's canonical v2 IDs,
 not the retired three v1 IDs. Missing `agent_id` still selects the fixture or
 reference agent by `execution_mode` (ADR-0007); this does not preserve old-v1

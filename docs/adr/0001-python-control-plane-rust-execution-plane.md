@@ -2,9 +2,10 @@
 
 - Status: Accepted
 - Date: 2026-07-16
-- Amended: 2026-10-17 by ADR-0008. Phase 1 still supervises one Python child.
-  When H1 ships, the Runner supervises an Environment server and a separate
-  agent process. Database ownership is unchanged.
+- Amended: 2026-10-17 by ADR-0008. Phase 1 supervised one Python child;
+  the H1 integration now supervises an Environment server and a separate
+  registered Agent. Database ownership is unchanged; delivery acceptance
+  remains separate from this accepted decision.
 
 ## Context
 
@@ -21,7 +22,7 @@ result.
 
 FastAPI is the control plane and the only database writer. A Linux/WSL Rust
 runner is the execution plane. It claims allowlisted evaluation jobs through
-an authenticated HTTP protocol, supervises a Python agent subprocess, and
+an authenticated HTTP protocol, supervises the Environment/Agent process pair, and
 uploads versioned, sequenced events. Events are persisted before SSE delivery.
 
 Phase 1 ships built-in Scenarios through an explicit registry allowlist; see

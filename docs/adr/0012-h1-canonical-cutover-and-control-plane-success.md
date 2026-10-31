@@ -3,7 +3,7 @@
 - Status: Accepted
 - Date: 2026-10-24
 - Approval: Explicit user decision for the single-user local deployment.
-- Implementation: Planned H1 integration; this decision does not ship the cutover.
+- Implementation: Integrated in the current H1 worktree; this ADR records the contract, while evidence and delivery disposition remain separate.
 - Amends: [ADR-0007](0007-environment-agent-split.md),
   [ADR-0008](0008-environment-mcp-server-and-env-side-capture.md),
   [ADR-0009](0009-agent-registry-trust-boundary.md). Supersedes the old-v1

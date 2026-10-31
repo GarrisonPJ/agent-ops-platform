@@ -2,8 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-10-17
-- Implementation: Phase 2 H1. Not in code at `8bd2ef0`. Invariants 23–25 in
-  `CONTEXT.md` become binding when H1 ships.
+- Implementation: Integrated in the current H1 worktree (not the historical `8bd2ef0`). Invariants 23–25 in `CONTEXT.md` are binding; delivery limits remain in current acceptance docs.
 - Amended: 2026-10-24 by [ADR-0012](0012-h1-canonical-cutover-and-control-plane-success.md)
   (breaking canonical cutover and Control Plane success contract).
 - Amends: [ADR-0003](0003-openai-compatible-provider-boundary.md),
@@ -73,8 +72,9 @@ Replay still re-executes; it does not play back recorded tool outputs.
 
 - H1 is the only structural change in Phase 2. Later stages add trials,
   export, and adapters on top of this split.
-- Phase 1 `ScenarioHandler` remains the code path until H1 replaces it. The
-  contributor guide states that explicitly.
+- Phase 1 `ScenarioHandler` remains documented as historical context; the current
+  production path uses independent Environment and Agent processes. The
+  contributor guide states the distinction explicitly.
 - Canonical defaults (including omitted IDs) follow ADR-0012; no aliases,
   historical replay preservation, or data cleanup are included.
 - Golden E2E keeps using the fixture agent. Live models stay out of CI

@@ -1,9 +1,10 @@
 # Environment 与 MCP：一个 Run 的工具边界
 
-H1-2 已实现独立的 `python -m app.env_server`；H1-3 已有 additive 双进程监督组件，
-但它们**尚未接入生产 claim/completion 路径**。H1-6 订单世界也已并入本 integration
-worktree。H1-5 才替换 fixture/provider agent；现有 Phase 1 路由、Scenario IDs、
-provider 行为和评分路径尚未切换到规范世界，组件合并不等于 H1 acceptance。
+当前生产 `execute_claim` 使用独立的 `app.env_server` 与注册 fixture/reference Agent，
+通过 MCP 调工具、由 Environment 捕获事实、CP 持久化并独占评分/终态。镜像配置包含
+MCP 2.3/httpx2 closure 和 operator registry；配置不等于运行证据。Host/PostgreSQL
+闭环、标准 Runner 网络构建与实际 named-volume 替换均有分开的本地验证；最终
+exact-payload/交付验收仍需独立，真实模型验收明确延期。三个默认世界使用 v2，旧三个 v1 execution ID 不提供兼容。
 
 ## 从输入到 ready
 
@@ -13,10 +14,13 @@ provider 行为和评分路径尚未切换到规范世界，组件合并不等�
    包含换行），不需要关闭 stdin。这里只消费一个 spec，不提供文件、网络或命令输入。
 2. `AGENTOPS_ENV_TOKEN` 是独立的 bearer capability，只通过环境变量传递，
    不放在 URL、spec 或 ready 消息中。边界要求 32..512 个 printable non-space ASCII
-   字符；H1-3 用 `secrets.token_hex(32)` 生成 64 个 hex 字符。
+   字符；Rust Runner 用 32 bytes CSPRNG 生成 64 个 hex 字符。受控 Python 捕获用
+   `secrets.token_hex(32)`，都不使用可预测 UUID 代替 capability。
 3. `EnvironmentSession` 只调用一次 `create_environment(spec)`；factory 已执行
    `reset(spec.seed)`。世界不缓存，不随 `execution_mode` 或 policy 切换行为。
-4. 使用官方 `mcp>=2.3.0,<2.4.0` 的 `MCPServer` 和 Streamable HTTP app。
+4. 使用官方 `mcp>=2.3.0,<2.4.0` 的 `MCPServer` 和 Streamable HTTP app。Runner
+镜像用 `runner-requirements.lock` 固定 `mcp==2.3.0`、`httpx2==2.16.0` 及其完整 Linux
+闭包；`httpx==0.28.1` 只供低层 OpenAI-compatible Provider 使用。
    Uvicorn 只绑定 `127.0.0.1:0`，路径 `/mcp`，不启动 OAuth、stdio MCP 或
    legacy HTTP+SSE transport。Streamable HTTP 自己的 streaming 能力不是旧 SSE transport。
 5. `ReadyServer.startup` 等 ASGI lifespan 和 listener 成功，才向 stdout 写一次：
@@ -45,6 +49,13 @@ Host/Origin 检查，非 loopback Host/Origin 被拒绝；单个 body 最多 16,
   `token_completion`（各 0..1,000,000,000）和 `context_window`（`used`/`limit`
   各 0..10,000,000）。省略或 null 表示 unknown；空对象是有效的 unknown report。
   最新有效 report 替换先前 report，不相加；无效 report 不覆盖。它不是测量得到的 provider telemetry。
+
+[ADR-0013](../adr/0013-h1-analyzer-v3-canonical-diagnostics.md) 将共享诊断分析器升为
+`failure-analyzer.v3`：显式 Agent-reported context 超过 95% 时，证据属于整个 Run，
+`step_index=null`，details 保留 `source=agent_reported`，不能伪装成每步测量。低值、
+缺失和无效报告不产生该正信号；最新有效报告替换与 Attempt 隔离规则不变。
+零世界调用且有 Provider error 时，不从缺失工具断言推断 planning；执行诊断和
+实际断言失败仍保留。评分和终态门不变，校准必须生成新 v3 包，不回写历史证据。
 
 保留名或重复世界工具名会使启动失败。预算是 `policy.max_steps` 或 6。世界调用尝试
 （有效、invalid、unknown、over-budget、post-submit）都记账；controls 不消耗世界预算，
@@ -88,9 +99,10 @@ Attempt：
   assertion suite 和持久化世界轨迹计算 score，并走原来的 lease/CAS completion；
 - 旧 Attempt 的 check/usage 不会满足新 Attempt。
 
-原有三个世界只有 trajectory assertions；订单世界另有 outcome assertions 与进程内
-final_observation。H1-2 尚未持久化该最终快照，也没有第二个 scorer；后续 trusted final-check
-wire 仍须独立审查。已有 lossy argument allowlist 只补入订单固定参数，不扩成任意参数。
+三个 v2 世界主要使用 trajectory assertions；订单世界另有 outcome assertions。
+Environment 在同一 submit 控制事实中输出有界 `final_check`（`scenario_id` 与实际
+`final_observation`），CP 验证同事件 check/submission 与当前 Attempt 后持久化、求值。
+这是世界证据，不是第二个 scorer。已有 lossy argument allowlist 不扩成任意参数。
 
 ## H1-3 接线必须保留的边界
 
@@ -103,7 +115,10 @@ wire 仍须独立审查。已有 lossy argument allowlist 只补入订单固定�
   不意味着可以把旧 Attempt 的事实接到新 Attempt；旧事实不跨 Attempt。
 - submit 会先返回 MCP response，Environment 保持冻结服务直到 Runner teardown 或 deadline；
   不以 server EOF/exit 0/`check_called` 推断 terminal success。H1-2 没有改变全局 terminal rule。
-- Runner 负责 deadline/cancel/lease 失效与两进程清理；本章不实现 H1-3 的 process group。
+- Runner 负责 deadline/cancel/lease 失效与两进程清理；token handoff 目录是镜像内
+  `/run/agentops/token-handoff`，Compose 使用持久 named volume；镜像预建 uid 10001、
+  mode 0700 的目录，实际挂载初始化/替换仍需独立验证。只有身份/状态一致的 CP terminal
+  wrapper ACK 后才清除 per-Run token record；不能因 HTTP 200、submit、check、EOF 或 exit 0 清理。
   stdin 读取本身等待一行输入，Runner 必须监督写入与 startup deadline，不能等写完才开始计时。
 
 验证入口：`test_env_server.py` 覆盖调用、预算、HTTP auth/Origin 和真实 loopback readiness；
@@ -112,9 +127,8 @@ Control Plane score/status。测试不需要模型、GPU、外网、Rust Runner�
 
 ## 有状态订单组件：最终状态不等于调用次数
 
-以下补充 H1-1 的进程内接口与 H1-6 的有状态示例。MCP server 的组件实现见上文；
-独立 Agent、最终可信证据与生产 completion 仍需 H1-5/集成。不要把接口或组件存在
-理解为旧 Run 已经切换执行路径。
+以下用有状态订单解释世界接口与最终可信证据。生产路径已连接独立 Agent/MCP、
+final-check 和 CP completion；这不修改历史 Run、重放旧 Trace 或表示整个 H1 已验收。
 
 ## 从注册到一个独立世界
 
@@ -131,9 +145,9 @@ Run 身份。这些属于 agent 的输入，不应改变世界规则。
 - `check()`：只读地返回 trajectory 与 outcome 断言证据，不决定 Run 终态或分数。
 - `fault_schedule`：世界声明故障条件，不由 agent 任意选择。
 
-原有三个 Environment 是 H1-1 抽出的独立世界。保留的 `ScenarioHandler`
-仍负责它们旧的 fixture/provider 路径，尚未升级。旧世界与新接口在部分观察上
-不同；替换之前仍须经过版本/语义决策，不能在原有 `.v1` 上暗中切换。
+三个 canonical Environment 已按 ADR-0012 注册为 v2，旧三个 v1 execution ID 被拒绝，
+没有 alias、迁移或历史重评分。`ScenarioHandler` 的旧 fixture/provider 入口仅保留代码
+回归，不是生产 fallback；`order-support.v1` 是独立的有状态身份。
 
 ## 为什么调用退款工具不代表退款成功
 
@@ -164,31 +178,37 @@ Outcome 使用已有 `json-match`：退款数为 `1`，支付为 `refunded`，�
 
 ## 证据怎样回到 Control Plane
 
-新场景自己的 `OrderSupportScenario.run_fixture()` 通过相同 Environment
-执行脚本。baseline 重复检查六次，留下未完成的状态；replay 检查、授权、发货、
-退款、重试确认、最后检查，共六步。每个合法工具调用的观察都携带当时的 ledger
-快照。共享 handler 不缓存世界，每次执行都会重新创建实例。
+生产 `fixture_agent` 通过 MCP 执行工具脚本。baseline 重复检查六次，留下未完成状态；
+replay 检查、授权、发货、退款、重试确认、最后检查，共六次世界调用。每次调用观察
+携带当时的 ledger 快照，submit 的 final-check 再给出最终冻结快照。保留的旧 handler
+也使用新实例，但不参与生产 dispatch。
 
-`emit_step()` 保持原事件结构；
+Environment-owned capture 保持有界事件结构；
 [`durable_events._normalize_tool_call()`](../../backend/app/durable_events.py)
-仅投影四个新工具和固定参数，原九个工具的分支不变。Rust 只传输 JSON，
+仅投影允许的工具和固定参数，原九个工具的分支不变，并保留空参数的
+`submit_result` control tool-call 作为 provenance。这个 control 仍不进入世界轨迹和评分。
+Recorded Preview 由真实 v2 Golden 执行重新生成；recorder 只归一化稳定 ID 和生命周期区间内的确定性时间戳，
+不改写 observation、score、assertion、usage、final-check 或 Environment provenance。Rust 只传输 JSON，
 不负责订单规则或评分。Control Plane 的
 [`_trajectory_from_events()` / `_analyze_and_score()`](../../backend/app/phase1_service.py)
-仍从已持久化的最后观察求值注册断言并拥有最终分数；`EnvironmentCheck` 的
-新字段只是进程内证据，没有新增持久化字段、RunEvent 或终态语义。
+从当前 Attempt 的持久化 all-world-attempt projection 与同事件 accepted final-check
+求值注册断言，并拥有最终分数和状态。世界调用次数或 Agent 自报不能替代最终 ledger。
 
 [`test_order_support.py`](../../backend/phase1_tests/test_order_support.py)
 覆盖重置、实例隔离、参数原子拒绝、故障后幂等退款、真实 ledger 损坏检测、
 JSONL fixture 和内存 SQLite 的 baseline → analysis → candidate → replay →
 comparison → human activate 闭环。它不是实际 PostgreSQL/Runner/MCP Golden E2E。
-默认三场景 Golden 集合没有改变；order provider 明确返回不可用，不偷偷运行脚本。
+默认三场景 Golden 已使用 v2。独立 reference Agent 走真实 MCP；本地 fake Provider
+进程验证覆盖六次世界调用、七次 Provider 请求与恰好一笔退款，不代表真实模型验收。
 
-## 后续接入点，而非本次功能
+## 独立 Agent 与剩余边界
 
-H1-2 已在 loopback MCP 服务中调用同一 `call()`，在 Environment 侧捕获真实工具
-事件，并在 `submit_result` 时调用 `check()`；后续还要传递有界最终 ledger，不能信任 Agent 自报退款成功。
+loopback MCP 服务调用同一 `call()`，在 Environment 侧捕获真实工具事实，
+在 `submit_result` 时调用一次 `check()` 并传递有界最终 ledger；不能信任 Agent 自报退款成功。
 `report_usage` 不提供时相关维度仍是 unknown。
 
-H1-5 再把脚本移到 fixture agent，并让 reference agent 从 MCP 发现并调用工具。
-不能用旧 provider 的“只按工具名拿预制观察”的 adapter 代替有状态执行。
+fixture agent 已从独立 MCP 客户端发现并调用工具；reference agent 走同一客户端并把
+工具定义交给 Runner 配置的 OpenAI-compatible Provider。不能用旧 provider 的“只按工具名
+拿预制观察”的 adapter 代替有状态执行。CI 只选择 fixture，不安装 GPU、不调用 live model；
+reference 只有 operator 显式提供 Provider 配置时才运行。
 现有场景的晋升门、Run 生命周期、租约、评分归属与人工激活门都不因此改变。

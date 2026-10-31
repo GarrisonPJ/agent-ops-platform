@@ -1,6 +1,6 @@
 # Reliability and Local Validation
 
-This runbook covers the Phase 1 reliability checks that are useful during a
+This runbook covers the current Phase 1 + H1 reliability checks useful during a
 local or trusted-intranet deployment. It describes the behavior currently
 implemented by the API, Runner, and Compose stack. It does not turn the
 single-machine deployment into a multi-tenant or public service.
@@ -172,24 +172,18 @@ or Linux `node` is unavailable, stop the frontend check and report it as an
 environment blocker. Do not claim `make test` or `make fmt` from a partial
 WSL run; use CI or a Linux Node 22 installation.
 
-Verification on 2026-09-25 with verified Linux Node `v22.23.3` in an isolated frontend copy: `npm ci`,
-format checking, typecheck, 27 unit tests (historical), production build, and two Recorded
-browser E2E tests passed after `make fmt` normalized the prior 24-file format
-baseline. The repository worktree had root-owned Vite cache files, so dependency installation was kept out of the worktree. The frontend CI job now runs `format:check`. The Recorded E2E uses
-Playwright Chromium, which must be installed locally before running it.
-
-An isolated four-service local Compose run first passed Web/API readiness,
-both Golden scenarios, and Runner recovery using a temporary Web override
-with the verified Linux Node toolchain. On 2026-10-05, intermittent Docker Hub
-access also allowed the standard Web Dockerfile and standard four-service stack
-to pass. A later standard build retry again timed out resolving
-`node:22-alpine`, so preserve the successful evidence but treat registry
-availability as environment-dependent. Never treat an override as a successful
-standard image build.
+Use a fresh isolated Compose project for build/runtime checks. Network registry
+availability is environment-dependent. A standard Dockerfile build, an offline-
+derived image, a source-mounted override, and a cold-cache build are different
+claims. Dated results belong in [history](../history/README.md), not in this
+procedure as a permanent current baseline.
 
 The Runner installs its Python protocol dependencies from
 `runner-requirements.lock`. When updating `backend/uv.lock`, refresh the pinned
-`pydantic`/`httpx` dependency closure in that file from the same lock, then build
+MCP/httpx dependency closure in that file from the same lock. Run
+`uv run --project backend python scripts/verify_runner_requirements.py`: it
+recursively verifies exact pins, PEP 508 Linux/Python 3.12 markers and requested
+extras, rather than only comparing root-package membership. Then build
 the standard Runner image and run `pip check` inside it. The image installs
 binary wheels with bounded pip timeout/retries. Its Rust stage uses
 `cargo build --release --locked`; only Cargo manifests, the lockfile, and crate
@@ -197,27 +191,15 @@ sources enter that stage, so edits to the Python dependency lock or runtime
 instructions preserve the Rust build cache. Python application code is copied
 after dependency installation.
 
-On 2026-10-15, the standard Runner Dockerfile completed a local build with a
-fresh locked Rust compilation and installation of all 11 pinned Python
-packages. After a concurrent analyzer edit, a second standard build refreshed
-the application copy and reused those Rust/pip layers. The final standard
-four-service Compose stack passed Web/API/Runner readiness, all three Golden
-scenarios, and the original Runner recovery assertions (`running` before the
-kill, then `succeeded` with the complete Attempt 2 trace). Runner/API Python
-sources matched the final checkout and neither container had a source bind
-mount. Base images and API/Web dependency layers used local Docker cache; this
-is standard local build/runtime evidence, not a clean hosted CI run.
-The build logs, source hashes, image identities, package check, recovery result,
-and database dump are preserved in a local evidence directory (not in the
-repository) for the 20261015 standard-runner closeout, with the final acceptance
-artifacts in `final/`. The isolated project's containers were removed after
-verification; its image and database volume were retained.
+The H1 standard Runner network build succeeded locally on 2026-10-31; the
+closeout rebuild refreshed Rust after the P2 fixes using the same Dockerfile
+and cached dependency layers. Actual volume initialization/replacement was
+checked separately. This is not cold-cache, fresh-base, hosted CI, cross-platform
+or live-model evidence. Current limits: [system-acceptance.md](system-acceptance.md).
 
 Provider fake-server tests must not be sent through an inherited corporate
-proxy. On 2026-10-05 the isolated command below completed the full backend
-suite with `188 passed, 2 skipped`; the same suite had produced loopback
-timeouts when the proxy variables were inherited. Prefer a one-command
-isolated environment:
+proxy. Inherited proxy variables have caused fake-server loopback timeouts. Prefer a
+one-command isolated environment rather than changing global proxy settings:
 
     env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY \
       -u http_proxy -u https_proxy -u all_proxy \
@@ -265,7 +247,7 @@ equality after restoration, normalizing only the optional `sha256:` prefix in
 valid 64-hex `binding.packet_sha256` and `binding.labels_sha256` values. It keeps
 both original report files unchanged. The gate checks unknown-aware coverage and
 `assessed_run_dimension_pairs` scope,
-while keeping `failure-analyzer.v2`, `provisional_mechanics`, and
+using `failure-analyzer.v3`, `provisional_mechanics`, and
 `publishable_accuracy=false`. It does not establish independent accuracy.
 
 The output keeps the original capture artifacts in `capture/`, the restored
