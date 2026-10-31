@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import copy
+from datetime import datetime, timezone
 import json
 from pathlib import Path
 import urllib.request
@@ -62,12 +63,26 @@ def normalize_policy(policy: dict) -> dict:
     return normalized
 
 
-def normalize_events(events: list[dict], *, run_id: str, replay: bool) -> list[dict]:
+def normalize_events(
+    events: list[dict],
+    *,
+    run_id: str,
+    started_at: str,
+    completed_at: str,
+) -> list[dict]:
+    """Copy events while fitting deterministic timestamps to the run interval."""
     normalized = copy.deepcopy(events)
-    prefix = "2026-07-16T08:01:" if replay else "2026-07-16T08:00:"
-    for event in normalized:
+    start = datetime.fromisoformat(started_at.replace("Z", "+00:00"))
+    end = datetime.fromisoformat(completed_at.replace("Z", "+00:00"))
+    if start.tzinfo is None or end.tzinfo is None or end < start:
+        raise ValueError("normalized run timestamps must be ordered UTC values")
+    last_index = max(len(normalized) - 1, 1)
+    for index, event in enumerate(normalized):
         event["run_id"] = run_id
-        event["occurred_at"] = f"{prefix}{min(event['sequence'], 59):02d}Z"
+        occurred_at = start + (end - start) * index / last_index
+        event["occurred_at"] = occurred_at.astimezone(timezone.utc).isoformat(
+            timespec="milliseconds"
+        ).replace("+00:00", "Z")
     return normalized
 
 
@@ -79,7 +94,7 @@ def record(api_url: str) -> dict:
         {
             "name": "Checkout latency investigation",
             "task": "Investigate checkout API latency",
-            "scenario_id": "checkout-api-latency.v1",
+            "scenario_id": "checkout-api-latency.v2",
         },
     )
     baseline = request(
@@ -115,7 +130,7 @@ def record(api_url: str) -> dict:
             "id": EXPERIMENT_ID,
             "name": "Checkout latency investigation",
             "task": "Investigate checkout API latency",
-            "scenario_id": "checkout-api-latency.v1",
+            "scenario_id": "checkout-api-latency.v2",
             "created_at": "2026-07-16T08:00:00Z",
             "runs": [replay, baseline],
             "active_policy": None,
@@ -125,7 +140,7 @@ def record(api_url: str) -> dict:
             "id": SECONDARY_ID,
             "name": "Fresh checkout investigation",
             "task": "Investigate checkout API latency",
-            "scenario_id": "checkout-api-latency.v1",
+            "scenario_id": "checkout-api-latency.v2",
             "created_at": "2026-07-15T14:20:00Z",
             "runs": [],
             "active_policy": None,
@@ -135,10 +150,16 @@ def record(api_url: str) -> dict:
         "replay_analysis": replay_analysis,
         "events": {
             BASELINE_ID: normalize_events(
-                baseline_events, run_id=BASELINE_ID, replay=False
+                baseline_events,
+                run_id=BASELINE_ID,
+                started_at=baseline["started_at"],
+                completed_at=baseline["completed_at"],
             ),
             REPLAY_ID: normalize_events(
-                replay_events, run_id=REPLAY_ID, replay=True
+                replay_events,
+                run_id=REPLAY_ID,
+                started_at=replay["started_at"],
+                completed_at=replay["completed_at"],
             ),
         },
     }

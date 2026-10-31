@@ -107,6 +107,7 @@ class ToolCallSummary(DurableModel):
         "authorize_payment",
         "ship_order",
         "request_refund",
+        "submit_result",
     ]
     arguments: dict[str, str | int] = Field(
         default_factory=dict, max_length=MAX_TOOL_ARGUMENTS
@@ -384,6 +385,13 @@ def _normalize_tool_call(value: object) -> dict[str, object] | None:
     name = value.get("name")
     if not isinstance(name, str):
         return None
+    if name == "submit_result":
+        raw_arguments = value.get("arguments", {})
+        if not isinstance(raw_arguments, Mapping) or raw_arguments:
+            return None
+        return ToolCallSummary(name=name, arguments={}).model_dump(
+            mode="json", exclude_none=True
+        )
     if name in {"inspect_order", "authorize_payment", "ship_order", "request_refund"}:
         raw_arguments = value.get("arguments", {})
         if not isinstance(raw_arguments, Mapping):

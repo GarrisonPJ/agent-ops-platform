@@ -31,7 +31,7 @@ test("completes the recorded create-to-activate product loop", async ({
 
   await page.getByRole("tab", { name: /analysis/i }).click();
   await expect(
-    page.getByRole("heading", { name: "planning", exact: true }),
+    page.getByRole("heading", { name: "loop_no_progress", exact: true }),
   ).toBeVisible();
   await expect(page.getByText(/Budget exhausted: 6 steps/)).toBeVisible();
 

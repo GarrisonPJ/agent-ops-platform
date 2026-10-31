@@ -1,5 +1,6 @@
 import type { FetchArgs } from "@reduxjs/toolkit/query";
 import type { BaseQueryFn } from "@reduxjs/toolkit/query/react";
+import { DEFAULT_SCENARIO_ID } from "../../schemas/phase1";
 import type { ExecutionMode, Experiment, Policy, RegressionCase, Run } from "../../types/phase1";
 import {
   BASELINE_RUN_ID,
@@ -22,6 +23,12 @@ type RecordedError = {
 };
 
 let experiments: Experiment[] = [cloneFixture(goldenExperiment), cloneFixture(secondaryExperiment)];
+
+const RECORDED_SCENARIO_IDS = new Set([
+  "checkout-api-latency.v2",
+  "multi-step-research.v2",
+  "api-fault-orchestration.v2",
+]);
 
 const delay = () => new Promise((resolve) => setTimeout(resolve, 120));
 const ok = (data: unknown) => ({ data });
@@ -61,7 +68,7 @@ export async function recordedHandler(method: string, url: string, body?: unknow
     return ok(
       cloneFixture([
         {
-          id: "checkout-api-latency.v1",
+          id: "checkout-api-latency.v2",
           name: "Checkout API Latency",
           description:
             "Investigate elevated checkout latency using health checks, dependency metrics, and evidence-backed logs.",
@@ -70,7 +77,7 @@ export async function recordedHandler(method: string, url: string, body?: unknow
           params: [],
         },
         {
-          id: "multi-step-research.v1",
+          id: "multi-step-research.v2",
           name: "Multi-step Research",
           description:
             "Answer a research question by searching documents, fetching evidence, and submitting a final answer.",
@@ -85,7 +92,7 @@ export async function recordedHandler(method: string, url: string, body?: unknow
           ],
         },
         {
-          id: "api-fault-orchestration.v1",
+          id: "api-fault-orchestration.v2",
           name: "API Fault Orchestration",
           description:
             "Recover from injected upstream failures using bounded retries and a degraded fallback route.",
@@ -116,13 +123,19 @@ export async function recordedHandler(method: string, url: string, body?: unknow
       agent_id?: string | null;
       scenario_params?: Record<string, string>;
     };
-    if (request.scenario_id === "multi-step-research.v1") {
+    const scenarioId = request.scenario_id ?? DEFAULT_SCENARIO_ID;
+    if (!RECORDED_SCENARIO_IDS.has(scenarioId)) {
+      return fail(400, "SCENARIO_NOT_REGISTERED", `scenario is not registered: ${scenarioId}`, {
+        scenario_id: scenarioId,
+      });
+    }
+    if (scenarioId === "multi-step-research.v2") {
       const topic = request.scenario_params?.topic?.trim();
       if (!topic) {
         return fail(
           400,
           "INVALID_SCENARIO_PARAMS",
-          "missing required scenario_params for multi-step-research.v1: topic",
+          "missing required scenario_params for multi-step-research.v2: topic",
         );
       }
     }
@@ -139,7 +152,7 @@ export async function recordedHandler(method: string, url: string, body?: unknow
       id: `exp-recorded-${experiments.length + 1}`,
       name: request.name?.trim() || "Recorded experiment",
       task: request.task?.trim() || goldenExperiment.task,
-      scenario_id: request.scenario_id ?? "checkout-api-latency.v1",
+      scenario_id: scenarioId,
       scenario_params: request.scenario_params ?? {},
       execution_mode: executionMode,
       agent_id: request.agent_id ?? null,

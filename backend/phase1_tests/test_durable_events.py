@@ -216,6 +216,31 @@ def test_step_completed_preserves_only_required_bounded_fields() -> None:
     assert "UNIQUE_RAW_PROVIDER_CONTENT" not in serialized
 
 
+def test_submit_result_control_tool_call_survives_durable_projection() -> None:
+    normalized = normalize_event_payload(
+        "step_completed",
+        {
+            "index": 3,
+            "tool_call": {"name": "submit_result", "arguments": {}},
+            "observation": "Environment finalized; Control Plane owns score and Run status.",
+            "environment": {
+                "kind": "control",
+                "result": "ok",
+                "control": "submit_result",
+                "finalized": True,
+                "check_called": True,
+                "final_check": {
+                    "scenario_id": "checkout-api-latency.v2",
+                    "final_observation": None,
+                },
+            },
+        },
+    )
+
+    assert normalized["tool_call"] == {"name": "submit_result", "arguments": {}}
+    assert normalize_event_payload("step_completed", normalized) == normalized
+
+
 def test_provider_and_context_numeric_fields_are_bounded() -> None:
     from app.durable_events import (
         MAX_CONTEXT_WINDOW_TOKENS,

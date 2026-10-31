@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { agentMetadataSchema, experimentSchema, runSchema } from "../../schemas/phase1";
-import { BASELINE_RUN_ID, GOLDEN_EXPERIMENT_ID, candidatePolicy } from "./fixtures";
+import {
+  agentMetadataSchema,
+  experimentSchema,
+  runSchema,
+  scenarioSummarySchema,
+} from "../../schemas/phase1";
+import { BASELINE_RUN_ID, GOLDEN_EXPERIMENT_ID, candidatePolicy, goldenJourney } from "./fixtures";
 import { recordedHandler, resetRecordedDemo } from "./handlers";
 
 describe("recorded demo handlers", () => {
@@ -66,6 +71,88 @@ describe("recorded demo handlers", () => {
     });
   });
 
+  it("serves only canonical v2 scenarios and rejects retired v1 IDs", async () => {
+    const response = await recordedHandler("GET", "/scenarios");
+    if (!("data" in response)) throw new Error("Expected scenario metadata");
+    const scenarios = (response.data as unknown[]).map((scenario) =>
+      scenarioSummarySchema.parse(scenario),
+    );
+    expect(scenarios.map((scenario) => scenario.id)).toEqual([
+      "checkout-api-latency.v2",
+      "multi-step-research.v2",
+      "api-fault-orchestration.v2",
+    ]);
+
+    for (const scenarioId of [
+      "checkout-api-latency.v1",
+      "multi-step-research.v1",
+      "api-fault-orchestration.v1",
+    ]) {
+      expect(
+        await recordedHandler("POST", "/experiments", { scenario_id: scenarioId }),
+      ).toMatchObject({
+        error: {
+          status: 400,
+          data: {
+            code: "SCENARIO_NOT_REGISTERED",
+            details: { scenario_id: scenarioId },
+          },
+        },
+      });
+    }
+  });
+
+  it("defaults omitted scenario IDs to checkout-api-latency.v2", async () => {
+    const response = await recordedHandler("POST", "/experiments", {
+      name: "Default scenario",
+      task: "Investigate checkout API latency",
+    });
+    expect(response).toMatchObject({ data: { scenario_id: "checkout-api-latency.v2" } });
+  });
+
+  it("requires canonical finalization controls in the recorded event stream", () => {
+    for (const runId of [
+      BASELINE_RUN_ID,
+      goldenJourney.experiment.runs.find((run) => run.kind === "replay")?.id,
+    ]) {
+      if (!runId) throw new Error("Expected recorded replay run");
+      const finalizations = goldenJourney.events[runId].filter(
+        (event) =>
+          event.type === "step_completed" &&
+          (event.payload.environment as { control?: string } | undefined)?.control ===
+            "submit_result",
+      );
+      expect(finalizations).toHaveLength(1);
+      const [finalization] = finalizations;
+      expect(finalization.payload.tool_call).toEqual({
+        name: "submit_result",
+        arguments: {},
+      });
+      expect(finalization.payload.environment).toMatchObject({
+        kind: "control",
+        result: "ok",
+        finalized: true,
+        check_called: true,
+        final_check: {
+          scenario_id: "checkout-api-latency.v2",
+          final_observation: null,
+        },
+      });
+    }
+
+    for (const run of goldenJourney.experiment.runs) {
+      const events = goldenJourney.events[run.id];
+      const started = Date.parse(run.started_at ?? "");
+      const completed = Date.parse(run.completed_at ?? "");
+      expect(started).toBeLessThanOrEqual(completed);
+      for (const event of events) {
+        const occurred = Date.parse(event.occurred_at);
+        expect(occurred).toBeGreaterThanOrEqual(started);
+        expect(occurred).toBeLessThanOrEqual(completed);
+      }
+    }
+  });
+
   it("serves a Zod-validated recording of the real Golden scenario", async () => {
     const response = await recordedHandler("GET", "/experiments");
     expect("data" in response).toBe(true);
@@ -74,7 +161,7 @@ describe("recorded demo handlers", () => {
         expect.arrayContaining([
           expect.objectContaining({
             id: GOLDEN_EXPERIMENT_ID,
-            scenario_id: "checkout-api-latency.v1",
+            scenario_id: "checkout-api-latency.v2",
           }),
         ]),
       );
@@ -86,7 +173,7 @@ describe("recorded demo handlers", () => {
     expect(response).toMatchObject({
       data: {
         run_id: BASELINE_RUN_ID,
-        dominant_type: "planning",
+        dominant_type: "loop_no_progress",
         dimensions: {
           planning: 2 / 3,
           budget: 1 / 6,
@@ -99,7 +186,7 @@ describe("recorded demo handlers", () => {
     const createdResponse = await recordedHandler("POST", "/experiments", {
       name: "Recorded journey",
       task: "Investigate checkout API latency",
-      scenario_id: "checkout-api-latency.v1",
+      scenario_id: "checkout-api-latency.v2",
     });
     expect("data" in createdResponse).toBe(true);
     if (!("data" in createdResponse)) return;
@@ -109,8 +196,8 @@ describe("recorded demo handlers", () => {
     expect(baselineResponse).toMatchObject({
       data: {
         status: "failed",
-        score: -0.01221,
-        evaluation_spec: { scenario_id: "checkout-api-latency.v1", seed: 42 },
+        score: 0.13333333333333333,
+        evaluation_spec: { scenario_id: "checkout-api-latency.v2", seed: 42 },
       },
     });
 
@@ -129,7 +216,7 @@ describe("recorded demo handlers", () => {
     expect(replayResponse).toMatchObject({
       data: {
         status: "validated",
-        score_delta: 1.00797,
+        score_delta: 0.8666666666666667,
       },
     });
 
@@ -154,7 +241,7 @@ describe("recorded demo handlers", () => {
       name: "Recorded regression",
       agent_id: "reference-openai-compatible.v1",
       task: "Investigate checkout API latency",
-      scenario_id: "checkout-api-latency.v1",
+      scenario_id: "checkout-api-latency.v2",
     });
     if (!("data" in createdResponse)) return;
     const experimentId = (createdResponse.data as { id: string }).id;
@@ -205,7 +292,7 @@ describe("recorded demo handlers", () => {
     const createdResponse = await recordedHandler("POST", "/experiments", {
       name: "Provider recording",
       task: "Investigate checkout API latency",
-      scenario_id: "checkout-api-latency.v1",
+      scenario_id: "checkout-api-latency.v2",
       execution_mode: "provider",
     });
     expect(createdResponse).toMatchObject({
