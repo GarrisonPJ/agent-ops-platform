@@ -2,7 +2,8 @@
 
 - Status: Accepted
 - Date: 2026-10-17
-- Implementation: Phase 2 H1. Not in code at `8bd2ef0`.
+- Implementation: H1 integration; absent from historical `8bd2ef0`.
+  Decision acceptance is distinct from final delivery acceptance.
 - Amended: 2026-10-24 by [ADR-0012](0012-h1-canonical-cutover-and-control-plane-success.md)
   (authoritative success, trusted evidence, and terminal agreement).
 - Depends on: [ADR-0007](0007-environment-agent-split.md)
@@ -68,7 +69,8 @@ child, then starts the agent.
   two-second grace, is not abnormal execution failure; neither child must exit
   naturally with zero. This exception cannot override the failure gates above.
   H1-5/integration owns evidence and Control Plane completion wiring. The exact
-  additive evidence wire remains a later reviewed seam.
+  additive evidence wire was subsequently reviewed and integrated in this H1
+  worktree; this ADR does not itself prescribe additional fields or types.
 - The Environment enforces `max_steps` and the run timeout. Calls past the
   budget return an error observation and are still recorded.
 - Both children share the Runner's process group. Cancel and timeout SIGTERM
@@ -77,6 +79,29 @@ child, then starts the agent.
   done.
 - `schema_version` stays 1. `env_ready` is a local supervision message. No
   new product event type is required.
+
+## H1 closeout amendment (operator-approved)
+
+Lock files in the capability handoff directory must reject symlinks and
+nonregular files at open time, for both the capacity lock and per-Run lock.
+Use atomic no-follow opens and validate the opened descriptor's type, owner
+and permissions before locking; do not truncate or mutate a refused target.
+The protected directory is a trusted-host boundary, not isolation from a
+malicious process running as the same OS user.
+
+At Agent exit, retain the cancellation-safe JSONL reader across the final
+bounded read opportunity. An incomplete final line must fail closed and must
+not be uploaded or hidden by planned teardown, even after an accepted submit.
+Observed unexpected Environment EOF/exit remains failure; planned teardown is
+only requested after required complete facts have been uploaded and the
+Environment remains alive. Do not introduce a new scorer or claim a universal
+priority among simultaneously ready failure signals. Deterministic tests must
+prove reader-side prefix consumption before observed Agent exit, release the
+suffix only afterward, and assert exact accepted events and sequence numbers.
+
+Real-model execution is explicitly deferred for this local engineering
+closeout by the operator. Fixture/fake-Provider tests remain deterministic;
+this deferral is not evidence of Ollama/vLLM or live-model acceptance.
 
 ## Consequences
 
