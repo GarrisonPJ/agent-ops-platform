@@ -1,6 +1,10 @@
 services:
+  api:
+    environment:
+      AGENTOPS_AGENT_REGISTRY: /app/config/agents.recovery.toml
   runner:
     environment:
-      AGENTOPS_AGENT_ARGS: '["-m","app.recovery_agent"]'
-      AGENTOPS_RECOVERY_MARKER: /tmp/agentops-recovery-marker
+      AGENTOPS_AGENT_REGISTRY: /etc/agentops/agents.recovery.toml
+      AGENTOPS_AGENT_WORKDIR: /workspace/backend
+      AGENTOPS_ENV_TOKEN_HANDOFF_DIR: /run/agentops/token-handoff
       AGENTOPS_RUNNER_ID: recovery-runner

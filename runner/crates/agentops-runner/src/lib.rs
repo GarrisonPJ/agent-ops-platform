@@ -1,7 +1,9 @@
 use std::fs::{self, File, OpenOptions};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::process::{ExitStatus, Stdio};
+#[cfg(test)]
+use std::process::ExitStatus;
+use std::process::Stdio;
 use std::sync::{
     atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
     Arc,
@@ -14,9 +16,10 @@ use std::os::fd::AsRawFd;
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 
 use agentops_protocol::{
-    ChildEvent, ClaimRequest, ClaimResponse, CompleteRequest, EnvironmentReadyMessage,
-    EvaluationSpec, EventBatchRequest, EventBatchResponse, EventEnvelope, HeartbeatRequest,
-    HeartbeatResponse, RunnerCommand, TerminalFailureKind, SCHEMA_VERSION,
+    ChildEvent, ClaimRequest, ClaimResponse, CompleteRequest, CompletionResponse,
+    EnvironmentReadyMessage, EvaluationSpec, EventBatchRequest, EventBatchResponse, EventEnvelope,
+    ExecutionFacts as ProtocolExecutionFacts, HeartbeatRequest, HeartbeatResponse, RunnerCommand,
+    TerminalFailureKind, SCHEMA_VERSION,
 };
 use anyhow::{bail, Context, Result};
 use chrono::Utc;
@@ -28,7 +31,9 @@ use tokio::io::{
     AsyncBufRead, AsyncBufReadExt, AsyncRead, AsyncReadExt, AsyncWriteExt, BufReader, ReadBuf,
 };
 use tokio::process::{Child, Command};
-use tokio::time::{interval, sleep, timeout, timeout_at, Instant, Interval};
+#[cfg(test)]
+use tokio::time::Interval;
+use tokio::time::{interval, sleep, timeout, timeout_at, Instant};
 
 mod registry;
 pub use registry::{AgentMetadata, AgentRegistry, RegistryError};
@@ -39,6 +44,7 @@ pub const MAX_LINE_BYTES: usize = 65_536;
 pub const DEFAULT_AGENT_REGISTRY_PATH: &str =
     concat!(env!("CARGO_MANIFEST_DIR"), "/../../../config/agents.toml");
 const NETWORK_RETRY_WINDOW: Duration = Duration::from_secs(10);
+const MAX_COMPLETION_RESPONSE_BYTES: usize = 65_536;
 const MAX_CACHED_ENVIRONMENT_TOKENS: usize = 1024;
 const ENV_TOKEN_HANDOFF_ENV: &str = "AGENTOPS_ENV_TOKEN_HANDOFF_DIR";
 const ENV_TOKEN_RECORD_SUFFIX: &str = ".token";
@@ -52,9 +58,14 @@ pub struct RunnerConfig {
     pub server_url: String,
     pub runner_token: String,
     pub runner_id: String,
+    /// Operator-only break-glass command retained for local compatibility tests.
     pub agent_program: String,
     pub agent_args: Vec<String>,
     pub agent_workdir: Option<PathBuf>,
+    pub agent_override: Option<TrustedCommand>,
+    pub environment_program: String,
+    pub environment_args: Vec<String>,
+    pub environment_workdir: Option<PathBuf>,
     pub poll_interval: Duration,
     pub environment_token_handoff_dir: Option<PathBuf>,
 }
@@ -73,9 +84,24 @@ impl RunnerConfig {
         let agent_args = match std::env::var("AGENTOPS_AGENT_ARGS") {
             Ok(raw) => serde_json::from_str::<Vec<String>>(&raw)
                 .context("AGENTOPS_AGENT_ARGS must be a JSON string array")?,
-            Err(_) => vec!["-m".into(), "app.demo_agent".into()],
+            Err(_) => vec!["-m".into(), "app.fixture_agent".into()],
         };
         let agent_workdir = std::env::var_os("AGENTOPS_AGENT_WORKDIR").map(PathBuf::from);
+        let agent_override = std::env::var_os("AGENTOPS_AGENT_PROGRAM").map(|_| TrustedCommand {
+            program: agent_program.clone(),
+            args: agent_args.clone(),
+            workdir: agent_workdir.clone(),
+        });
+        let environment_workdir = std::env::var_os("AGENTOPS_ENVIRONMENT_WORKDIR")
+            .map(PathBuf::from)
+            .or_else(|| agent_workdir.clone());
+        let environment_program =
+            std::env::var("AGENTOPS_ENVIRONMENT_PROGRAM").unwrap_or_else(|_| "python".into());
+        let environment_args = match std::env::var("AGENTOPS_ENVIRONMENT_ARGS") {
+            Ok(raw) => serde_json::from_str::<Vec<String>>(&raw)
+                .context("AGENTOPS_ENVIRONMENT_ARGS must be a JSON string array")?,
+            Err(_) => vec!["-m".into(), "app.env_server".into()],
+        };
         let environment_token_handoff_dir = std::env::var_os(ENV_TOKEN_HANDOFF_ENV)
             .map(PathBuf::from)
             .or_else(default_environment_token_handoff_dir);
@@ -86,6 +112,10 @@ impl RunnerConfig {
             agent_program,
             agent_args,
             agent_workdir,
+            agent_override,
+            environment_program,
+            environment_args,
+            environment_workdir,
             poll_interval: Duration::from_secs(1),
             environment_token_handoff_dir,
         })
@@ -245,18 +275,22 @@ fn ensure_secure_handoff_directory(directory: &Path) -> Result<()> {
 }
 
 fn open_locked_file(path: &Path) -> Result<LockedFile> {
+    // Reject path redirection atomically. NONBLOCK prevents a nonregular
+    // target from blocking before descriptor metadata can be validated.
     let file = OpenOptions::new()
         .create(true)
         .truncate(false)
         .read(true)
         .write(true)
         .mode(0o600)
+        .custom_flags(nix::libc::O_NOFOLLOW | nix::libc::O_NONBLOCK)
         .open(path)
         .with_context(|| "failed to open Environment token handoff lock")?;
     #[cfg(unix)]
     {
         let metadata = file.metadata()?;
-        if metadata.uid() != unsafe { nix::libc::geteuid() as u32 }
+        if !metadata.is_file()
+            || metadata.uid() != unsafe { nix::libc::geteuid() as u32 }
             || metadata.permissions().mode() & 0o777 != 0o600
         {
             bail!("Environment token handoff lock permissions are unsafe");
@@ -385,11 +419,15 @@ pub struct Worker {
     config: RunnerConfig,
     environment_token_handoff: TokenHandoff,
     #[cfg(test)]
+    legacy_agent_command: Option<TrustedCommand>,
+    #[cfg(test)]
     initial_input_probe: Option<Arc<supervisor_tests::InitialInputProbe>>,
     #[cfg(test)]
     agent_exit_probe: Option<Arc<AtomicBool>>,
     #[cfg(test)]
     final_read_window_probe: Option<Arc<AtomicBool>>,
+    #[cfg(test)]
+    exit_boundary_probe: Option<Arc<supervisor_tests::ExitBoundaryProbe>>,
 }
 
 #[derive(Debug, Clone)]
@@ -458,6 +496,91 @@ impl ExecutionFacts {
             agent_launched: false,
         }
     }
+
+    fn internal(claim: &ClaimResponse) -> Self {
+        let mut facts = Self::new(claim);
+        facts.failure = Some(ExecutionFailure::Internal);
+        facts
+    }
+
+    fn protocol<'a>(&'a self, claim: &'a ClaimResponse) -> ProtocolExecutionFacts<'a> {
+        ProtocolExecutionFacts {
+            run_id: &claim.run.run_id,
+            attempt: claim.attempt,
+            eligible: self.eligible,
+            submitted: self.submitted,
+            check_succeeded: self.check_succeeded,
+            planned_environment_teardown: self.planned_environment_teardown,
+            failure: self.failure.map(ExecutionFailure::protocol),
+        }
+    }
+
+    fn terminal_wire(&self) -> (&'static str, Option<TerminalFailureKind>) {
+        match self.failure {
+            Some(ExecutionFailure::Cancelled) => {
+                ("cancelled", Some(TerminalFailureKind::Cancelled))
+            }
+            Some(ExecutionFailure::TimedOut) => ("timed_out", Some(TerminalFailureKind::TimedOut)),
+            Some(ExecutionFailure::OutputLimitExceeded) => {
+                ("failed", Some(TerminalFailureKind::OutputLimitExceeded))
+            }
+            Some(ExecutionFailure::AgentExit) => ("failed", Some(TerminalFailureKind::AgentExit)),
+            Some(ExecutionFailure::Internal)
+            | Some(ExecutionFailure::InvalidEnvironmentReady)
+            | Some(ExecutionFailure::EnvironmentExit)
+            | Some(ExecutionFailure::MissingSubmission)
+            | Some(ExecutionFailure::LeaseRejected) => {
+                ("failed", Some(TerminalFailureKind::InternalFailure))
+            }
+            None if self.eligible
+                && self.submitted
+                && self.check_succeeded
+                && self.planned_environment_teardown =>
+            {
+                ("succeeded", None)
+            }
+            None => ("failed", Some(TerminalFailureKind::InternalFailure)),
+        }
+    }
+
+    #[cfg(test)]
+    fn from_legacy_outcome(claim: &ClaimResponse, outcome: &TerminalOutcome) -> Self {
+        let mut facts = Self::new(claim);
+        facts.failure = outcome.failure_kind().map(|kind| match kind {
+            TerminalFailureKind::Cancelled => ExecutionFailure::Cancelled,
+            TerminalFailureKind::TimedOut => ExecutionFailure::TimedOut,
+            TerminalFailureKind::OutputLimitExceeded => ExecutionFailure::OutputLimitExceeded,
+            TerminalFailureKind::AgentExit => ExecutionFailure::AgentExit,
+            TerminalFailureKind::ProviderFailure | TerminalFailureKind::InternalFailure => {
+                ExecutionFailure::Internal
+            }
+        });
+        facts.eligible = matches!(outcome.status, TerminalStatus::Succeeded);
+        facts.submitted = facts.eligible;
+        facts.check_succeeded = facts.eligible;
+        facts.planned_environment_teardown = facts.eligible;
+        facts.next_sequence = outcome.next_sequence;
+        facts.event_retries = 0;
+        facts
+    }
+}
+
+impl ExecutionFailure {
+    fn protocol(self) -> agentops_protocol::ExecutionFailure {
+        match self {
+            Self::InvalidEnvironmentReady => {
+                agentops_protocol::ExecutionFailure::InvalidEnvironmentReady
+            }
+            Self::EnvironmentExit => agentops_protocol::ExecutionFailure::EnvironmentExit,
+            Self::AgentExit => agentops_protocol::ExecutionFailure::AgentExit,
+            Self::MissingSubmission => agentops_protocol::ExecutionFailure::MissingSubmission,
+            Self::Cancelled => agentops_protocol::ExecutionFailure::Cancelled,
+            Self::TimedOut => agentops_protocol::ExecutionFailure::TimedOut,
+            Self::OutputLimitExceeded => agentops_protocol::ExecutionFailure::OutputLimitExceeded,
+            Self::LeaseRejected => agentops_protocol::ExecutionFailure::LeaseRejected,
+            Self::Internal => agentops_protocol::ExecutionFailure::Internal,
+        }
+    }
 }
 
 impl Worker {
@@ -470,11 +593,15 @@ impl Worker {
             )?,
             config,
             #[cfg(test)]
+            legacy_agent_command: None,
+            #[cfg(test)]
             initial_input_probe: None,
             #[cfg(test)]
             agent_exit_probe: None,
             #[cfg(test)]
             final_read_window_probe: None,
+            #[cfg(test)]
+            exit_boundary_probe: None,
         })
     }
 
@@ -516,14 +643,58 @@ impl Worker {
     }
 
     async fn execute_claim(&self, claim: ClaimResponse) -> Result<()> {
-        if claim.attempt == 0 || claim.next_sequence == 0 {
+        if !(1..=100).contains(&claim.attempt) || claim.next_sequence == 0 {
             bail!("claim recovery metadata must contain positive attempt and sequence");
         }
-        if claim.run.evaluation_spec.validate().is_err() {
-            let outcome = TerminalOutcome::internal_failure(claim.next_sequence, 0);
-            return self.finalize_terminal(&claim, outcome, 0, 0).await;
+
+        // The coupled Agent path is retained only behind a test seam so the
+        // detailed process-supervision regression suite can continue to use
+        // its tiny fake Agent. Production always resolves both children from
+        // trusted configuration/registry and uses the split Attempt path.
+        #[cfg(test)]
+        if self.legacy_agent_command.is_some() {
+            return self.execute_legacy_claim(claim).await;
         }
-        if claim.run.run_id != claim.run.evaluation_spec.run_id {
+
+        let registry = match AgentRegistry::from_env() {
+            Ok(registry) => registry,
+            Err(_) => {
+                let facts = ExecutionFacts::internal(&claim);
+                return self.complete_facts(&claim, facts).await;
+            }
+        };
+        let agent = match self.resolve_agent_command(&registry, &claim.run.evaluation_spec) {
+            Ok(mut command) => {
+                if let Some(workdir) = &self.config.agent_workdir {
+                    command.workdir = Some(workdir.clone());
+                }
+                command
+            }
+            Err(_) => {
+                let facts = ExecutionFacts::internal(&claim);
+                return self.complete_facts(&claim, facts).await;
+            }
+        };
+        let mut environment = TrustedCommand::new(
+            self.config.environment_program.clone(),
+            self.config.environment_args.clone(),
+        );
+        if let Some(workdir) = &self.config.environment_workdir {
+            environment.workdir = Some(workdir.clone());
+        }
+
+        let facts = match self.supervise_attempt(&claim, environment, agent).await {
+            Ok(facts) => facts,
+            Err(_) => ExecutionFacts::internal(&claim),
+        };
+        self.complete_facts(&claim, facts).await
+    }
+
+    #[cfg(test)]
+    async fn execute_legacy_claim(&self, claim: ClaimResponse) -> Result<()> {
+        if claim.run.evaluation_spec.validate().is_err()
+            || claim.run.run_id != claim.run.evaluation_spec.run_id
+        {
             let outcome = TerminalOutcome::internal_failure(claim.next_sequence, 0);
             return self.finalize_terminal(&claim, outcome, 0, 0).await;
         }
@@ -599,6 +770,7 @@ impl Worker {
             .await
     }
 
+    #[cfg(test)]
     async fn finalize_terminal(
         &self,
         claim: &ClaimResponse,
@@ -640,7 +812,8 @@ impl Worker {
             .await?,
         );
 
-        self.complete(
+        let execution = ExecutionFacts::from_legacy_outcome(claim, &outcome);
+        self.complete_request(
             claim,
             outcome.status(),
             outcome.failure_kind(),
@@ -650,6 +823,7 @@ impl Worker {
                 "total_output_bytes": total_output_bytes,
                 "event_retries": event_retries,
             }),
+            execution.protocol(claim),
         )
         .await
     }
@@ -664,16 +838,19 @@ impl Worker {
             .cleanup_after_terminal_ack(run_id)
     }
 
-    /// Additive H1-4 seam for production cutover: resolve a spec through the
-    /// operator registry before passing the resulting argv to supervision.
-    /// `AGENTOPS_AGENT_PROGRAM` remains the local break-glass command until
-    /// cutover; an explicit registry selection must take precedence then.
+    /// Resolve only operator-owned argv. An explicit registered Agent always
+    /// wins over the operator's local break-glass override.
     pub fn resolve_agent_command(
         &self,
         registry: &AgentRegistry,
         spec: &EvaluationSpec,
     ) -> Result<TrustedCommand> {
-        registry.resolve_spec(spec).map_err(anyhow::Error::msg)
+        let registered = registry.resolve_spec(spec).map_err(anyhow::Error::msg)?;
+        Ok(if spec.agent_id.is_none() {
+            self.config.agent_override.clone().unwrap_or(registered)
+        } else {
+            registered
+        })
     }
 
     /// Additive H1-3 seam: supervise one trusted Environment and Agent attempt.
@@ -694,7 +871,7 @@ impl Worker {
         // unless the claim is internally consistent and the spec is bounded.
         if claim.lease_id.trim().is_empty()
             || claim.run.run_id.trim().is_empty()
-            || claim.attempt == 0
+            || !(1..=100).contains(&claim.attempt)
             || claim.next_sequence == 0
             || claim.run.run_id != claim.run.evaluation_spec.run_id
             || claim.run.evaluation_spec.validate().is_err()
@@ -1074,6 +1251,10 @@ impl Worker {
             ));
         }
 
+        #[cfg(test)]
+        if let Some(probe) = &self.exit_boundary_probe {
+            environment_framer.prefix_consumed = Some(probe.prefix_consumed.clone());
+        }
         let mut agent_status = None;
         let mut environment_status = None;
         let mut local_failure = None;
@@ -1223,6 +1404,13 @@ impl Worker {
         // deadline. ADR-0002 requires cancellation, lease fencing, and deadline
         // observation to remain live while a final upload is pending.
         if local_failure.is_none() && agent_status.is_some() && environment_status.is_none() {
+            #[cfg(test)]
+            if let Some(probe) = &self.exit_boundary_probe {
+                // Test-only barrier: the reader retained a prefix and the
+                // supervisor observed Agent exit before any suffix is released.
+                probe.final_phase_entered.notify_one();
+                probe.resume_final_phase.notified().await;
+            }
             let final_read_deadline =
                 std::cmp::min(deadline, Instant::now() + Duration::from_millis(100));
             let mut final_read_open = true;
@@ -1379,6 +1567,11 @@ impl Worker {
                     Err(_) => local_failure = Some(ExecutionFailure::Internal),
                 }
             }
+        }
+        // ADR-0008: a cancelled read retains partial bytes. A submitted check
+        // cannot hide a trailing incomplete fact when the final window closes.
+        if local_failure.is_none() && !environment_framer.partial.is_empty() {
+            local_failure = Some(ExecutionFailure::EnvironmentExit);
         }
         // Once the bounded final-read opportunity and any pending upload or
         // heartbeat have resolved, perform one liveness check before planned
@@ -1557,6 +1750,7 @@ impl Worker {
         Ok(child)
     }
 
+    #[cfg(test)]
     async fn supervise<R: AsyncRead + Unpin>(
         &self,
         claim: &ClaimResponse,
@@ -1687,6 +1881,7 @@ impl Worker {
         }
     }
 
+    #[cfg(test)]
     async fn wait_for_exit(
         &self,
         claim: &ClaimResponse,
@@ -1742,10 +1937,29 @@ impl Worker {
         }
     }
 
+    #[cfg(test)]
     async fn spawn_agent(&self, spec: &EvaluationSpec) -> Result<Child> {
-        let mut command = Command::new(&self.config.agent_program);
-        command.args(&self.config.agent_args);
-        if let Some(workdir) = &self.config.agent_workdir {
+        let legacy = self
+            .legacy_agent_command
+            .as_ref()
+            .map(|command| (&command.program, &command.args, command.workdir.as_ref()));
+        let program = legacy
+            .as_ref()
+            .map_or(self.config.agent_program.as_str(), |(program, _, _)| {
+                program
+            });
+        let args = legacy
+            .as_ref()
+            .map_or(self.config.agent_args.as_slice(), |(_, args, _)| {
+                args.as_slice()
+            });
+        let workdir = legacy
+            .as_ref()
+            .and_then(|(_, _, workdir)| *workdir)
+            .or(self.config.agent_workdir.as_ref());
+        let mut command = Command::new(program);
+        command.args(args);
+        if let Some(workdir) = workdir {
             command.current_dir(workdir);
         }
         command
@@ -1866,13 +2080,37 @@ impl Worker {
         }
     }
 
-    async fn complete(
+    async fn complete_facts(&self, claim: &ClaimResponse, facts: ExecutionFacts) -> Result<()> {
+        let (status, failure_kind) = facts.terminal_wire();
+        self.complete_request(
+            claim,
+            status,
+            failure_kind,
+            json!({
+                "event_retries": facts.event_retries,
+                "first_sequence": facts.first_sequence,
+                "next_sequence": facts.next_sequence,
+            }),
+            facts.protocol(claim),
+        )
+        .await
+    }
+
+    async fn complete_request(
         &self,
         claim: &ClaimResponse,
         status: &str,
         failure_kind: Option<TerminalFailureKind>,
         metrics: Value,
+        execution: ProtocolExecutionFacts<'_>,
     ) -> Result<()> {
+        let request = CompleteRequest {
+            runner_id: &self.config.runner_id,
+            status,
+            failure_kind,
+            metrics,
+            execution,
+        };
         let deadline = Instant::now() + NETWORK_RETRY_WINDOW;
         loop {
             let result = self
@@ -1882,16 +2120,39 @@ impl Worker {
                     self.config.server_url, claim.lease_id
                 ))
                 .bearer_auth(&self.config.runner_token)
-                .json(&CompleteRequest {
-                    runner_id: &self.config.runner_id,
-                    status,
-                    failure_kind,
-                    metrics: metrics.clone(),
-                })
+                .json(&request)
                 .send()
                 .await;
             match result {
-                Ok(response) if response.status().is_success() => return Ok(()),
+                Ok(mut response) if response.status().is_success() => {
+                    // HTTP success alone is not authority to discard the Run
+                    // capability. Enforce the limit while receiving, including
+                    // chunked bodies without a trustworthy Content-Length.
+                    if response
+                        .content_length()
+                        .is_some_and(|length| length > MAX_COMPLETION_RESPONSE_BYTES as u64)
+                    {
+                        bail!("completion response exceeds the byte limit");
+                    }
+                    let mut body = Vec::new();
+                    loop {
+                        let chunk = timeout_at(deadline, response.chunk())
+                            .await
+                            .context("completion response deadline exceeded")?
+                            .context("completion response could not be read")?;
+                        let Some(chunk) = chunk else { break };
+                        if body.len().saturating_add(chunk.len()) > MAX_COMPLETION_RESPONSE_BYTES {
+                            bail!("completion response exceeds the byte limit");
+                        }
+                        body.extend_from_slice(&chunk);
+                    }
+                    let ack: CompletionResponse = serde_json::from_slice(&body)
+                        .context("completion response is not an authoritative wrapper")?;
+                    ack.validate_for(&claim.run.run_id, claim.attempt)
+                        .map_err(anyhow::Error::msg)?;
+                    self.cleanup_environment_token_after_terminal_ack(&claim.run.run_id)?;
+                    return Ok(());
+                }
                 Ok(response) if response.status().is_client_error() => {
                     bail!("completion rejected with {}", response.status());
                 }
@@ -1905,6 +2166,7 @@ impl Worker {
     }
 }
 
+#[cfg(test)]
 #[derive(Debug)]
 struct TerminalOutcome {
     status: TerminalStatus,
@@ -1912,6 +2174,7 @@ struct TerminalOutcome {
     stdout_bytes: usize,
 }
 
+#[cfg(test)]
 impl TerminalOutcome {
     fn success(next_sequence: u64, stdout_bytes: usize) -> Self {
         Self {
@@ -2000,6 +2263,7 @@ impl TerminalOutcome {
     }
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum TerminalStatus {
     Succeeded,
@@ -2008,12 +2272,14 @@ enum TerminalStatus {
     TimedOut,
 }
 
+#[cfg(test)]
 enum ExitSignal {
     Exited(std::io::Result<ExitStatus>),
     Heartbeat,
     Deadline,
 }
 
+#[cfg(test)]
 struct ExitContext {
     deadline: Instant,
     next_sequence: u64,
@@ -2021,6 +2287,7 @@ struct ExitContext {
     provider_failure_seen: bool,
 }
 
+#[cfg(test)]
 fn outcome_from_exit(
     status: ExitStatus,
     next_sequence: u64,
@@ -2036,6 +2303,7 @@ fn outcome_from_exit(
     }
 }
 
+#[cfg(test)]
 fn is_provider_failure_signal(event: &ChildEvent) -> bool {
     event.event_type == "process_output"
         && event
@@ -2254,6 +2522,8 @@ enum EnvironmentLine {
 struct BoundedJsonlReader {
     partial: Vec<u8>,
     line: Vec<u8>,
+    #[cfg(test)]
+    prefix_consumed: Option<Arc<tokio::sync::Notify>>,
 }
 
 impl BoundedJsonlReader {
@@ -2291,6 +2561,12 @@ impl BoundedJsonlReader {
 
             self.partial.extend_from_slice(&available[..requested]);
             reader.consume(requested);
+            #[cfg(test)]
+            if newline.is_none() {
+                if let Some(probe) = &self.prefix_consumed {
+                    probe.notify_one();
+                }
+            }
             if newline.is_some() {
                 self.line = std::mem::take(&mut self.partial);
                 return Ok(EnvironmentLine::Line(self.line.len()));
@@ -2299,12 +2575,14 @@ impl BoundedJsonlReader {
     }
 }
 
+#[cfg(test)]
 enum LineRead {
     Eof,
     Line(usize),
     TooLong(usize),
 }
 
+#[cfg(test)]
 async fn read_bounded_line<R: AsyncRead + Unpin>(
     reader: &mut BufReader<R>,
     buffer: &mut Vec<u8>,
@@ -2322,11 +2600,13 @@ async fn read_bounded_line<R: AsyncRead + Unpin>(
     }
 }
 
+#[cfg(test)]
 #[derive(Default)]
 struct StderrCapture {
     total_bytes: usize,
 }
 
+#[cfg(test)]
 async fn drain_stderr<R: AsyncRead + Unpin>(mut stderr: R) -> StderrCapture {
     let mut total_bytes = 0_usize;
     let mut chunk = [0_u8; 8 * 1024];
@@ -2340,6 +2620,7 @@ async fn drain_stderr<R: AsyncRead + Unpin>(mut stderr: R) -> StderrCapture {
     StderrCapture { total_bytes }
 }
 
+#[cfg(test)]
 async fn terminate_child(child: &mut Child) {
     #[cfg(unix)]
     if let Some(pid) = child.id() {
@@ -2368,7 +2649,7 @@ mod tests {
         std::env::remove_var("AGENTOPS_AGENT_ARGS");
         let config = RunnerConfig::from_env().unwrap();
         assert_eq!(config.agent_program, "python");
-        assert_eq!(config.agent_args, ["-m", "app.demo_agent"]);
+        assert_eq!(config.agent_args, ["-m", "app.fixture_agent"]);
     }
 
     #[test]
@@ -2601,6 +2882,70 @@ mod tests {
             "cleanup removed a mismatched record"
         );
         let _ = fs::remove_dir_all(directory);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn environment_token_handoff_rejects_lock_symlinks_for_acquire_and_cleanup() {
+        use std::os::unix::fs::symlink;
+
+        for capacity in [false, true] {
+            let directory = unique_test_handoff_directory("agentops-lock-symlink");
+            let handoff = TokenHandoff::new(Some(directory.clone())).unwrap();
+            drop(handoff.acquire("run-lock").unwrap());
+            let key = run_id_file_key("run-lock");
+            let record_path = directory.join(format!("{key}{ENV_TOKEN_RECORD_SUFFIX}"));
+            let record_before = fs::read(&record_path).unwrap();
+            let lock_path = directory.join(if capacity {
+                ".capacity.lock".to_string()
+            } else {
+                format!("{key}{ENV_TOKEN_LOCK_SUFFIX}")
+            });
+            fs::remove_file(&lock_path).unwrap();
+            let target = directory.join("untouched-target");
+            fs::write(&target, b"must not mutate").unwrap();
+            fs::set_permissions(&target, fs::Permissions::from_mode(0o600)).unwrap();
+            symlink(&target, &lock_path).unwrap();
+            let acquire_refused = handoff.acquire("run-lock").is_err();
+            let cleanup_refused = handoff.cleanup_after_terminal_ack("run-lock").is_err();
+            let target_unchanged = fs::read(&target).unwrap() == b"must not mutate";
+            let record_unchanged =
+                fs::read(&record_path).ok().as_deref() == Some(record_before.as_slice());
+
+            // A dangling symlink must not create a new file at its target.
+            fs::remove_file(&lock_path).unwrap();
+            let absent_target = directory.join("must-not-create");
+            symlink(&absent_target, &lock_path).unwrap();
+            let dangling_acquire_refused = handoff.acquire("run-lock").is_err();
+            let dangling_cleanup_refused = handoff.cleanup_after_terminal_ack("run-lock").is_err();
+            let target_absent = !absent_target.exists();
+            fs::remove_dir_all(directory).unwrap();
+            assert!(
+                acquire_refused && cleanup_refused,
+                "lock symlink accepted (capacity={capacity})"
+            );
+            assert!(
+                record_unchanged && target_unchanged,
+                "refused operation changed data"
+            );
+            assert!(dangling_acquire_refused && dangling_cleanup_refused && target_absent);
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn environment_token_handoff_rejects_nonregular_lock_descriptors() {
+        // /dev/null is readable/writable and can pass ownership/mode checks
+        // on some hosts, but is never a regular handoff lock file.
+        assert!(open_locked_file(Path::new("/dev/null")).is_err());
+        let directory = unique_test_handoff_directory("agentops-lock-fifo");
+        let path = directory.join("fifo.lock");
+        use std::os::unix::ffi::OsStrExt;
+        let c_path = std::ffi::CString::new(path.as_os_str().as_bytes()).unwrap();
+        assert_eq!(unsafe { nix::libc::mkfifo(c_path.as_ptr(), 0o600) }, 0);
+        let refused = open_locked_file(&path).is_err();
+        fs::remove_dir_all(directory).unwrap();
+        assert!(refused, "FIFO accepted as a lock file");
     }
 
     #[cfg(unix)]

@@ -23,8 +23,38 @@ def test_recovery_script_uses_checkout_scenario_task_contract() -> None:
     script = Path(__file__).parents[2] / "scripts" / "recovery_e2e.py"
     values = runpy.run_path(str(script))
     scenario_id = values["RECOVERY_SCENARIO_ID"]
-    assert scenario_id == "checkout-api-latency.v1"
+    assert scenario_id == "checkout-api-latency.v2"
     assert values["RECOVERY_TASK"] == require_scenario(scenario_id).metadata.default_task
+    from app.agent_registry import load_registry
+    root = Path(__file__).parents[2]
+    recovery_id = values["RECOVERY_AGENT_ID"]
+    assert recovery_id == "recovery-fixture.v1"
+    assert recovery_id not in load_registry(root / "config/agents.toml").by_id
+    registry = load_registry(root / "config/agents.recovery.toml")
+    assert registry.by_id[recovery_id].command == ("python", "-m", "app.recovery_agent")
+    from app.recovery_agent import MARKER
+    assert values["RECOVERY_MARKER"] == str(MARKER)
+    assert MARKER.parent == Path("/run/agentops/token-handoff")
+
+
+def test_recovery_gate_waits_for_agent_and_force_recreates_replacement(monkeypatch) -> None:
+    script = Path(__file__).parents[2] / "scripts" / "recovery_e2e.py"
+    values = runpy.run_path(str(script))
+    run_gate = values["run_recovery_test"]
+    calls = []
+    replies = iter([{"id": "experiment"}, {"id": "run"}, {"status": "running"}])
+    namespace = run_gate.__globals__
+    monkeypatch.setitem(namespace, "compose", lambda *args: calls.append(args))
+    monkeypatch.setitem(namespace, "wait_for_api", lambda *_: None)
+    monkeypatch.setitem(namespace, "wait_for_recovery_marker", lambda: calls.append(("marker-ready",)))
+    monkeypatch.setitem(namespace, "request", lambda *_args, **_kwargs: next(replies))
+    monkeypatch.setitem(namespace, "wait_for_status", lambda _api, _run, expected, _timeout: {"status": next(iter(expected))})
+    monkeypatch.setitem(namespace, "assert_recovered_trace", lambda *_: None)
+    monkeypatch.setattr(namespace["time"], "sleep", lambda _: None)
+    result = run_gate("http://local.invalid")
+    assert result["after_replacement"] == "succeeded"
+    assert calls.index(("marker-ready",)) < calls.index((True, "kill", "runner"))
+    assert calls[-1] == (True, "up", "-d", "--force-recreate", "runner")
 
 
 def test_recovery_stream_parser_preserves_sse_event_payloads() -> None:
@@ -41,38 +71,48 @@ def test_recovery_stream_parser_preserves_sse_event_payloads() -> None:
     ]
 
 
-def test_recovery_agent_trace_satisfies_checkout_assertions(tmp_path, monkeypatch, capsys) -> None:
+@pytest.mark.asyncio
+async def test_recovery_agent_trace_satisfies_checkout_assertions(tmp_path, monkeypatch, capsys) -> None:
     from app import recovery_agent
+    from app.env_server import EnvironmentSession
+    from app.fixture_agent import AgentSpec
+    from app.phase1_schemas import EvaluationSpec
 
     marker = tmp_path / "recovery-marker"
     marker.write_text("started\n", encoding="utf-8")
     monkeypatch.setattr(recovery_agent, "MARKER", marker)
-    monkeypatch.setattr("sys.stdin", io.StringIO())
+    events = []
+    session = EnvironmentSession(EvaluationSpec(
+        run_id="recovered-run", experiment_id="recovery-experiment",
+        scenario_id="checkout-api-latency.v2", task="Investigate checkout API latency",
+    ), "a" * 64, lambda kind, payload: events.append((kind, payload)))
+    calls = []
 
-    assert recovery_agent.main() == 0
-    events = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
-    step_events = [event for event in events if event["type"] == "step_completed"]
-    assert [event["payload"]["tool_call"]["name"] for event in step_events] == [
-        "check_service_health",
-        "query_service_metrics",
-        "fetch_service_logs",
-    ]
-    trajectory = {
-        "status": "success",
-        "steps": [
-            {
-                "index": event["payload"]["index"],
-                "action": event["payload"]["tool_call"],
-                "observation": event["payload"]["observation"],
-            }
-            for event in step_events
-        ],
-    }
-    report = analyze_trajectory(
-        trajectory,
-        assertion_suite=assertion_suite_for_scenario("checkout-api-latency.v1"),
-    )
+    class Client:
+        def __init__(self, *_args, **_kwargs):
+            pass
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *_args):
+            pass
+        async def call_tool(self, name, arguments):
+            calls.append(name)
+            result = await session.dispatch({"name": name, "arguments": arguments})
+            return result
+
+    monkeypatch.setattr(recovery_agent, "MCPAgentClient", Client)
+    spec = AgentSpec("Investigate checkout API latency", "checkout-api-latency.v2", 6, 60_000, False, {})
+    assert await recovery_agent.run(spec) == 0
+    assert capsys.readouterr().out == ""  # Agent never fabricates trusted stdout.
+    assert calls == ["check_service_health", "query_service_metrics", "fetch_service_logs", "submit_result"]
+    world = [payload for _, payload in events if payload["environment"]["kind"] == "world"]
+    trajectory = {"status": "success", "steps": [
+        {"index": payload["index"], "action": payload["tool_call"], "observation": payload["observation"]}
+        for payload in world
+    ]}
+    report = analyze_trajectory(trajectory, assertion_suite=assertion_suite_for_scenario("checkout-api-latency.v2"))
     assert "planning" not in report.dimensions
+    assert events[-1][1]["environment"]["final_check"]["scenario_id"] == "checkout-api-latency.v2"
 
 
 async def create_run(client: AsyncClient) -> dict:
@@ -81,7 +121,7 @@ async def create_run(client: AsyncClient) -> dict:
         json={
             "name": "Runner recovery",
             "task": "Investigate checkout API latency",
-            "scenario_id": "checkout-api-latency.v1",
+            "scenario_id": "checkout-api-latency.v2",
         },
     )
     assert experiment.status_code == 201

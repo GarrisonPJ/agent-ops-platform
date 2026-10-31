@@ -17,11 +17,12 @@ services:
 
   api:
     build:
-      context: ../../backend
-      dockerfile: Dockerfile
+      context: ../..
+      dockerfile: backend/Dockerfile
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-agentops}:${POSTGRES_PASSWORD:-agentops}@db:5432/${POSTGRES_DB:-agentops}
       RUNNER_TOKEN: ${RUNNER_TOKEN:?RUNNER_TOKEN must be set}
+      AGENTOPS_AGENT_REGISTRY: /app/config/agents.toml
       CORS_ORIGINS: http://localhost:${WEB_PORT:-5173}
     ports:
       - "${API_PORT:-8000}:8000"
@@ -41,12 +42,20 @@ services:
     environment:
       AGENTOPS_SERVER_URL: http://api:8000
       AGENTOPS_RUNNER_ID: compose-runner
+      AGENTOPS_ENVIRONMENT_PROGRAM: python
+      AGENTOPS_ENVIRONMENT_ARGS: '["-m","app.env_server"]'
+      AGENTOPS_ENVIRONMENT_WORKDIR: /workspace/backend
+      AGENTOPS_AGENT_REGISTRY: /etc/agentops/agents.toml
+      AGENTOPS_AGENT_WORKDIR: /workspace/backend
+      AGENTOPS_ENV_TOKEN_HANDOFF_DIR: /run/agentops/token-handoff
       RUNNER_TOKEN: ${RUNNER_TOKEN:?RUNNER_TOKEN must be set}
       AGENTOPS_PROVIDER_BASE_URL: ${AGENTOPS_PROVIDER_BASE_URL:-}
       AGENTOPS_PROVIDER_API_KEY: ${AGENTOPS_PROVIDER_API_KEY:-}
       AGENTOPS_PROVIDER_MODEL: ${AGENTOPS_PROVIDER_MODEL:-}
       AGENTOPS_PROVIDER_TIMEOUT_MS: ${AGENTOPS_PROVIDER_TIMEOUT_MS:-10000}
       AGENTOPS_PROVIDER_MAX_RETRIES: ${AGENTOPS_PROVIDER_MAX_RETRIES:-1}
+    volumes:
+      - phase1-token-handoff:/run/agentops/token-handoff
     depends_on:
       api:
         condition: service_healthy
@@ -65,3 +74,4 @@ services:
 
 volumes:
   phase1-pgdata:
+  phase1-token-handoff:

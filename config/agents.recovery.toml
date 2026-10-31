@@ -1,0 +1,21 @@
+# Operator-only registry for the deterministic recovery gate; not the default.
+[[agents]]
+id = "fixture-agent.v1"
+name = "Deterministic fixture agent"
+kind = "fixture"
+description = "Deterministic MCP agent for local Golden validation."
+command = ["python", "-m", "app.fixture_agent"]
+
+[[agents]]
+id = "reference-openai-compatible.v1"
+name = "OpenAI-compatible reference agent"
+kind = "reference"
+description = "MCP reference loop using Runner-side provider configuration."
+command = ["python", "-m", "app.reference_agent"]
+
+[[agents]]
+id = "recovery-fixture.v1"
+name = "Controlled recovery fixture"
+kind = "fixture"
+description = "Gate-only MCP agent that waits for the first Runner termination."
+command = ["python", "-m", "app.recovery_agent"]

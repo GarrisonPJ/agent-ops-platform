@@ -1,69 +1,56 @@
-"""Long-lived deterministic agent used by the real-stack recovery test."""
+"""Deterministic independent MCP Agent for the controlled Runner recovery gate.
+
+The operator-only recovery registry selects it; the first Attempt waits for fault
+injection and the replacement calls the real Environment through MCP.
+It never emits trusted events, imports CP/world logic, or decides Run success.
+Read scripts/recovery_e2e.py for the fencing and terminal-agreement assertions.
+"""
 
 from __future__ import annotations
 
-import json
+import asyncio
 import os
-import sys
-import time
 from pathlib import Path
 
+from app.fixture_agent import AgentInputError, AgentSpec, read_spec
+from app.mcp_agent_client import MCPAgentClient, MCPAgentError
 
-MARKER = Path(
-    os.getenv("AGENTOPS_RECOVERY_MARKER", "/tmp/agentops-recovery-marker")
+# Children receive only the Runner's explicit environment allowlist. Keep this
+# gate marker fixed instead of relying on an ambient variable being forwarded.
+# The gate-only marker must survive force-recreation, just like the Run token.
+# Its suffix is not a token record and it never contains a capability.
+MARKER = Path("/run/agentops/token-handoff/recovery-fixture.marker")
+TOOLS = (
+    ("check_service_health", {"service": "checkout-api"}),
+    ("query_service_metrics", {"service": "checkout-api", "metric": "dependency_latency"}),
+    ("fetch_service_logs", {"service": "checkout-api", "query": "payment dependency timeout"}),
 )
 
 
-def emit(event_type: str, payload: dict) -> None:
-    print(
-        json.dumps({"type": event_type, "payload": payload}, separators=(",", ":")),
-        flush=True,
-    )
+async def run(spec: AgentSpec) -> int:
+    if not MARKER.exists():
+        MARKER.write_text("started\n", encoding="utf-8")
+        await asyncio.sleep(60)
+        return 1
+    async with MCPAgentClient(
+        os.environ.get("AGENTOPS_ENV_MCP_URL", ""),
+        os.environ.get("AGENTOPS_ENV_TOKEN", ""),
+        timeout_seconds=spec.timeout_ms / 1000,
+    ) as client:
+        for name, arguments in TOOLS:
+            result = await client.call_tool(name, arguments)
+            if result.is_error:
+                return 1
+        result = await client.call_tool("submit_result", {})
+        return 1 if result.is_error else 0
 
 
 def main() -> int:
-    sys.stdin.read()
-    if not MARKER.exists():
-        MARKER.write_text("started\n", encoding="utf-8")
-        emit(
-            "process_output",
-            {"stream": "stdout", "content": "Waiting for Runner recovery"},
-        )
-        time.sleep(60)
+    try:
+        spec = read_spec()
+        return asyncio.run(asyncio.wait_for(run(spec), timeout=spec.timeout_ms / 1000))
+    except (AgentInputError, MCPAgentError, asyncio.TimeoutError):
         return 1
-
-    recovered_steps = (
-        (
-            "Establish whether the service is healthy before reading broad logs.",
-            "check_service_health",
-            {"service": "checkout-api"},
-            "Service is healthy but checkout latency is elevated.",
-        ),
-        (
-            "Use metrics to localize the latency bottleneck.",
-            "query_service_metrics",
-            {"service": "checkout-api", "metric": "dependency_latency"},
-            "Payment dependency p95 increased from 110ms to 1.8s.",
-        ),
-        (
-            "Fetch only the evidence-backed payment timeout logs.",
-            "fetch_service_logs",
-            {"service": "checkout-api", "query": "payment dependency timeout"},
-            "Requests are delayed by payment-gateway connection pool saturation.",
-        ),
-    )
-    for index, (summary, tool, arguments, observation) in enumerate(recovered_steps):
-        emit(
-            "step_completed",
-            {
-                "index": index,
-                "decision_summary": summary,
-                "tool_call": {"name": tool, "arguments": arguments},
-                "observation": observation,
-                "latency_ms": 1,
-            },
-        )
-    return 0
 
 
 if __name__ == "__main__":

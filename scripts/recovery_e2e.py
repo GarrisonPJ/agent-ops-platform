@@ -1,4 +1,9 @@
-"""Terminate a real Runner and verify lease recovery with a replacement."""
+"""Terminate a real Runner and verify lease recovery with a replacement.
+
+The isolated Compose gate selects an operator-owned recovery Agent registry.
+It preserves capability handoff until an authoritative terminal acknowledgement.
+Read backend/app/recovery_agent.py for the deterministic MCP fault fixture.
+"""
 
 from __future__ import annotations
 
@@ -17,8 +22,10 @@ BASE_COMPOSE = ROOT / "infra" / "docker" / "docker-compose.phase1.yml"
 RECOVERY_COMPOSE = ROOT / "infra" / "docker" / "docker-compose.phase1.recovery.yml"
 LEASE_SECONDS = 15
 TERMINAL_STATUSES = {"succeeded", "failed", "cancelled", "timed_out"}
-RECOVERY_SCENARIO_ID = "checkout-api-latency.v1"
+RECOVERY_SCENARIO_ID = "checkout-api-latency.v2"
 RECOVERY_TASK = "Investigate checkout API latency"
+RECOVERY_AGENT_ID = "recovery-fixture.v1"
+RECOVERY_MARKER = "/run/agentops/token-handoff/recovery-fixture.marker"
 
 
 def compose(recovery: bool, *args: str) -> None:
@@ -26,7 +33,18 @@ def compose(recovery: bool, *args: str) -> None:
     if recovery:
         command.extend(["-f", str(RECOVERY_COMPOSE)])
     command.extend(args)
-    subprocess.run(command, cwd=ROOT, check=True)
+    subprocess.run(command, cwd=ROOT, check=True, timeout=90)
+
+
+def wait_for_recovery_marker(timeout_seconds: float = 20) -> None:
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        try:
+            compose(True, "exec", "-T", "runner", "test", "-f", RECOVERY_MARKER)
+            return
+        except subprocess.CalledProcessError:
+            time.sleep(0.25)
+    raise TimeoutError("recovery Agent did not reach the fault injection marker")
 
 
 def request(api_url: str, method: str, path: str, body: dict | None = None) -> Any:
@@ -105,19 +123,27 @@ def assert_recovered_trace(api_url: str, run_id: str) -> None:
     if [event.get("payload", {}).get("attempt") for event in starts] != [1, 2]:
         raise AssertionError("recovered trace does not contain attempts 1 and 2")
 
-    steps = [event for event in events if event.get("type") == "step_completed"]
+    steps = [event for event in events if event.get("type") == "step_completed"
+             and event.get("payload", {}).get("environment", {}).get("kind") == "world"]
     if len(steps) != 3 or [event.get("payload", {}).get("index") for event in steps] != [0, 1, 2]:
         raise AssertionError("recovered trace does not contain the complete three-step trace")
     if any(event.get("payload", {}).get("attempt") != 2 for event in steps):
         raise AssertionError("recovered steps are not fenced to Attempt 2")
 
+    final_checks = [event for event in events
+                    if event.get("payload", {}).get("environment", {}).get("final_check") is not None]
+    if len(final_checks) != 1 or final_checks[0]["payload"].get("attempt") != 2:
+        raise AssertionError("recovered trace lacks one trusted Attempt 2 final check")
     completed = [event for event in events if event.get("type") == "run_completed"]
     if len(completed) != 1 or completed[0].get("payload", {}).get("attempt") != 2:
         raise AssertionError("recovered trace does not contain Attempt 2 completion")
 
 
 def run_recovery_test(api_url: str) -> dict:
-    compose(True, "up", "-d", "--force-recreate", "runner")
+    # API and Runner must select the same gate-only registration. A break-glass
+    # command cannot override an explicit agent_id materialized by the CP.
+    compose(True, "up", "-d", "--force-recreate", "api", "runner")
+    wait_for_api(api_url)
     compose(
         True,
         "exec",
@@ -125,7 +151,7 @@ def run_recovery_test(api_url: str) -> dict:
         "runner",
         "rm",
         "-f",
-        "/tmp/agentops-recovery-marker",
+        RECOVERY_MARKER,
     )
 
     experiment = request(
@@ -138,6 +164,7 @@ def run_recovery_test(api_url: str) -> dict:
             # keep the task aligned with the Scenario's scoring contract.
             "task": RECOVERY_TASK,
             "scenario_id": RECOVERY_SCENARIO_ID,
+            "agent_id": RECOVERY_AGENT_ID,
         },
     )
     run = request(
@@ -148,6 +175,7 @@ def run_recovery_test(api_url: str) -> dict:
     )
     run_id = run["id"]
     first_state = wait_for_status(api_url, run_id, {"running"}, 20)
+    wait_for_recovery_marker()
 
     compose(True, "kill", "runner")
     time.sleep(LEASE_SECONDS + 2)
@@ -155,7 +183,7 @@ def run_recovery_test(api_url: str) -> dict:
     if stranded["status"] in TERMINAL_STATUSES:
         raise AssertionError(f"run completed before fault injection: {stranded['status']}")
 
-    compose(True, "up", "-d", "runner")
+    compose(True, "up", "-d", "--force-recreate", "runner")
     final_state = wait_for_status(api_url, run_id, {"succeeded"}, 45)
     assert_recovered_trace(api_url, run_id)
     return {
@@ -173,7 +201,7 @@ def main() -> None:
     try:
         print(json.dumps(run_recovery_test(args.api_url), indent=2))
     finally:
-        compose(False, "up", "-d", "--force-recreate", "runner")
+        compose(False, "up", "-d", "--force-recreate", "api", "runner")
 
 
 if __name__ == "__main__":

@@ -383,6 +383,34 @@ pub enum TerminalFailureKind {
     InternalFailure,
 }
 
+/// Controlled execution facts supplied by the Runner to the Control Plane.
+/// These are observations, not a terminal-status or scoring authority.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ExecutionFailure {
+    InvalidEnvironmentReady,
+    EnvironmentExit,
+    AgentExit,
+    MissingSubmission,
+    Cancelled,
+    TimedOut,
+    OutputLimitExceeded,
+    LeaseRejected,
+    Internal,
+}
+
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct ExecutionFacts<'a> {
+    pub run_id: &'a str,
+    pub attempt: u32,
+    pub eligible: bool,
+    pub submitted: bool,
+    pub check_succeeded: bool,
+    pub planned_environment_teardown: bool,
+    pub failure: Option<ExecutionFailure>,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct EventBatchRequest<'a> {
@@ -405,6 +433,79 @@ pub struct CompleteRequest<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub failure_kind: Option<TerminalFailureKind>,
     pub metrics: Value,
+    pub execution: ExecutionFacts<'a>,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum CompletionStatus {
+    Succeeded,
+    Failed,
+    Cancelled,
+    TimedOut,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct RunResponse {
+    pub id: String,
+    pub experiment_id: String,
+    pub kind: String,
+    pub source_run_id: Option<String>,
+    pub policy_id: Option<String>,
+    pub regression_case_id: Option<String>,
+    pub status: CompletionStatus,
+    pub score: Option<f64>,
+    pub metrics: Value,
+    pub evaluation_spec: EvaluationSpec,
+    pub error: Option<String>,
+    pub queued_at: String,
+    pub started_at: Option<String>,
+    pub completed_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+#[serde(deny_unknown_fields)]
+pub struct CompletionResponse {
+    pub run_id: String,
+    pub attempt: u32,
+    pub terminal_sequence: u64,
+    pub status: CompletionStatus,
+    pub run: RunResponse,
+}
+
+impl CompletionResponse {
+    pub fn validate_for(&self, expected_run_id: &str, expected_attempt: u32) -> Result<(), String> {
+        if expected_run_id.trim().is_empty() || !(1..=100).contains(&expected_attempt) {
+            return Err("completion expectation is invalid".into());
+        }
+        if self.run_id != expected_run_id {
+            return Err("completion run_id does not match the claimed Run".into());
+        }
+        if self.attempt != expected_attempt {
+            return Err("completion attempt does not match the claimed Attempt".into());
+        }
+        if self.terminal_sequence == 0 {
+            return Err("completion terminal_sequence must be positive".into());
+        }
+        if self.run.id != self.run_id {
+            return Err("completion Run identity does not match run_id".into());
+        }
+        if self.run.status != self.status {
+            return Err("completion status does not match Run status".into());
+        }
+        if !matches!(self.run.kind.as_str(), "baseline" | "replay") {
+            return Err("completion Run kind is invalid".into());
+        }
+        if !self.run.metrics.is_object() {
+            return Err("completion Run metrics must be an object".into());
+        }
+        self.run.evaluation_spec.validate()?;
+        if self.run.evaluation_spec.run_id != self.run_id {
+            return Err("completion EvaluationSpec identity does not match Run".into());
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -417,7 +518,7 @@ mod tests {
             schema_version: SCHEMA_VERSION,
             run_id: "run-1".into(),
             experiment_id: "experiment-1".into(),
-            scenario_id: "checkout-api-latency.v1".into(),
+            scenario_id: "checkout-api-latency.v2".into(),
             agent_id: None,
             task: "Investigate checkout latency".into(),
             seed: 42,
@@ -586,6 +687,7 @@ mod tests {
             status: "failed",
             failure_kind: Some(TerminalFailureKind::AgentExit),
             metrics: json_object(),
+            execution: execution_facts("run-1", Some(ExecutionFailure::AgentExit)),
         };
         let json = serde_json::to_value(request).unwrap();
         assert_eq!(json["failure_kind"], "agent_exit");
@@ -599,6 +701,15 @@ mod tests {
             "status": "failed",
             "failure_kind": "internal_failure",
             "metrics": {},
+            "execution": {
+                "run_id": "run-1",
+                "attempt": 1,
+                "eligible": false,
+                "submitted": false,
+                "check_succeeded": false,
+                "planned_environment_teardown": false,
+                "failure": "internal"
+            }
         }))
         .unwrap();
         let request: CompleteRequest<'_> = serde_json::from_str(&encoded).unwrap();
@@ -612,6 +723,15 @@ mod tests {
             "status": "failed",
             "error": "UNIQUE_LEGACY_ERROR_ATTACK",
             "metrics": {},
+            "execution": {
+                "run_id": "run-1",
+                "attempt": 1,
+                "eligible": false,
+                "submitted": false,
+                "check_succeeded": false,
+                "planned_environment_teardown": false,
+                "failure": "internal"
+            }
         }))
         .unwrap();
         assert!(serde_json::from_str::<CompleteRequest<'_>>(&legacy).is_err());
@@ -624,6 +744,7 @@ mod tests {
             status: "succeeded",
             failure_kind: None,
             metrics: json_object(),
+            execution: execution_facts("run-1", None),
         };
         let json = serde_json::to_value(request).unwrap();
         assert_eq!(json["status"], "succeeded");
@@ -648,6 +769,21 @@ mod tests {
             payload: json_object(),
         };
         assert!(child.validate().unwrap_err().contains("not allowed"));
+    }
+
+    fn execution_facts<'a>(
+        run_id: &'a str,
+        failure: Option<ExecutionFailure>,
+    ) -> ExecutionFacts<'a> {
+        ExecutionFacts {
+            run_id,
+            attempt: 1,
+            eligible: failure.is_none(),
+            submitted: failure.is_none(),
+            check_succeeded: failure.is_none(),
+            planned_environment_teardown: failure.is_none(),
+            failure,
+        }
     }
 
     fn json_object() -> Value {

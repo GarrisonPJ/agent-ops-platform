@@ -18,6 +18,8 @@ use super::{ExecutionFailure, RunnerConfig, TrustedCommand, Worker, MAX_LINE_BYT
 
 struct ServerState {
     completed: Mutex<Vec<Value>>,
+    completion_body: Mutex<Option<String>>,
+    chunked_completion: AtomicBool,
     events: Mutex<Vec<Value>>,
     accepted_events: Mutex<Vec<Value>>,
     event_attempts: AtomicUsize,
@@ -45,6 +47,8 @@ impl TestServer {
         let address = listener.local_addr().unwrap();
         let state = Arc::new(ServerState {
             completed: Mutex::new(Vec::new()),
+            completion_body: Mutex::new(None),
+            chunked_completion: AtomicBool::new(false),
             events: Mutex::new(Vec::new()),
             accepted_events: Mutex::new(Vec::new()),
             event_attempts: AtomicUsize::new(0),
@@ -251,15 +255,40 @@ async fn handle_request(mut stream: TcpStream, state: Arc<ServerState>) -> std::
         )
     } else if path.ends_with("/complete") {
         let parsed = serde_json::from_slice(body).unwrap_or(Value::Null);
+        let status = parsed
+            .get("status")
+            .and_then(Value::as_str)
+            .unwrap_or("failed")
+            .to_string();
+        let attempt = parsed
+            .get("execution")
+            .and_then(|execution| execution.get("attempt"))
+            .and_then(Value::as_u64)
+            .unwrap_or(1);
         state.completed.lock().await.push(parsed);
-        ("200 OK", "{}".to_string())
+        let response = completion_ack(&status, attempt);
+        let body = state
+            .completion_body
+            .lock()
+            .await
+            .clone()
+            .unwrap_or_else(|| response.to_string());
+        ("200 OK", body)
     } else {
         ("404 Not Found", "{}".to_string())
     };
-    let response = format!(
-        "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{response}",
-        response.len()
-    );
+    let response = if path.ends_with("/complete") && state.chunked_completion.load(Ordering::SeqCst)
+    {
+        format!(
+            "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n{:x}\r\n{response}\r\n0\r\n\r\n",
+            response.len()
+        )
+    } else {
+        format!(
+            "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{response}",
+            response.len()
+        )
+    };
     stream.write_all(response.as_bytes()).await?;
     stream.shutdown().await?;
     if let Some(parsed) = accepted_event {
@@ -274,16 +303,69 @@ async fn handle_request(mut stream: TcpStream, state: Arc<ServerState>) -> std::
     Ok(())
 }
 
+fn completion_ack(status: &str, attempt: u64) -> Value {
+    json!({
+        "run_id": "run-1",
+        "attempt": attempt,
+        "terminal_sequence": 2,
+        "status": status,
+        "run": {
+            "id": "run-1",
+            "experiment_id": "experiment-1",
+            "kind": "baseline",
+            "source_run_id": null,
+            "policy_id": null,
+            "regression_case_id": null,
+            "status": status,
+            "score": null,
+            "metrics": {},
+            "evaluation_spec": {
+                "schema_version": 1,
+                "run_id": "run-1",
+                "experiment_id": "experiment-1",
+                "scenario_id": "checkout-api-latency.v2",
+                "task": "Investigate checkout latency",
+                "seed": 42,
+                "execution_mode": "fixture",
+                "policy": null,
+                "limits": {"timeout_ms": 10000, "max_output_bytes": 1048576},
+                "scenario_params": {}
+            },
+            "error": null,
+            "queued_at": "2026-07-16T00:00:00Z",
+            "started_at": "2026-07-16T00:00:00Z",
+            "completed_at": "2026-07-16T00:00:00Z"
+        }
+    })
+}
+
+#[path = "completion_tests.rs"]
+mod completion_tests;
+#[path = "exit_boundary_tests.rs"]
+mod exit_boundary_tests;
+pub(super) use exit_boundary_tests::ExitBoundaryProbe;
+
 fn worker(server: &TestServer, python_code: String) -> Worker {
     Worker::new(RunnerConfig {
         server_url: server.url.clone(),
         runner_token: "test-token".into(),
         runner_id: "test-runner".into(),
         agent_program: "/usr/bin/python3".into(),
-        agent_args: vec!["-c".into(), python_code],
+        agent_args: vec!["-c".into(), python_code.clone()],
         agent_workdir: None,
+        agent_override: None,
+        environment_workdir: None,
+        environment_program: "/usr/bin/python3".into(),
+        environment_args: vec!["-c".into(), "pass".into()],
         poll_interval: Duration::from_millis(10),
         environment_token_handoff_dir: Some(test_handoff_dir("worker")),
+    })
+    .map(|mut worker| {
+        worker.legacy_agent_command = Some(TrustedCommand::new(
+            "/usr/bin/python3",
+            vec!["-c".to_string(), python_code],
+        ));
+        worker
     })
     .unwrap()
 }
@@ -293,7 +375,7 @@ fn claim(timeout_ms: u64) -> ClaimResponse {
         schema_version: SCHEMA_VERSION,
         run_id: "run-1".into(),
         experiment_id: "experiment-1".into(),
-        scenario_id: "checkout-api-latency.v1".into(),
+        scenario_id: "checkout-api-latency.v2".into(),
         agent_id: None,
         task: "Investigate checkout latency".into(),
         seed: 42,
@@ -539,6 +621,10 @@ async fn broken_pipe_while_writing_agent_input_terminates_process_group() {
         agent_program: "/usr/bin/python3".into(),
         agent_args: vec!["-c".into(), code],
         agent_workdir: None,
+        agent_override: None,
+        environment_workdir: None,
+        environment_program: "/usr/bin/python3".into(),
+        environment_args: vec!["-c".into(), "pass".into()],
         poll_interval: Duration::from_millis(10),
         environment_token_handoff_dir: Some(test_handoff_dir("broken-pipe")),
     })
@@ -1144,44 +1230,15 @@ pathlib.Path({:?}).write_text(str(os.getpid()))
     let _ = std::fs::remove_file(&release_marker);
 }
 
+#[cfg(target_os = "linux")]
 #[tokio::test]
 async fn dual_supervision_reconstructs_environment_line_across_agent_exit_boundary() {
-    let server = TestServer::start("continue", 0).await;
-    let prefix_marker = pid_file("framing-prefix");
-    let release_marker = pid_file("framing-release");
-    let _ = std::fs::remove_file(&prefix_marker);
-    let _ = std::fs::remove_file(&release_marker);
-    let env_code = r#"
-import json, os
-print(json.dumps({"type":"env_ready", "payload":{"mcp_url":"http://127.0.0.1:43126/mcp"}}), flush=True)
-print('{"type":"step_completed","payload":{"environment":{"kind":"world","result":"', end='', flush=True)
-open(__PREFIX__, 'w').close()
-while not os.path.exists(__RELEASE__):
-    pass
-print('ok"}}}', flush=True)
-while True:
-    pass
-"#
-    .replace("__PREFIX__", &format!("{prefix_marker:?}"))
-    .replace("__RELEASE__", &format!("{release_marker:?}"));
-    let agent_code =
-        format!("import pathlib; pathlib.Path({release_marker:?}).write_text('released')",);
-    let outcome = worker(&server, "pass".to_string())
-        .supervise_attempt(
-            &claim(10_000),
-            TrustedCommand::new("/usr/bin/python3", vec!["-c".to_string(), env_code]),
-            TrustedCommand::new("/usr/bin/python3", vec!["-c".to_string(), agent_code]),
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(outcome.failure, Some(ExecutionFailure::MissingSubmission));
-    let events = server.state.events.lock().await;
-    let uploaded = serde_json::to_string(&*events).unwrap();
-    assert!(uploaded.contains(r#""result":"ok""#));
-    assert!(!uploaded.contains("framing-prefix"));
-    let _ = std::fs::remove_file(prefix_marker);
-    let _ = std::fs::remove_file(release_marker);
+    exit_boundary_tests::check_exit_boundary(
+        "world-only",
+        Some(ExecutionFailure::MissingSubmission),
+        1,
+    )
+    .await;
 }
 
 #[tokio::test]
