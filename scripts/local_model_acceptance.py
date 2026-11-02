@@ -1,4 +1,4 @@
-"""Capture opt-in reference-Agent Runs through an already configured local stack.
+"""Capture opt-in provider-backed Agent Runs through an already configured local stack.
 
 The operator starts CP/PostgreSQL/Runner; this script calls only the product API.
 It never supplies Provider settings, repairs model output, or treats capture as task success.
@@ -34,6 +34,8 @@ CASES = {
     ),
 }
 TERMINAL = {"succeeded", "failed", "timed_out", "cancelled"}
+# Registered provider-backed Agents; pi needs config/agents.external.toml (H2-1).
+AGENTS = ("reference-openai-compatible.v1", "pi-coding-agent.v1")
 
 
 def validate_capture(run: dict, events: list[dict], analysis: dict) -> dict:
@@ -73,7 +75,8 @@ def validate_capture(run: dict, events: list[dict], analysis: dict) -> dict:
     }
 
 
-def capture(api_url: str, scenario: str, output: Path, timeout_seconds: float) -> dict:
+def capture(api_url: str, scenario: str, output: Path, timeout_seconds: float,
+            agent_id: str = AGENTS[0]) -> dict:
     # Bypass proxy env for the explicitly selected local product API. No Provider
     # credential or configuration ever enters the Experiment request.
     http = urllib.request.build_opener(urllib.request.ProxyHandler({}))
@@ -91,9 +94,9 @@ def capture(api_url: str, scenario: str, output: Path, timeout_seconds: float) -
     output.mkdir(mode=0o700)
     task, params = CASES[scenario]
     experiment = json.loads(request("/api/experiments", {
-        "name": "Local model acceptance: " + scenario, "task": task,
+        "name": f"Local model acceptance: {scenario} / {agent_id}", "task": task,
         "scenario_id": scenario, "scenario_params": params,
-        "execution_mode": "provider", "agent_id": "reference-openai-compatible.v1",
+        "execution_mode": "provider", "agent_id": agent_id,
     }))
     save("experiment.json", experiment)
     run = json.loads(request("/api/experiments/" + experiment["id"] + "/runs", {}))
@@ -114,7 +117,7 @@ def capture(api_url: str, scenario: str, output: Path, timeout_seconds: float) -
     stream = request("/api/runs/" + rid + "/stream?after=0").decode()
     (output/"events.sse").write_text(stream)
     events = [json.loads(line[6:]) for line in stream.splitlines() if line.startswith("data: ")]
-    result = validate_capture(run, events, analysis)
+    result = validate_capture(run, events, analysis) | {"agent_id": agent_id}
     save("summary.json", result)
     return result
 
@@ -126,6 +129,7 @@ def main() -> int:
     parser.add_argument("--output-directory", type=Path, required=True, help="Absent directory; parent must exist")
     parser.add_argument("--timeout-seconds", type=float, default=90)
     parser.add_argument("--require-success", action="store_true", help="Exit nonzero if any selected task fails")
+    parser.add_argument("--agent-id", choices=AGENTS, default=AGENTS[0])
     args = parser.parse_args()
     url = urlparse(args.api_url)
     if url.scheme != "http" or url.hostname not in {"127.0.0.1", "localhost", "::1"} or url.username or url.password or url.query or url.fragment or url.path not in {"", "/"}:
@@ -136,7 +140,8 @@ def main() -> int:
     if args.output_directory.stat().st_mode & 0o077:
         parser.error("--output-directory must have owner-only permissions")
     scenarios = list(dict.fromkeys(args.scenario or ["multi-step-research.v2"]))
-    results = [capture(args.api_url, scenario, args.output_directory/scenario, args.timeout_seconds) for scenario in scenarios]
+    results = [capture(args.api_url, scenario, args.output_directory/scenario, args.timeout_seconds, args.agent_id)
+               for scenario in scenarios]
     summary = {"capture_completed": True, "all_tasks_succeeded": all(r["status"] == "succeeded" for r in results), "runs": results}
     (args.output_directory/"summary.json").write_text(json.dumps(summary, indent=2) + "\n")
     print(json.dumps(summary, indent=2))

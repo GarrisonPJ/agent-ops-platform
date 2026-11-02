@@ -70,3 +70,12 @@ def test_inconsistent_success_fails_closed(fault):
     if fault == "check": events[1]["payload"]["environment"]["check_called"] = False
     if fault == "aggregate": run["metrics"]["assertions"]["aggregate"] = 0.8
     with pytest.raises(ValueError): module.validate_capture(run, events, analysis)
+
+
+def test_agent_choices_are_registered_provider_agents_only():
+    # H2-1 compares the reference loop with pi on the same local model.
+    assert module.AGENTS == ("reference-openai-compatible.v1", "pi-coding-agent.v1")
+    import subprocess, sys
+    result = subprocess.run([sys.executable, module.__file__, "--output-directory", "/nonexistent/x",
+                             "--agent-id", "fixture-agent.v1"], capture_output=True, timeout=10)
+    assert result.returncode == 2 and b"invalid choice" in result.stderr
