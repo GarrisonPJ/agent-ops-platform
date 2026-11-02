@@ -6,6 +6,8 @@
   Decision acceptance is distinct from final delivery acceptance.
 - Amended: 2026-10-24 by [ADR-0012](0012-h1-canonical-cutover-and-control-plane-success.md)
   (authoritative success, trusted evidence, and terminal agreement).
+- Amended: 2026-11-02 for H2 — `submit_result` is discoverable;
+  `report_usage` stays hidden.
 - Depends on: [ADR-0007](0007-environment-agent-split.md)
 - Amends: [ADR-0001](0001-python-control-plane-rust-execution-plane.md) (one
   child process becomes two when H1 ships)
@@ -104,6 +106,28 @@ model. H1-5 separately records finite direct llama.cpp acceptance against an
 already installed endpoint; research/order succeeded and checkout/fault failures
 remain failures. This is not evidence of Ollama/vLLM compatibility, accuracy,
 stable pass rate or public deployment.
+
+## H2 amendment: discoverable submission
+
+External Agents such as pi call only the tools that `tools/list` returns. With
+both controls hidden, an external Agent can never submit, so every Run would
+fail for lack of a valid submission. Submitting for the Agent after it exits is
+not allowed, because explicit submission is part of what is being evaluated.
+
+`tools/list` therefore returns the world's `tool_definitions()` followed by
+`submit_result`, with an empty-object input schema and a description that says
+to call it exactly once when the task is complete. `report_usage` stays out of
+discovery. Only an Agent that holds real provider usage calls it. Listing it
+would invite a model to invent numbers that ADR-0013 treats as Agent-reported
+diagnostic evidence.
+
+Dispatch, capture, `max_steps`, finalization and scoring are unchanged. Controls
+are still excluded from world attempts and trajectory assertions. The in-repo
+client requires exactly one listed `submit_result` with that schema, rejects a
+listed `report_usage`, and keeps its own control definitions, so the tools the
+fixture and reference Agents give to a model are unchanged. No Environment
+version changes, because world tools, observations, assertions and scoring are
+the same.
 
 ## Consequences
 

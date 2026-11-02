@@ -335,8 +335,8 @@ async def test_env_server_http_auth_origin_size_hidden_controls_and_raw_invalid_
             listed = await rpc(client, "tools/list")
             assert listed.status_code == 200, listed.text
             names = {tool["name"] for tool in listed.json()["result"]["tools"]}
-            assert names == session.names
-            assert not names.intersection({"submit_result", "report_usage"})
+            assert names == session.names | {"submit_result"}
+            assert "report_usage" not in names
             for params in [
                 HEALTH,
                 {"name": "check_service_health", "arguments": []},
@@ -494,7 +494,15 @@ async def test_env_server_sdk_client_tools_and_direct_controls(mode):
     session, output = make_session()
     async with Client(EnvironmentMCPServer(session), mode=mode) as client:
         listed = await client.list_tools()
-        assert {tool.name for tool in listed.tools} == session.names
+        # Only submit_result is discoverable; report_usage stays a direct call.
+        assert [tool.name for tool in listed.tools][-1] == "submit_result"
+        assert {tool.name for tool in listed.tools} == session.names | {"submit_result"}
+        submit = listed.tools[-1]
+        assert submit.input_schema == {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": False,
+        }
         assert not (
             await client.call_tool(HEALTH["name"], HEALTH["arguments"])
         ).is_error

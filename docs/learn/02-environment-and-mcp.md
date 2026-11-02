@@ -39,8 +39,13 @@ Host/Origin 检查，非 loopback Host/Origin 被拒绝；单个 body 最多 16,
 
 ## 工具与一次捕获
 
-`EnvironmentMCPServer.list_tools` 只列出 `Environment.tool_definitions()`。
-两个 reserved controls 不出现在正常 discovery 中，但认证后的 MCP `tools/call` 可以调用：
+`EnvironmentMCPServer.list_tools` 列出 `Environment.tool_definitions()`，末尾再加
+`SUBMIT_TOOL`（`submit_result`，空参数 schema）。外部 Agent 只能调用 discovery 里出现的工具，
+所以 [ADR-0008](../adr/0008-environment-mcp-server-and-env-side-capture.md) H2 修订让它可见；
+`report_usage` 仍不出现在 discovery 中，免得模型凭空编造 usage。`MCPAgentClient` 要求恰好一个
+空参数 `submit_result`、拒绝出现 `report_usage`，并继续使用自己的 control 定义，因此
+fixture/reference Agent 交给模型的工具集不变。两个 reserved controls 都由认证后的 MCP
+`tools/call` 调用：
 
 - `submit_result`：arguments 必须为空对象。世界只执行一次 `check()` 并冻结；
   不把 check 的 evaluation、score、expected values 或 Run status 持久化为裁决。

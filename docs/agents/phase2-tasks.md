@@ -166,7 +166,7 @@ H0 剩余只有 H0-1 的 GitHub 点击和 H0-2 的命名。命名未定不阻塞
 ### H2-1 pi 适配器（必须）
 
 - Status: `ready-for-agent`（未来任务；仍需另行授权，本轮不启动）
-- 前置：先修订 ADR-0008 的控制工具发现。当前 `env_server` 的 `tools/list` 不列 `submit_result`/`report_usage`，内置 Agent 在客户端自行补齐；pi 只能调用发现到的工具，不修订就永远无法有效 submit。不允许适配器在 pi 退出后代为 submit。
+- 前置（已完成，ADR-0008 H2 修订）：`env_server` 的 `tools/list` 现在列出空参数 `submit_result`，`report_usage` 仍不可发现；`MCPAgentClient` 要求恰好一个 `submit_result` 并保留自己的 control 定义。pi 只能调用发现到的工具；不允许适配器在 pi 退出后代为 submit。
 - 注册 `pi-coding-agent.v1`（kind `external`）。适配器是薄 Python 模块，为每个 Run 生成私有 `PI_CODING_AGENT_DIR`：
   - `mcp.json`：一个 streamable-HTTP server 指向 `AGENTOPS_ENV_MCP_URL`，`exposure: "direct"`，`Authorization` header 写成 `Bearer ${AGENTOPS_ENV_TOKEN}` 插值；token 不进 argv，也不落盘。
   - `models.json`：`api: "openai-completions"`，`baseUrl` 与模型取自 `AGENTOPS_PROVIDER_*`，`apiKey` 写成 `$AGENTOPS_PROVIDER_API_KEY` 插值。生成参数尽量与参考 agent 一致，映射不了的写明。

@@ -36,6 +36,7 @@ from app.phase1_provider import ProviderError, ProviderResponse, ProviderToolCal
 
 ROOT = Path(__file__).resolve().parents[1]
 TOKEN = "a" * 64
+SUBMIT_SCHEMA = mcp_agent_client.CONTROL_TOOLS["submit_result"]["function"]["parameters"]
 
 
 def test_loopback_endpoint_and_token_fail_closed() -> None:
@@ -181,7 +182,7 @@ async def test_reference_reserves_submit_regression(monkeypatch, max_steps) -> N
 @pytest.fixture
 def transport(monkeypatch):
     state = SimpleNamespace(exits=[], entered=[], kwargs={}, block=None, fail=None,
-                            cursor=None, error=False, names=["world"], called=[])
+                            cursor=None, error=False, names=["world", "submit_result"], called=[], schemas={})
 
     class HTTP:
         def __init__(self, **kwargs): state.kwargs = kwargs
@@ -215,7 +216,7 @@ def transport(monkeypatch):
         async def initialize(self): await self.stage("initialize")
         async def list_tools(self):
             await self.stage("discovery")
-            return types.ListToolsResult(tools=[types.Tool(name=n, input_schema={"type": "object"}) for n in state.names], next_cursor=state.cursor)
+            return types.ListToolsResult(tools=[types.Tool(name=n, input_schema=state.schemas.get(n, SUBMIT_SCHEMA if n == "submit_result" else {"type": "object"})) for n in state.names], next_cursor=state.cursor)
         async def call_tool(self, name, arguments):
             await self.stage("call")
             state.called.append((name, arguments))
@@ -273,17 +274,38 @@ async def test_sdk_raw_diagnostics_never_reach_drains(transport, stage, capsys, 
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("names,cursor", [(["world"], "page2"), (["world"], ""),
-                                            (["world", "world"], None),
-                                            (["submit_result"], None),
-                                            (["report_usage"], None),
-                                            ([f"tool{i}" for i in range(65)], None)])
+@pytest.mark.parametrize("names,cursor", [(["world", "submit_result"], "page2"),
+                                            (["world", "submit_result"], ""),
+                                            (["world", "world", "submit_result"], None),
+                                            (["world"], None),
+                                            (["world", "submit_result", "submit_result"], None),
+                                            (["world", "submit_result", "report_usage"], None),
+                                            ([f"tool{i}" for i in range(65)] + ["submit_result"], None)])
 async def test_discovery_rejects_partial_duplicate_reserved_excess_tools(transport, names, cursor):
     transport.names, transport.cursor = names, cursor
     with pytest.raises(MCPAgentError, match="MCP_DISCOVERY_INVALID"):
         async with MCPAgentClient("http://127.0.0.1:1234/mcp", TOKEN):
             pytest.fail("invalid discovery entered")
     assert transport.exits == ["session", "streams", "http"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("schema", [{"type": "object"},
+                                    {"type": "object", "properties": {"answer": {"type": "string"}}}])
+async def test_discovery_rejects_submit_result_with_arguments(transport, schema):
+    transport.schemas = {"submit_result": schema}
+    with pytest.raises(MCPAgentError, match="MCP_DISCOVERY_INVALID"):
+        async with MCPAgentClient("http://127.0.0.1:1234/mcp", TOKEN):
+            pytest.fail("submit_result with arguments entered")
+
+
+@pytest.mark.asyncio
+async def test_discovered_submit_keeps_client_controls_and_world_names(transport):
+    async with MCPAgentClient("http://127.0.0.1:1234/mcp", TOKEN) as client:
+        names = [tool["function"]["name"] for tool in client.tools]
+        assert names == ["world", "submit_result", "report_usage"]
+        assert client.tools[1] == mcp_agent_client.CONTROL_TOOLS["submit_result"]
+        assert client.world_tool_names == {"world"}
 
 
 BASE_INPUT = {"run_id": "run-1", "experiment_id": "experiment-1", "task": "t",

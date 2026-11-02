@@ -190,11 +190,23 @@ class MCPAgentClient:
                 raise MCPAgentError("MCP_DISCOVERY_INVALID")
             tools = [_tool_definition(item) for item in listed.tools]
             names = [item["function"]["name"] for item in tools]
-            if len(tools) > MAX_TOOLS or len(names) != len(set(names)) or set(names) & set(CONTROL_TOOLS):
+            world = [item for item in tools if item["function"]["name"] not in CONTROL_TOOLS]
+            submits = [item for item in tools if item["function"]["name"] == "submit_result"]
+            # The Environment lists exactly one empty-argument submit_result
+            # (ADR-0008 H2 amendment) and never report_usage. Keep our own
+            # control definitions so the model-visible tool set is unchanged.
+            if (
+                len(world) > MAX_TOOLS
+                or len(names) != len(set(names))
+                or "report_usage" in names
+                or len(submits) != 1
+                or submits[0]["function"]["parameters"]
+                != CONTROL_TOOLS["submit_result"]["function"]["parameters"]
+            ):
                 raise MCPAgentError("MCP_DISCOVERY_INVALID")
             self._stack = stack
             self._session = session
-            self._tools = tools + list(CONTROL_TOOLS.values())
+            self._tools = world + list(CONTROL_TOOLS.values())
             return self
         except BaseException as error:
             try:

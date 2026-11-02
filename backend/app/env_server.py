@@ -38,6 +38,18 @@ MAX_SPEC_BYTES = 65_536
 MAX_REQUEST_BYTES = 16_384
 MAX_JSONL_BYTES = 65_536
 CONTROLS = frozenset({"submit_result", "report_usage"})
+# ADR-0008 H2 amendment: external Agents can call only discovered tools, so
+# submit_result is listed. report_usage stays a direct call; listing it would
+# invite a model to invent Agent-reported usage.
+SUBMIT_TOOL = types.Tool(
+    name="submit_result",
+    description=(
+        "Finalize the task. Call exactly once, with no arguments, after the task "
+        "is complete; the Environment then runs its final check and rejects "
+        "later calls."
+    ),
+    input_schema={"type": "object", "properties": {}, "additionalProperties": False},
+)
 Emit = Callable[[str, dict], None]
 
 
@@ -248,7 +260,6 @@ class EnvironmentMCPServer(MCPServer):
         self.middleware.insert(0, session.capture)
 
     async def list_tools(self) -> list[types.Tool]:
-        # Controls are authenticated direct calls, not normal model discovery.
         return [
             types.Tool(
                 name=item["function"]["name"],
@@ -256,7 +267,7 @@ class EnvironmentMCPServer(MCPServer):
                 input_schema=item["function"]["parameters"],
             )
             for item in self._environment_session.definitions
-        ]
+        ] + [SUBMIT_TOOL]
 
 
 class BearerCapability:
