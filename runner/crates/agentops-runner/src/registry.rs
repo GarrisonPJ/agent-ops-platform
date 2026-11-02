@@ -178,9 +178,9 @@ fn validate_entry(entry: &RegistryEntry) -> Result<(), RegistryError> {
     }
     validate_text("name", &entry.name, MAX_NAME_CHARS)?;
     validate_text("description", &entry.description, MAX_DESCRIPTION_CHARS)?;
-    if !matches!(entry.kind.as_str(), "fixture" | "reference") {
+    if !matches!(entry.kind.as_str(), "fixture" | "reference" | "external") {
         return Err(RegistryError::Invalid(format!(
-            "kind '{}' is not supported in H1",
+            "kind '{}' is not supported",
             entry.kind
         )));
     }
@@ -271,7 +271,7 @@ command = ["python", "-m", "app.reference_agent"]
         let duplicate = FIXTURE.replacen("reference-openai-compatible.v1", "fixture-agent.v1", 1);
         assert!(AgentRegistry::from_toml(&duplicate).is_err());
         assert!(AgentRegistry::from_toml(
-            &FIXTURE.replace("kind = \"fixture\"", "kind = \"external\"")
+            &FIXTURE.replace("kind = \"fixture\"", "kind = \"plugin\"")
         )
         .is_err());
         assert!(AgentRegistry::from_toml(
@@ -288,6 +288,15 @@ command = ["python", "-m", "app.reference_agent"]
             "command = []"
         ))
         .is_err());
+    }
+
+    #[test]
+    fn external_kind_is_accepted_for_registered_adapters() {
+        // ADR-0009: H2 registers external adapters such as pi-coding-agent.v1.
+        let registry =
+            AgentRegistry::from_toml(&FIXTURE.replace("kind = \"fixture\"", "kind = \"external\""))
+                .unwrap();
+        assert_eq!(registry.metadata().next().unwrap().kind, "external");
     }
 
     #[test]

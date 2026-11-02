@@ -24,7 +24,7 @@ MAX_COMMAND_ENTRIES: Final = 32
 MAX_COMMAND_ENTRY_LENGTH: Final = 1_024
 AGENT_ID_PATTERN: Final = re.compile(r"^[a-z0-9][a-z0-9-]+\.v[0-9]+$")
 _ALLOWED_KEYS: Final = frozenset({"id", "name", "kind", "description", "command"})
-_ALLOWED_KINDS: Final = frozenset({"fixture", "reference"})
+_ALLOWED_KINDS: Final = frozenset({"fixture", "reference", "external"})
 
 
 class AgentRegistryError(ValueError):

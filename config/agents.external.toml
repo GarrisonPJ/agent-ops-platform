@@ -1,0 +1,25 @@
+# Opt-in registry for a host Runner that has pi installed (H2-1).
+# Select it on both API and Runner with AGENTOPS_AGENT_REGISTRY; the default
+# config/agents.toml stays fixture/reference only because the Runner image
+# has no pi.
+
+[[agents]]
+id = "fixture-agent.v1"
+name = "Deterministic fixture agent"
+kind = "fixture"
+description = "Deterministic MCP agent for local Golden validation."
+command = ["python", "-m", "app.fixture_agent"]
+
+[[agents]]
+id = "reference-openai-compatible.v1"
+name = "OpenAI-compatible reference agent"
+kind = "reference"
+description = "MCP reference loop using Runner-side provider configuration."
+command = ["python", "-m", "app.reference_agent"]
+
+[[agents]]
+id = "pi-coding-agent.v1"
+name = "pi coding agent"
+kind = "external"
+description = "pi with only the Environment's MCP tools, using the Runner-side provider configuration."
+command = ["python", "-m", "app.pi_agent"]

@@ -353,7 +353,7 @@ def test_read_spec_rejects_malformed_json_utf8_depth_size(monkeypatch, raw):
         read_spec()
 
 
-@pytest.mark.parametrize("module", ["fixture_agent", "reference_agent"])
+@pytest.mark.parametrize("module", ["fixture_agent", "reference_agent", "pi_agent"])
 @pytest.mark.parametrize("raw", [b"\xff", b"[" * 1000 + b"]" * 1000,
                                     json.dumps(BASE_INPUT | {"execution_mode": {}}).encode(),
                                     b'{"task": NaN}', b"x" * 65537])

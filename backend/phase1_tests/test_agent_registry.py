@@ -213,6 +213,26 @@ def test_default_registry_public_metadata_has_no_command() -> None:
     assert all("command" not in item.public_dict() for item in registry.metadata())
 
 
+def test_external_registry_adds_pi_as_external_kind() -> None:
+    # ADR-0009 H2 amendment: opt-in host registry, default stays fixture/reference.
+    registry = load_registry(ROOT.parent / "config" / "agents.external.toml")
+    metadata = {item.id: item.public_dict() for item in registry.metadata()}
+    assert list(metadata) == ["fixture-agent.v1", "reference-openai-compatible.v1", "pi-coding-agent.v1"]
+    assert metadata["pi-coding-agent.v1"]["kind"] == "external"
+    assert all("command" not in item for item in metadata.values())
+    assert registry.resolve("pi-coding-agent.v1", "provider") == "pi-coding-agent.v1"
+
+
+@pytest.mark.parametrize(("kind", "valid"), [("external", True), ("plugin", False), ("External", False)])
+def test_registry_kind_vocabulary(tmp_path: Path, kind: str, valid: bool) -> None:
+    path = _write_registry(tmp_path / "agents.toml", _registry_body(kind=kind))
+    if valid:
+        assert load_registry(path).metadata()[0].kind == kind
+    else:
+        with pytest.raises(AgentRegistryError):
+            load_registry(path)
+
+
 @pytest.mark.parametrize(
     "body",
     [

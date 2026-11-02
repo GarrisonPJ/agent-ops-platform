@@ -34,16 +34,7 @@ async def run(spec: AgentSpec) -> int:
     try:
         async with MCPAgentClient(endpoint, token, timeout_seconds=spec.timeout_ms / 1000) as environment:
             messages: list[dict[str, object]] = [
-                {
-                    "role": "system",
-                    "content": (
-                        "You are an Agent-under-test. Complete the task using only the discovered "
-                        "Environment tools. Use at most one tool call per response. Never request "
-                        "shell, network, credentials, or arbitrary code. You must explicitly call "
-                        "submit_result when the task is complete."
-                        + ("\nPolicy instructions:\n" + "\n".join(_policy_instructions(spec)) if spec.policy else "")
-                    ),
-                },
+                {"role": "system", "content": system_prompt(spec)},
                 {"role": "user", "content": spec.task},
             ]
             # World attempts exclude reserved controls; leave a bounded final
@@ -119,6 +110,21 @@ def _accumulate_usage(total: int | None, value: int, available: bool) -> int | N
         return None
     cumulative = total + value
     return cumulative if cumulative <= 1_000_000_000 else None
+
+
+SYSTEM_INSTRUCTIONS = (
+    "You are an Agent-under-test. Complete the task using only the discovered "
+    "Environment tools. Use at most one tool call per response. Never request "
+    "shell, network, credentials, or arbitrary code. You must explicitly call "
+    "submit_result when the task is complete."
+)
+
+
+def system_prompt(spec: AgentSpec) -> str:
+    """Instructions shared with external adapters so scaffolds see the same text."""
+    if not spec.policy:
+        return SYSTEM_INSTRUCTIONS
+    return SYSTEM_INSTRUCTIONS + "\nPolicy instructions:\n" + "\n".join(_policy_instructions(spec))
 
 
 def _policy_instructions(spec: AgentSpec) -> list[str]:

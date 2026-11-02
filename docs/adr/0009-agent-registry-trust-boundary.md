@@ -95,9 +95,23 @@ model. The operator's personal pi configuration therefore does not reach the
 Agent-under-test. The generated files are adapter output, never request data.
 
 This amendment does not change Environment discovery. pi can call only tools
-that `tools/list` returns, so H2-1 first needs an ADR-0008 amendment for
+that `tools/list` returns, so H2-1 needed the ADR-0008 H2 amendment for
 `submit_result` discovery. The adapter must not submit on the Agent's behalf.
 `claude-code.v1` stays possible as optional H2-5.
+
+The registry kind vocabulary is now `fixture`, `reference` and `external` in
+the Python and Rust parsers and the public metadata. `pi-coding-agent.v1` lives
+in the opt-in `config/agents.external.toml`. The default registry and Runner
+image stay fixture/reference only, because the image has no pi.
+
+Spike findings fix four adapter rules. The task reaches pi on stdin, because pi
+reads a message argument starting with `@` as a local file. Shared instructions
+come from the same function the reference agent uses and are passed as a file.
+pi exits 0 after failed Provider retries, so the adapter derives a fixed code
+from pi's JSONL stop reason instead of trusting the exit code. The adapter
+parses and discards that JSONL, which would otherwise count against
+`max_output_bytes`, and it stops pi at an accepted submission, as the reference
+loop returns.
 
 ## Consequences
 

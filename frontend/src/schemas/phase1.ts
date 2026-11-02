@@ -59,7 +59,7 @@ export const agentMetadataSchema = z
   .object({
     id: agentIdSchema,
     name: agentTextSchema(200),
-    kind: z.enum(["fixture", "reference"]),
+    kind: z.enum(["fixture", "reference", "external"]),
     description: agentTextSchema(1000),
   })
   .strict();

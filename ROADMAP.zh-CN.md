@@ -20,7 +20,7 @@ Phase 1 hosted CI 在 `8bd2ef0` 通过，其计数只属于该历史快照。H1 
 
 H1-5 已使用已安装的 Windows llama.cpp 端点完成直连：新建 PostgreSQL 下 research/order 成功、checkout/fault 失败均保留，标准 Runner 镜像 research 也成功。四项 Runner-only 可选生成参数替代临时代理。见[验收记录](docs/history/h1-live-model-acceptance-2026-11-01.md)，不冒称 Ollama/vLLM、稳定通过率或分析器准确率。本轮不下载模型、不改 Windows/网络/防火墙、不公开部署、不启动 H2。
 
-尚未实现：H2 CLI/SDK 适配器、H3 trial group/pass^k、H4 OTel GenAI export、H5 真实分布一致性研究。当前校准仍为 `provisional_mechanics`、`publishable_accuracy=false`；后续自标注研究必须披露方法局限。
+H2 已开工：`submit_result` 已可发现（ADR-0008 H2 修订），`pi-coding-agent.v1` 适配器有假 pi 确定性测试；真实模型验收未做。尚未实现：可选外部适配器（H2-2/H2-3/H2-5）、H3 trial group/pass^k、H4 OTel GenAI export、H5 真实分布一致性研究。当前校准仍为 `provisional_mechanics`、`publishable_accuracy=false`；后续自标注研究必须披露方法局限。
 
 ## 里程碑
 
@@ -34,7 +34,7 @@ H1-5 已使用已安装的 Windows llama.cpp 端点完成直连：新建 Postgre
 | P1 | 可靠性与校准加固（2026-09 至 2026-10） | 已完成 | CAS/锁顺序修复、analyzer v2、CI 六合同校准门；校准在 Phase 2 H5 重定义。 |
 | P0 | Phase 2 — Harness H0（门面与决策） | 进行中 | ADR、LICENSE、规范、学习地图和[任务清单](docs/agents/phase2-tasks.md)已在仓库内。仍开放：GitHub About、对外名称（H0-2）。 |
 | P0 | Phase 2 — Harness H1（Environment/Agent 拆分） | 完成（本地工程 + 真实模型集成） | 独立进程路径、P2 修复、确定性回归、标准镜像/volume 与直连 reference Agent trace/分析已验收。模型失败保留；hosted CI 已在 `b32da25` 通过；发布仍未建立。 |
-| P1 | Phase 2 — Harness H2（外部 Agent） | 计划中 | pi 适配器必做；Agents SDK / Codex / Claude Code 可选。 |
+| P1 | Phase 2 — Harness H2（外部 Agent） | 进行中 | pi 适配器必做；Agents SDK / Codex / Claude Code 可选。 |
 | P1 | Phase 2 — Harness H3（trial 与 pass^k） | 计划中 | Trial group、pass^k 指标、Experiment 摘要 UI。 |
 | P2 | Phase 2 — Harness H4（OTel 导出） | 计划中 | OTLP GenAI 投影，默认关闭。 |
 | P2 | Phase 2 — Harness H5（校准研究） | 计划中 | 分析器回归门不变；约 40 条真实 Run 的自标注一致性研究。 |

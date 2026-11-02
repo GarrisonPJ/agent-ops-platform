@@ -238,7 +238,7 @@ class ScenarioSummary(StrictModel):
 class AgentMetadataResponse(StrictModel):
     id: str
     name: str
-    kind: Literal["fixture", "reference"]
+    kind: Literal["fixture", "reference", "external"]
     description: str
 
 
