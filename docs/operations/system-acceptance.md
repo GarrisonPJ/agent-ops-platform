@@ -4,11 +4,11 @@ This is the current H1 acceptance entry, not the 2026-10-15 acceptance of an old
 
 ## Current boundary (2026-11-01 local / 2026-10-31 UTC)
 
-H1 engineering implementation is integrated. The two Runner P2 repairs have scoped independent review, and parent affected regressions, exact-payload checks and the standard-image replacement run below passed. H1 local engineering and direct real-model integration acceptance are complete; this document keeps release, hosted-CI, cold-cache and cross-platform limits explicit rather than treating individual green tests as broader acceptance.
+H1 engineering implementation is integrated. The two Runner P2 repairs have scoped independent review, and parent affected regressions, exact-payload checks and the standard-image replacement run below passed. H1 local engineering and direct real-model integration acceptance are complete; this document keeps release, cold-cache and cross-platform limits explicit rather than treating individual green tests as broader acceptance. Hosted CI is recorded separately below.
 
 The reopened H1-5 acceptance used an already installed Windows llama.cpp endpoint, fresh PostgreSQL and supported Runner-only generation settings, without a temporary proxy. Research/order succeeded, checkout/fault failures were retained; a rebuilt standard Runner image also completed research. See the [dated record](../history/h1-live-model-acceptance-2026-11-01.md) and [repeatable setup](local-model.md). This is not an Ollama/vLLM, other-WSL, ordinary bridge-network or model-accuracy claim.
 
-The prior H1 integration was committed/pushed on `pi-h1-integration`; this H1-5 increment is authorized for commit only. No H2, existing-data reset/deletion, public deployment or extra push is included.
+H1, including the H1-5 increment, is on `origin/main`. Hosted CI for `43d9e3e` (run `41227642951`) failed at the frontend production audit: zod 4.4.3 matched GHSA-mrhx-c7xc-m3w5, so `golden-e2e` was skipped. After the zod upgrade, run `41437657048` failed installing `postgresql-client-16` on the moving `ubuntu-latest` image. With every job pinned to `ubuntu-24.04`, run `41445179266` on `b32da25` passed backend, rust, frontend, database-recovery, compose and `golden-e2e`. That covers the fixture/fake-Provider CI gates only, not release, cold-cache, cross-platform or live-model acceptance. No existing-data reset/deletion or public deployment is included.
 
 ## Parent validation checkpoints
 
@@ -35,7 +35,7 @@ The first closeout smoke used the wrong executable name `agentops-runner` and ex
 1. Record source identity, dirty paths/index state, exact commands/tool versions, image IDs, deadlines and exit codes. Freeze copied bytes and hashes, including untracked files and deletions; a Git HEAD alone does not identify a dirty payload.
 2. Use fresh owned PostgreSQL databases and isolated Compose project/volumes/network. Set `DATABASE_URL` and `RETENTION_POSTGRES_URL` only to those resources. Run backend tests from `backend/`; a root invocation can fail subprocess imports or Alembic setup and is not accepted evidence.
 3. Run `make fmt` after Rust/frontend edits, Rust locked fmt/Clippy/workspace tests, frontend format/typecheck/unit/build/Recorded E2E, recursive requirements validation and both Compose configs. Use fixture/fake Providers; no GPU/model/key CI dependency.
-4. Export protocol schemas and keep `make check-contracts` unchanged. It now passes on the committed canonical-v2 baseline. Review any new delta before delivery; do not stage or revert semantics merely to hide drift. Hosted CI remains a separate check; this branch had zero workflow runs at the recorded checkpoint.
+4. Export protocol schemas and keep `make check-contracts` unchanged. It now passes on the committed canonical-v2 baseline. Review any new delta before delivery; do not stage or revert semantics merely to hide drift. Hosted CI remains a separate check; the latest recorded run is in the current boundary above.
 5. Rebuild affected standard Dockerfiles; do not replace them with offline/source-mounted variants without explicitly changing the evidence claim. Repeat Golden baseline/replay/comparison/human activation and controlled Runner kill/recreation. Observe capability digests only, never raw capability values.
 6. For cancellation/fencing, require rejected old heartbeat/event/completion without changed facts. For recovery, prove a different container, later Attempt, contiguous sequences, same Run capability and valid-ACK cleanup. Readiness before kill must be an observed marker, not a sleep guess.
 7. Independent reviewers inspect immutable exact payloads read-only; execution/hashes supplied by the parent remain attributed to the parent. Scope their verdicts. Parent alone decides acceptance and records residual limits; no component review automatically accepts whole H1.
@@ -43,7 +43,7 @@ The first closeout smoke used the wrong executable name `agentops-runner` and ex
 
 ## Claims that remain separate
 
-- **Delivery baseline:** local validation/commit is not publication or hosted CI. The old intentional contract-index delta was committed and the unchanged gate passed; it is not a current blocker.
+- **Delivery baseline:** local validation/commit is not publication or hosted CI. Hosted CI passed on `b32da25` (run `41445179266`); that is not a release. The old intentional contract-index delta was committed and the unchanged gate passed; it is not a current blocker.
 - **Real model:** H1-5 is locally accepted with direct persisted success/failure traces and analysis. Four sampled host Runs and one image Run are finite integration evidence, not a pass-rate or universal compatibility claim. Order's diagnostic error-word signals remain visible despite authoritative outcome success; accuracy is not established.
 - **Research:** calibration mechanics cannot support representative accuracy; H5 is future work.
 - **Safety/platform:** trusted single-host operation is not public/multi-user security, malicious Agent sandboxing, Windows-native Runner support, or exhaustive parser/scheduling equivalence.
