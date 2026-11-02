@@ -34,7 +34,7 @@ H1-5 已使用已安装的 Windows llama.cpp 端点完成直连：新建 Postgre
 | P1 | 可靠性与校准加固（2026-09 至 2026-10） | 已完成 | CAS/锁顺序修复、analyzer v2、CI 六合同校准门；校准在 Phase 2 H5 重定义。 |
 | P0 | Phase 2 — Harness H0（门面与决策） | 进行中 | ADR、LICENSE、规范、学习地图和[任务清单](docs/agents/phase2-tasks.md)已在仓库内。仍开放：GitHub About、对外名称（H0-2）。 |
 | P0 | Phase 2 — Harness H1（Environment/Agent 拆分） | 完成（本地工程 + 真实模型集成） | 独立进程路径、P2 修复、确定性回归、标准镜像/volume 与直连 reference Agent trace/分析已验收。模型失败保留；hosted CI 与发布仍未建立。 |
-| P1 | Phase 2 — Harness H2（外部 Agent） | 计划中 | Claude Code 适配器必做；Agents SDK / Codex 可选。 |
+| P1 | Phase 2 — Harness H2（外部 Agent） | 计划中 | pi 适配器必做；Agents SDK / Codex / Claude Code 可选。 |
 | P1 | Phase 2 — Harness H3（trial 与 pass^k） | 计划中 | Trial group、pass^k 指标、Experiment 摘要 UI。 |
 | P2 | Phase 2 — Harness H4（OTel 导出） | 计划中 | OTLP GenAI 投影，默认关闭。 |
 | P2 | Phase 2 — Harness H5（校准研究） | 计划中 | 分析器回归门不变；约 40 条真实 Run 的自标注一致性研究。 |
@@ -64,7 +64,8 @@ flowchart LR
   end
   subgraph agents [Agents under test]
     Ref[reference agent\nOpenAI-compatible -> Ollama / vLLM]
-    CC[Claude Code -p --mcp-config]
+    Pi[pi --mode json\nbuilt-in MCP, same local model]
+    CC[Claude Code -p --mcp-config\noptional]
     SDK[OpenAI Agents SDK\nMCPServerStreamableHttp]
     Own[user's own loop]
   end
@@ -75,6 +76,7 @@ flowchart LR
   EnvProc -- JSONL events --> runner
   runner -- POST events / complete --> API
   AgentProc --- Ref
+  AgentProc --- Pi
   AgentProc --- CC
   AgentProc --- SDK
   AgentProc --- Own
@@ -115,8 +117,9 @@ flowchart LR
 
 #### H2 — 外部 Agent 适配器（第 5–6 周）
 
-- **范围：** H2-1 Claude Code 适配器（必做）；H2-2 OpenAI Agents SDK 适配器（可选）；H2-3 Codex CLI 适配器（可选）；H2-4 接入指南。
-- **验收：** 同一环境下参考 Agent 与 Claude Code 各完成一次；记录失败类型分布。
+- **计划变更（2026-11-02）：** 必做适配器改为 pi。pi 是最小 harness，与参考 Agent 使用同一 OpenAI-compatible 本地模型，对比只隔离 scaffold。Claude Code 是深度定制、默认走 Anthropic 模型的 harness，降为可选 H2-5（[ADR-0009](docs/adr/0009-agent-registry-trust-boundary.md) H2 修订）。须先修订 ADR-0008 的 `submit_result` 发现。
+- **范围：** H2-1 pi 适配器（必做）；H2-2 OpenAI Agents SDK 适配器（可选）；H2-3 Codex CLI 适配器（可选）；H2-4 接入指南；H2-5 Claude Code 适配器（可选）。
+- **验收：** 同一环境、同一本地模型下参考 Agent 与 pi 各完成一次；记录失败类型分布。
 - **学习交付物：** `docs/learn/03-plug-in-your-agent.md`。
 
 #### H3 — Trial group 与 pass^k（第 7–8 周）
@@ -147,7 +150,7 @@ flowchart LR
 
 12 周内必须交付：**H0**、**H1**、**H2-1**、**H3**、**H6-1**、**H6-2**。
 
-可推迟或缩减：H2-2/H2-3（时间允许时保留 H2-1 之外至少一个可选外部适配器）；H4；H5-2 至少 20 条标注。
+可推迟或缩减：H2-2/H2-3/H2-5（时间允许时保留 H2-1 之外至少一个可选外部适配器）；H4；H5-2 至少 20 条标注。
 
 ### 非目标
 
@@ -157,7 +160,7 @@ trace UI 新功能、标注队列、数据集管理、多租户/鉴权、Kuberne
 
 - MCP Python SDK API 漂移 — pin `mcp` 小版本；集中在 `env_server`。
 - 实际本地主机约 12 GB VRAM，不是最初假设的 16 GB。`qwen3:8b` 仍是未实测候选；已测 Swift/llama.cpp 显存余量很小，不能推广为普遍适配或稳定性保证。
-- Claude Code 适配器依赖主机凭据；H2-1 是未来切割线必做项，但不成为 CI 凭据依赖。
+- pi 适配器要求 Runner 主机安装 pi（固定版本，Node >= 22.19）；H2-1 是切割线必做项，但 pi 不成为 CI 依赖。可选的 Claude Code 适配器依赖主机凭据或 Anthropic 兼容端点。
 - 环境侧采集缺少 Agent 内部信息 — 使用 `unknown` 维度（现有分析器行为）。
 - 双进程监督复杂度 — H1-3 先写 Rust kill 语义测试。
 - 范围膨胀 — 计划外工作须先新 ADR 并更新本 roadmap。

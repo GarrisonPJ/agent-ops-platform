@@ -34,7 +34,7 @@ Not implemented: external CLI/SDK adapters (H2), trial groups/pass^k (H3), OTel 
 | P1 | Reliability and calibration hardening (2026-09 to 2026-10) | Complete | CAS/lock-order fixes, analyzer v2, six-contract calibration gate in CI; calibration redefined in Phase 2 H5. |
 | P0 | Phase 2 — Harness H0 (facade and decisions) | In progress | ADRs, LICENSE, standards, learn map, and [task list](docs/agents/phase2-tasks.md) are in-repo. Still open: GitHub About, public name (H0-2). |
 | P0 | Phase 2 — Harness H1 (Environment/Agent split) | Complete (local engineering + real-model integration) | Split production path, P2 repairs, deterministic checks, standard image/volume and direct reference-Agent trace/analysis are accepted locally. Actual model failures remain failures; hosted CI and release remain unestablished. |
-| P1 | Phase 2 — Harness H2 (external agents) | Planned | Claude Code adapter required; Agents SDK / Codex optional. |
+| P1 | Phase 2 — Harness H2 (external agents) | Planned | pi adapter required; Agents SDK / Codex / Claude Code optional. |
 | P1 | Phase 2 — Harness H3 (trials and pass^k) | Planned | Trial groups, pass^k metrics, experiment summary UI. |
 | P2 | Phase 2 — Harness H4 (OTel export) | Planned | OTLP GenAI projection, default off. |
 | P2 | Phase 2 — Harness H5 (calibration study) | Planned | Analyzer regression gate unchanged; self-labeled agreement study on ~40 real runs. |
@@ -64,7 +64,8 @@ flowchart LR
   end
   subgraph agents [Agents under test]
     Ref[reference agent\nOpenAI-compatible -> Ollama / vLLM]
-    CC[Claude Code -p --mcp-config]
+    Pi[pi --mode json\nbuilt-in MCP, same local model]
+    CC[Claude Code -p --mcp-config\noptional]
     SDK[OpenAI Agents SDK\nMCPServerStreamableHttp]
     Own[user's own loop]
   end
@@ -75,6 +76,7 @@ flowchart LR
   EnvProc -- JSONL events --> runner
   runner -- POST events / complete --> API
   AgentProc --- Ref
+  AgentProc --- Pi
   AgentProc --- CC
   AgentProc --- SDK
   AgentProc --- Own
@@ -117,8 +119,9 @@ Executable tasks and acceptance criteria: [docs/agents/phase2-tasks.md](docs/age
 
 #### H2 — External agent adapters (weeks 5–6)
 
-- **Scope:** H2-1 Claude Code adapter (required); H2-2 OpenAI Agents SDK adapter (optional); H2-3 Codex CLI adapter (optional); H2-4 plug-in guide.
-- **Acceptance:** Same environment completed with reference agent and Claude Code; failure-class distribution documented.
+- **Plan change (2026-11-02):** the required adapter is pi, a minimal harness that uses the same OpenAI-compatible local model as the reference agent. The comparison then isolates the scaffold. Claude Code, a deeply customized harness defaulting to Anthropic models, moves to optional H2-5 ([ADR-0009](docs/adr/0009-agent-registry-trust-boundary.md) H2 amendment). An ADR-0008 amendment for `submit_result` discovery comes first.
+- **Scope:** H2-1 pi adapter (required); H2-2 OpenAI Agents SDK adapter (optional); H2-3 Codex CLI adapter (optional); H2-4 plug-in guide; H2-5 Claude Code adapter (optional).
+- **Acceptance:** Same environment and local model completed with the reference agent and pi; failure-class distribution documented.
 - **Learning deliverable:** `docs/learn/03-plug-in-your-agent.md`.
 
 #### H3 — Trial groups and pass^k (weeks 7–8)
@@ -149,7 +152,7 @@ Executable tasks and acceptance criteria: [docs/agents/phase2-tasks.md](docs/age
 
 Must ship within the 12-week window: **H0**, **H1**, **H2-1**, **H3**, **H6-1**, **H6-2**.
 
-May defer or reduce: H2-2/H2-3 (keep at least one optional external adapter beyond H2-1 if time allows); H4; H5-2 to at least 20 labeled runs.
+May defer or reduce: H2-2/H2-3/H2-5 (keep at least one optional external adapter beyond H2-1 if time allows); H4; H5-2 to at least 20 labeled runs.
 
 ### Non-goals
 
@@ -159,7 +162,7 @@ Trace UI features, annotation queues, dataset management, multi-tenancy/auth, Ku
 
 - MCP Python SDK API drift — pin `mcp` minor version; isolate in `env_server`.
 - Actual local GPU has about 12 GB VRAM, not the initial 16 GB assumption. `qwen3:8b` remains an untested starting candidate; weights, KV cache, context and concurrency must be measured. The tested Swift/llama.cpp setup has small VRAM headroom, not a general fit/stability guarantee.
-- Claude Code adapter needs host credentials; H2-1 is required in the future cut line, but never a CI credential dependency.
+- The pi adapter needs pi installed on the Runner host (pinned version, Node >= 22.19); H2-1 is required in the cut line, but pi is never a CI dependency. The optional Claude Code adapter needs host credentials or an Anthropic-compatible endpoint.
 - Environment-side capture misses agent internals — use `unknown` dimensions (existing analyzer behavior).
 - Dual subprocess supervision complexity — Rust kill-semantics tests before feature work (H1-3).
 - Scope creep — plan-outside work requires a new ADR and roadmap update first.

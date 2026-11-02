@@ -6,6 +6,8 @@
   This was absent from historical `8bd2ef0`.
 - Amended: 2026-10-24 by [ADR-0012](0012-h1-canonical-cutover-and-control-plane-success.md)
   (canonical defaults and Control Plane-only task success).
+- Amended: 2026-11-02 for H2 — the required external adapter is
+  `pi-coding-agent.v1`; `claude-code.v1` becomes optional.
 - Depends on: [ADR-0006](0006-scenario-registry-boundary.md),
   [ADR-0007](0007-environment-agent-split.md)
 
@@ -42,12 +44,13 @@ Initial entries:
 |---|---|---|
 | `fixture-agent.v1` | fixture | `python -m app.fixture_agent` |
 | `reference-openai-compatible.v1` | reference | `python -m app.reference_agent` |
-| `claude-code.v1` | external | adapter script; host must have `claude` |
+| `pi-coding-agent.v1` | external | adapter script; host must have `pi` (required, H2) |
 | `openai-agents-sdk.v1` | external | adapter script (optional, H2) |
 | `codex-cli.v1` | external | adapter script (optional, H2) |
+| `claude-code.v1` | external | adapter script; host must have `claude` (optional, H2) |
 
 Only the first two ship in H1. H2 registers the others. CI registers the
-fixture agent and does not require Claude, Codex, or a GPU.
+fixture agent and does not require pi, Claude, Codex, or a GPU.
 
 Provider URL, API key, and model for the reference agent stay in
 `AGENTOPS_PROVIDER_*` on the Runner (ADR-0003). The reference agent's README
@@ -71,6 +74,30 @@ alone applies ADR-0012's trusted-evidence and aggregate gate.
 
 Replay passes the same `agent_id` as the baseline. A PolicyPatch does not
 switch agents.
+
+## H2 amendment: pi as the required external adapter
+
+The original required adapter was Claude Code. It is a deeply customized
+harness whose default model path is Anthropic's API, and its system prompt
+may not fit the 8192-token local context. pi
+(`@earendil-works/pi-coding-agent`) is a minimal harness. It speaks the
+OpenAI-compatible API that the reference agent already uses. So H2-1 can
+compare two scaffolds on the same local model.
+
+The `pi-coding-agent.v1` adapter generates a private per-Run
+`PI_CODING_AGENT_DIR`. It holds the Environment MCP server (streamable HTTP,
+`direct` exposure, Bearer header interpolated from `AGENTOPS_ENV_TOKEN`) and a
+`models.json` derived from `AGENTOPS_PROVIDER_*`. The capability token never
+appears in argv or on disk. pi runs with extensions, skills, prompt templates,
+context files and project trust disabled, keeping only built-in MCP. It runs in
+an empty working directory, and only the Environment's tools are declared to the
+model. The operator's personal pi configuration therefore does not reach the
+Agent-under-test. The generated files are adapter output, never request data.
+
+This amendment does not change Environment discovery. pi can call only tools
+that `tools/list` returns, so H2-1 first needs an ADR-0008 amendment for
+`submit_result` discovery. The adapter must not submit on the Agent's behalf.
+`claude-code.v1` stays possible as optional H2-5.
 
 ## Consequences
 

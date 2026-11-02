@@ -9,7 +9,7 @@
 
 **12 周内必须完成：** H0（本文件所列剩余项）、H1、H2-1、H3、H6-1、H6-2。
 
-**可以降级：** H2-2、H2-3、整个 H4、H5-2 至少标注 20 条。
+**可以降级：** H2-2、H2-3、H2-5、整个 H4、H5-2 至少标注 20 条。
 
 **当前集成状态：** H1-1..H1-6 的工程实现已接入生产 dispatch/completion；组件已分别审查，fixture/fake-Provider、隔离 PostgreSQL、标准 Runner 网络构建、实际 named-volume 替换、受影响回归和 exact-payload 文档收尾均有本地父证据。lock-path 与 exit-boundary 两个 P2 已修复并经只读独立复审。本轮已完成 H1-5：已有 Windows llama.cpp 端点直连，隔离 PostgreSQL 下 reference Agent 的 research/order 成功、checkout/fault 失败均保留，标准 Runner 镜像直连 research 也成功；不修改断言刷绿。976 项后端测试、Rust/前端/Recorded E2E 与原契约 gate 通过。H1 本地工程与真实模型集成边界完成，不等于 hosted CI、发布、全模型兼容或准确率证明。H2 未开工。H0 剩余人工事项不阻塞 H1。
 
@@ -161,13 +161,20 @@ H0 剩余只有 H0-1 的 GitHub 点击和 H0-2 的命名。命名未定不阻塞
 
 ## H2 — 外部 agent（第 5–6 周）
 
-### H2-1 Claude Code 适配器（必须）
+2026-11-02 计划变更（[ADR-0009](../adr/0009-agent-registry-trust-boundary.md) H2 修订）：必须的外部 Agent 由 Claude Code 改为 pi（`@earendil-works/pi-coding-agent`）。pi 是最小 harness，可直连现有 OpenAI-compatible 本地端点；与参考 agent 用同一本地模型时，比较的只是 scaffold。Claude Code 是深度定制的 harness，默认依赖 Anthropic 模型与凭据，降为可选 H2-5。
 
-- Status: `ready-for-agent`（未来任务；H1 收尾后仍需另行授权，本轮不启动）
-- 注册 `claude-code.v1`。适配脚本从环境变量生成 `--mcp-config`，调用 `claude -p`、`--output-format stream-json`、`--max-turns`。
-- `--tools ""` 关掉内置工具；MCP 工具不受 `--tools` 影响。不要用 `--allowedTools` 充当白名单（它只是自动批准）。
-- CI 不安装、不调用 `claude`。
-- 验收：同一 Environment 上，参考 agent 与 Claude Code 各完成一次；`docs/learn/03-plug-in-your-agent.md` 写出失败类型分布的差异（哪一类只能是 unknown）。
+### H2-1 pi 适配器（必须）
+
+- Status: `ready-for-agent`（未来任务；仍需另行授权，本轮不启动）
+- 前置：先修订 ADR-0008 的控制工具发现。当前 `env_server` 的 `tools/list` 不列 `submit_result`/`report_usage`，内置 Agent 在客户端自行补齐；pi 只能调用发现到的工具，不修订就永远无法有效 submit。不允许适配器在 pi 退出后代为 submit。
+- 注册 `pi-coding-agent.v1`（kind `external`）。适配器是薄 Python 模块，为每个 Run 生成私有 `PI_CODING_AGENT_DIR`：
+  - `mcp.json`：一个 streamable-HTTP server 指向 `AGENTOPS_ENV_MCP_URL`，`exposure: "direct"`，`Authorization` header 写成 `Bearer ${AGENTOPS_ENV_TOKEN}` 插值；token 不进 argv，也不落盘。
+  - `models.json`：`api: "openai-completions"`，`baseUrl` 与模型取自 `AGENTOPS_PROVIDER_*`，`apiKey` 写成 `$AGENTOPS_PROVIDER_API_KEY` 插值。生成参数尽量与参考 agent 一致，映射不了的写明。
+- 调用 `pi --mode json --no-session`，在空临时目录运行，隔离运维者个人配置：`-ne -e builtin:mcp`、`-ns`、`-np`、`-nc`、`--no-themes`、`-na`、`--offline`。`--tools 'mcp__<server>__*'` 只声明 Environment 工具，内置 read/bash/edit/write 全部关闭。任务说明与 Policy `instruction_patch` 走 `--append-system-prompt`。
+- 适配器不评分，不发 `step_completed`。pi 的 JSONL 只是不可信进程输出，转发前不得含 token；退出码 0 不等于成功。
+- pi 没有 turn 上限参数：步数靠 Environment `max_steps`，时间靠 Run timeout。pi 的 usage 不经 `report_usage` 进入 Environment 时保持 unknown。预期不需要扩展 Runner 子进程环境变量白名单；实测需要时另行修订 ADR-0009。
+- 固定 pi 版本（运维主机当前为 1.3.0，要求 Node >= 22.19）。CI 不安装、不调用 `pi`；用假 `pi` 可执行文件连接真实 `env_server` 做确定性测试。
+- 验收：同一 Environment、同一本地模型上，参考 agent 与 pi 各完成一次 Run，成败照实记录；`docs/learn/03-plug-in-your-agent.md` 写出失败类型分布的差异（哪一类只能是 unknown）。
 
 ### H2-2 OpenAI Agents SDK 适配器（可选）
 
@@ -181,12 +188,20 @@ H0 剩余只有 H0-1 的 GitHub 点击和 H0-2 的命名。命名未定不阻塞
 - Status: `ready-for-agent`
 - 依赖：H1-4。可以整项不做。
 - `codex exec --json`，MCP 写在运行时生成的 config 的 `[mcp_servers.*]`。
-- 可整项砍掉。H2-2 与 H2-3 至少留下一个的前提是 H2-1 已完成且还有时间；否则只留 H2-1。
+- 可整项砍掉。H2-2、H2-3、H2-5 至少留下一个的前提是 H2-1 已完成且还有时间；否则只留 H2-1。
 
 ### H2-4 接入说明
 
 - Status: `ready-for-agent`
 - 并入 H2-1 的学习交付：`docs/learn/03-plug-in-your-agent.md`，一页加一个约 20 行的自有循环示例。
+
+### H2-5 Claude Code 适配器（可选）
+
+- Status: `ready-for-agent`
+- 2026-11-02 由必须降为可选。依赖：H2-1 前置的控制工具发现修订。可以整项不做。
+- 注册 `claude-code.v1`。`claude -p --output-format stream-json`，`--strict-mcp-config` 加运行时生成的 `--mcp-config`。`--tools ""` 关掉内置工具；不要用 `--allowedTools` 充当白名单（它只是自动批准）。`--bare` 跳过个人 hooks、插件与 CLAUDE.md，但认证只认 `ANTHROPIC_API_KEY`。
+- 接本地模型需要 Anthropic Messages 兼容端点；8192 context 可能放不下 Claude Code 的系统提示。2.1.312 的 `--help` 未列 `--max-turns`，使用前实测。
+- CI 不安装、不调用 `claude`。
 
 ---
 
