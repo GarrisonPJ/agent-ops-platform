@@ -329,6 +329,8 @@ def test_sigterm_reaps_pi_and_removes_config(tmp_path: Path) -> None:
         time.sleep(0.05)
     assert marker.exists()
     adapter.send_signal(signal.SIGTERM)
-    stdout, stderr = adapter.communicate(timeout=15)
+    # Not communicate(): Python 3.12 flushes the already-closed stdin there.
+    adapter.wait(timeout=15)
+    stdout, stderr = adapter.stdout.read(), adapter.stderr.read()
     assert (adapter.returncode, stdout, stderr) == (1, b"", b"AGENT_CANCELLED\n")
     assert not Path(json.loads(marker.read_text())["config"]).exists()
