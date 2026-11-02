@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   backend:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 8
     defaults:
       run:
@@ -58,7 +58,7 @@ jobs:
           uv run alembic upgrade head
 
   database-recovery:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 12
     services:
       recovery-postgres:
@@ -128,7 +128,7 @@ jobs:
           retention-days: 7
 
   frontend:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 8
     defaults:
       run:
@@ -158,7 +158,7 @@ jobs:
         run: npm run e2e:recorded
 
   rust:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 8
     defaults:
       run:
@@ -180,7 +180,7 @@ jobs:
         run: cargo test --workspace --locked
 
   compose:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 3
     steps:
       - uses: actions/checkout@v4
@@ -189,7 +189,7 @@ jobs:
 
   golden-e2e:
     needs: [backend, database-recovery, frontend, rust, compose]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
