@@ -30,6 +30,8 @@ cp .env.example .env
 make demo
 ```
 
+运行 `make` 的用户必须能访问 Docker daemon（Linux 上即属于 `docker` 组）。若 API 连接数据库超时或发布端口无响应，先看[本地环境故障](docs/operations/reliability-and-local-validation.md#wsl-proxy-and-local-verification-boundary)再排查代码。
+
 本地开发以外必须替换示例 `RUNNER_TOKEN`，API 与 Runner 接收同一个显式 Token。演示数据库凭据仅限本地；可信内网部署也需单独的 Secret/访问审查，不要公开暴露服务。
 
 打开 [http://localhost:5173](http://localhost:5173)：创建 Experiment，观察 baseline 失败，查看 Analysis，Replay 候选，然后 Activate 或 Reject。规范 checkout 为 `checkout-api-latency.v2`：baseline 重复六次 logs，replay 按 health → metrics → logs 三次世界调用成功。第一次激活可能先排队 RegressionCase replay；审查后须再次显式激活。

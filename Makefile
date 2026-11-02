@@ -1,6 +1,6 @@
 .PHONY: demo down logs contracts check-contracts fmt fmt-check test test-backend test-frontend test-rust db-backup db-restore-rehearsal retention-plan retention-execute health-probe
 
-COMPOSE := docker compose -f infra/docker/docker-compose.phase1.yml
+COMPOSE := docker compose $(if $(wildcard .env),--env-file .env) -f infra/docker/docker-compose.phase1.yml
 
 demo:
 	$(COMPOSE) up --build

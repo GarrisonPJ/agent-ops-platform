@@ -212,6 +212,50 @@ proxy-caused fake-server failure is local verification drift, not evidence of
 a Provider business regression. Never disable proxy verification globally for
 production traffic.
 
+Three other local-environment faults look like product failures. Check them
+before debugging code.
+
+An inherited `NODE_ENV=production` makes `npm ci` skip `devDependencies`
+(`tsc`, `vite`, `vitest` are then missing) and makes Vitest load the production
+React build, so component tests fail with `React.act is not a function`. Some
+terminal front-ends export it to every child process. Check and clear it for the
+shell that runs frontend commands:
+
+    echo "NODE_ENV=${NODE_ENV:-<unset>}"
+    unset NODE_ENV
+    cd frontend && npm ci
+
+A host firewall or VPN kill switch with a default-drop `forward` or `output`
+chain blocks Docker bridge traffic. Containers still reach the internet through
+the VPN interface, so image pulls succeed. Symptoms are API start-up failing at
+`alembic upgrade` with `TimeoutError`, and `curl localhost:8000` timing out
+while `docker compose ps` shows `db` healthy. Confirm with two throwaway
+containers on one network; if they cannot ping each other the cause is the host
+firewall, not this repository:
+
+    docker network create probe-net
+    docker run -d --rm --name probe-a --network probe-net alpine sleep 30
+    docker run --rm --network probe-net alpine ping -c1 -W2 probe-a
+    docker stop probe-a; docker network rm probe-net
+
+The firewall must accept container-to-container forwarding (`forward`, source
+and destination both on Docker bridges: `docker*` and `br-*`) and host-to-
+container output (`output`, outgoing on those bridges, used by the published-port
+`docker-proxy`). Keep egress to the internet on the VPN interface. Reloading a
+ruleset that begins with `flush ruleset` also deletes Docker's own rules, and an
+existing Compose network then stays broken. Recreate it with
+`make down && make demo`, or restart Docker.
+
+Compose reads `.env` from the Compose file's directory (`infra/docker/`), not
+from the repository root. `make` targets pass `--env-file .env` when the root
+`.env` exists. Direct `docker compose -f infra/docker/...` calls must pass it too:
+
+    docker compose --env-file .env -f infra/docker/docker-compose.phase1.yml ps
+
+The PostgreSQL-only tests run `TRUNCATE ... CASCADE`. Point
+`RETENTION_POSTGRES_URL` at a throwaway database such as a separate
+`postgres:16-alpine` container, never at the Compose `agentops` demo database.
+
 Backend and Rust checks that do not require the frontend toolchain can still
 run independently:
 

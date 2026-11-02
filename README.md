@@ -30,6 +30,8 @@ cp .env.example .env
 make demo
 ```
 
+The user running `make` must be able to reach the Docker daemon (on Linux, membership in the `docker` group). If the API times out connecting to the database or published ports do not respond, see [local environment faults](docs/operations/reliability-and-local-validation.md#wsl-proxy-and-local-verification-boundary) before debugging code.
+
 Replace the example `RUNNER_TOKEN` before use outside local development. API and Runner must receive the same explicit token. Demo database credentials are local-only; trusted-network deployment requires a separate secret/access review. Do not expose the stack publicly.
 
 Open [http://localhost:5173](http://localhost:5173): create an Experiment, observe the failed baseline, inspect Analysis, replay the candidate, then Activate or Reject. Checkout's canonical path is `checkout-api-latency.v2`: baseline repeats logs six times; replay follows health → metrics → logs and succeeds in three world calls. The first activation may queue eligible RegressionCase replays; review them and explicitly activate again afterward.
