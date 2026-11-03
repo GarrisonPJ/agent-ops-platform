@@ -52,6 +52,8 @@ from app.phase1_schemas import (
     RunResponse,
     ScenarioSummary,
     TERMINAL_RUN_STATUSES,
+    TrialGroupCreate,
+    TrialGroupResponse,
 )
 from app.phase1_service import (
     DomainError,
@@ -62,6 +64,7 @@ from app.phase1_service import (
     create_baseline_run,
     create_experiment,
     create_regression_case,
+    create_trial_group,
     experiment_response,
     get_analysis,
     get_operations_overview,
@@ -311,6 +314,18 @@ def create_app(
         db: AsyncSession = Depends(get_db),
     ) -> RunResponse:
         return await create_baseline_run(db, experiment_id, (body or RunCreate()).seed)
+
+    @router.post(
+        "/experiments/{experiment_id}/trials",
+        response_model=TrialGroupResponse,
+        status_code=201,
+    )
+    async def trials_create(
+        experiment_id: str,
+        body: TrialGroupCreate,
+        db: AsyncSession = Depends(get_db),
+    ) -> TrialGroupResponse:
+        return await create_trial_group(db, experiment_id, body)
 
     @router.get("/runs/{run_id}", response_model=RunResponse)
     async def runs_get(run_id: str, db: AsyncSession = Depends(get_db)) -> RunResponse:

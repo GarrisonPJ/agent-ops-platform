@@ -42,6 +42,7 @@ from app.phase1_models import (
     RunnerAttempt,
     RunnerJob,
     RunnerPresence,
+    TrialGroup,
     new_id,
     utcnow,
 )
@@ -81,6 +82,8 @@ from app.phase1_schemas import (
     ScenarioParamSummary,
     ScenarioSummary,
     TERMINAL_RUN_STATUSES,
+    TrialGroupCreate,
+    TrialGroupResponse,
 )
 from app.durable_events import (
     TerminalFailureKind,
@@ -645,6 +648,50 @@ async def create_baseline_run(db: AsyncSession, experiment_id: str, seed: int) -
     await db.commit()
     await db.refresh(run)
     return run_response(run)
+
+
+async def create_trial_group(
+    db: AsyncSession, experiment_id: str, data: TrialGroupCreate
+) -> TrialGroupResponse:
+    """ADR-0010: n ordinary baseline Runs on one seed, specs equal except run_id."""
+    experiment = await require_experiment(db, experiment_id)
+    _ensure_experiment_scenario(experiment)
+    _resolve_agent(experiment.agent_id, ExecutionMode(experiment.execution_mode))
+    group = TrialGroup(experiment_id=experiment.id, n=data.n, k=data.k, seed=data.seed)
+    db.add(group)
+    await db.flush()
+    runs = []
+    for index in range(1, data.n + 1):
+        run_id = new_id()
+        spec = _evaluation_spec(run_id=run_id, experiment=experiment, seed=data.seed)
+        runs.append(
+            Run(
+                id=run_id,
+                experiment_id=experiment.id,
+                kind="baseline",
+                trial_group_id=group.id,
+                trial_index=index,
+                status=RunStatus.QUEUED.value,
+                evaluation_spec=spec.model_dump(mode="json"),
+                metrics={},
+            )
+        )
+    db.add_all(runs)
+    db.add_all([RunnerJob(run_id=run.id, attempt=1) for run in runs])
+    await db.commit()
+    for run in runs:
+        await db.refresh(run)
+    await db.refresh(group)
+    return TrialGroupResponse(
+        id=group.id,
+        experiment_id=group.experiment_id,
+        policy_id=group.policy_id,
+        n=group.n,
+        k=group.k,
+        seed=group.seed,
+        created_at=group.created_at,
+        runs=[run_response(run) for run in runs],
+    )
 
 
 async def list_regression_cases(

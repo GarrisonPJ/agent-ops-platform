@@ -246,6 +246,23 @@ class RunCreate(StrictModel):
     seed: int = Field(default=42, ge=0, le=2_147_483_647)
 
 
+MAX_TRIALS = 20
+
+
+class TrialGroupCreate(StrictModel):
+    """ADR-0010: run n trials on one seed and report pass^k at k <= n."""
+
+    n: StrictInt = Field(ge=1, le=MAX_TRIALS)
+    k: StrictInt = Field(ge=1, le=MAX_TRIALS)
+    seed: int = Field(default=42, ge=0, le=2_147_483_647)
+
+    @model_validator(mode="after")
+    def k_within_n(self) -> TrialGroupCreate:
+        if self.k > self.n:
+            raise ValueError("k must not exceed n")
+        return self
+
+
 class RunResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -255,6 +272,8 @@ class RunResponse(BaseModel):
     source_run_id: str | None
     policy_id: str | None
     regression_case_id: str | None = None
+    trial_group_id: str | None = None
+    trial_index: int | None = None
     status: RunStatus
     score: float | None
     metrics: dict
@@ -497,6 +516,19 @@ class ExperimentResponse(BaseModel):
     regression_cases: list[RegressionCaseResponse] = Field(default_factory=list)
     active_policy: PolicyResponse | None = None
     candidate_policy: PolicyResponse | None = None
+
+
+class TrialGroupResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    experiment_id: str
+    policy_id: str | None
+    n: int
+    k: int
+    seed: int
+    created_at: datetime
+    runs: list[RunResponse] = Field(default_factory=list)
 
 
 class AnalysisResponse(BaseModel):

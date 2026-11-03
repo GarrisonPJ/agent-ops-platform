@@ -209,7 +209,7 @@ H0 剩余只有 H0-1 的 GitHub 点击和 H0-2 的命名。命名未定不阻塞
 
 ### H3-1 数据模型与 API
 
-- Status: `ready-for-agent`
+- Status: `completed`（2026-11-03：迁移 `0010_trial_groups`，按 ADR-0010 H3-1 修订增加 `trial_groups` 行保存 `n`/`k`/seed；`POST /api/experiments/{id}/trials`；SQLite/PostgreSQL 迁移往返与 `test_trial_groups.py`）
 - 依赖：H1 完成。Trial 挂在拆分后的 Run 上，不要在旧的单进程 agent 上先做。
 - 新 Alembic revision：`trial_group_id`、`trial_index`。旧行视为不在组内。
 - `POST /api/experiments/{id}/trials`，字段 `n` 与 `k`，语义见 ADR-0010。

@@ -3,6 +3,8 @@
 - Status: Accepted
 - Date: 2026-10-17
 - Implementation: Phase 2 H3. Not in code at `8bd2ef0`.
+- Amended: 2026-11-03 for H3-1 — a `trial_groups` row holds `n`, `k` and
+  the seed; aggregates are computed on read.
 - Depends on: [ADR-0007](0007-environment-agent-split.md)
 
 ## Context
@@ -55,6 +57,24 @@ pass^k, and per-trial status. The Trace page does not gain new views
 Schema: new columns on `runs` for `trial_group_id` and `trial_index`, one
 Alembic revision, `schema_version` stays 1. Absent columns mean "not in a
 group" for old rows.
+
+## H3-1 amendment: group row and computed aggregates
+
+Two columns on `runs` cannot hold `k`, and H3-2 compares groups at the `k`
+they were created with. The single H3 Alembic revision therefore also adds a
+`trial_groups` table: `id`, `experiment_id`, `policy_id` (null for a baseline
+group; H3-2 uses it for candidate groups), `n`, `k`, `seed`, `created_at`.
+`runs.trial_group_id` references it and `runs.trial_index` runs from 1 to `n`,
+unique within a group. Deleting an Experiment deletes its groups.
+
+The EvaluationSpec and protocol v1 do not change. Members' specs are equal
+except `run_id`, so an Agent cannot tell a trial from a single Run. Each member
+is an ordinary Run of kind `baseline` (or `replay` in a candidate group) with
+its own RunnerJob. `n` is 1..20 and `k` is 1..`n`.
+
+Aggregates are not stored. H3-2 computes them from the member Runs on read,
+so no second copy can drift from the Runs, and an incomplete group has no
+pass^k to publish.
 
 ## Consequences
 

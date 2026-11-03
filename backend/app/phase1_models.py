@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from sqlalchemy import Boolean, JSON, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
+from sqlalchemy import Boolean, CheckConstraint, JSON, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -34,8 +34,27 @@ class Experiment(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
 
 
+class TrialGroup(Base):
+    """n Runs created together on one seed (ADR-0010); aggregates are computed on read."""
+
+    __tablename__ = "trial_groups"
+    __table_args__ = (
+        CheckConstraint("n >= 1 AND n <= 20", name="ck_trial_groups_n"),
+        CheckConstraint("k >= 1 AND k <= n", name="ck_trial_groups_k"),
+    )
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    experiment_id: Mapped[str] = mapped_column(String(36), ForeignKey("experiments.id", ondelete="CASCADE"), nullable=False, index=True)
+    policy_id: Mapped[str | None] = mapped_column(String(36), ForeignKey("policies.id", ondelete="SET NULL"), nullable=True)
+    n: Mapped[int] = mapped_column(Integer, nullable=False)
+    k: Mapped[int] = mapped_column(Integer, nullable=False)
+    seed: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+
+
 class Run(Base):
     __tablename__ = "runs"
+    __table_args__ = (UniqueConstraint("trial_group_id", "trial_index", name="uq_runs_trial_group_index"),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
     experiment_id: Mapped[str] = mapped_column(String(36), ForeignKey("experiments.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -45,6 +64,10 @@ class Run(Base):
     regression_case_id: Mapped[str | None] = mapped_column(
         String(36), ForeignKey("regression_cases.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    trial_group_id: Mapped[str | None] = mapped_column(
+        String(36), ForeignKey("trial_groups.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    trial_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="queued", index=True)
     score: Mapped[float | None] = mapped_column(Float, nullable=True)
     metrics: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)

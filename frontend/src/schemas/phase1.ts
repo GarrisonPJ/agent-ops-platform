@@ -117,6 +117,8 @@ export const runSchema = z
     source_run_id: z.string().nullable(),
     policy_id: z.string().nullable(),
     regression_case_id: z.string().nullable().optional().default(null),
+    trial_group_id: z.string().nullable().optional().default(null),
+    trial_index: z.number().int().positive().nullable().optional().default(null),
     status: runStatusSchema,
     score: z.number().nullable(),
     metrics: runMetricsSchema,
