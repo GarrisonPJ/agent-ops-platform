@@ -8,7 +8,7 @@
 | — | [术语表](glossary.md) | 现在 |
 | 1 | [01-run-lifecycle.md](01-run-lifecycle.md) | 当前 H1 split 生产路径与验收边界 |
 | 2 | [Environment、最终状态与 MCP 边界](02-environment-and-mcp.md) | 当前 Environment/MCP、final-check 与订单边界 |
-| 3 | `03-plug-in-your-agent.md` | H2-1 完成时 |
+| 3 | [接入你自己的 Agent](03-plug-in-your-agent.md) | 当前外部 Agent 契约、pi 适配器与失败分布 |
 | 4 | [04-runner-lease-fencing.md](04-runner-lease-fencing.md) | 当前 lease/fencing、capability 与 ACK 清理 |
 | 5 | `05-analyzer-and-calibration.md` | H5 完成时 |
 | 6 | `06-pass-k.md` | H3 完成时 |

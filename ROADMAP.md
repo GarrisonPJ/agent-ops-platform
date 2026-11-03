@@ -20,7 +20,7 @@ Local host/PostgreSQL, standard Runner network build, actual named-volume replac
 
 H1-5 now includes direct reference-Agent Runs against the already installed Windows llama.cpp service, fresh PostgreSQL and a standard Runner image: research/order success and checkout/fault failures are preserved. Bounded optional Runner-only generation settings replace the temporary proxy. See the [dated acceptance](docs/history/h1-live-model-acceptance-2026-11-01.md); no Ollama/vLLM pass, stable pass rate or analyzer accuracy is inferred. No model download, Windows/network/firewall change, public deployment or H2 work is included.
 
-H2 has started: `submit_result` is discoverable (ADR-0008 H2 amendment) and the `pi-coding-agent.v1` adapter has deterministic fake-pi tests; its live-model acceptance is not done. Not implemented: optional external adapters (H2-2/H2-3/H2-5), trial groups/pass^k (H3), OTel GenAI export (H4), and the real-distribution agreement study (H5). Calibration remains `provisional_mechanics`, `publishable_accuracy=false`; self-labeling limits must be stated in any later study.
+H2-1 is complete: `submit_result` is discoverable (ADR-0008 H2 amendment), `pi-coding-agent.v1` runs from the opt-in external registry, and the same local model was run with the reference Agent and pi on all four Environments ([record](docs/history/h2-pi-live-acceptance-2026-11-03.md)). Not implemented: optional external adapters (H2-2/H2-3/H2-5), trial groups/pass^k (H3), OTel GenAI export (H4), and the real-distribution agreement study (H5). Calibration remains `provisional_mechanics`, `publishable_accuracy=false`; self-labeling limits must be stated in any later study.
 
 ## Milestones
 
@@ -34,7 +34,7 @@ H2 has started: `submit_result` is discoverable (ADR-0008 H2 amendment) and the 
 | P1 | Reliability and calibration hardening (2026-09 to 2026-10) | Complete | CAS/lock-order fixes, analyzer v2, six-contract calibration gate in CI; calibration redefined in Phase 2 H5. |
 | P0 | Phase 2 — Harness H0 (facade and decisions) | In progress | ADRs, LICENSE, standards, learn map, and [task list](docs/agents/phase2-tasks.md) are in-repo. Still open: GitHub About, public name (H0-2). |
 | P0 | Phase 2 — Harness H1 (Environment/Agent split) | Complete (local engineering + real-model integration) | Split production path, P2 repairs, deterministic checks, standard image/volume and direct reference-Agent trace/analysis are accepted locally. Actual model failures remain failures; hosted CI passed on `b32da25`; release remains unestablished. |
-| P1 | Phase 2 — Harness H2 (external agents) | In progress | pi adapter required; Agents SDK / Codex / Claude Code optional. |
+| P1 | Phase 2 — Harness H2 (external agents) | Required scope complete (H2-1, H2-4) | pi adapter plus same-model reference vs pi comparison on four Environments ([record](docs/history/h2-pi-live-acceptance-2026-11-03.md)); Agents SDK / Codex / Claude Code optional and not done. |
 | P1 | Phase 2 — Harness H3 (trials and pass^k) | Planned | Trial groups, pass^k metrics, experiment summary UI. |
 | P2 | Phase 2 — Harness H4 (OTel export) | Planned | OTLP GenAI projection, default off. |
 | P2 | Phase 2 — Harness H5 (calibration study) | Planned | Analyzer regression gate unchanged; self-labeled agreement study on ~40 real runs. |

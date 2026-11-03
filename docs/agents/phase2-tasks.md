@@ -11,7 +11,7 @@
 
 **可以降级：** H2-2、H2-3、H2-5、整个 H4、H5-2 至少标注 20 条。
 
-**当前集成状态：** H1-1..H1-6 的工程实现已接入生产 dispatch/completion；组件已分别审查，fixture/fake-Provider、隔离 PostgreSQL、标准 Runner 网络构建、实际 named-volume 替换、受影响回归和 exact-payload 文档收尾均有本地父证据。lock-path 与 exit-boundary 两个 P2 已修复并经只读独立复审。本轮已完成 H1-5：已有 Windows llama.cpp 端点直连，隔离 PostgreSQL 下 reference Agent 的 research/order 成功、checkout/fault 失败均保留，标准 Runner 镜像直连 research 也成功；不修改断言刷绿。976 项后端测试、Rust/前端/Recorded E2E 与原契约 gate 通过。H1 本地工程与真实模型集成边界完成；hosted CI 已在 `b32da25` 全部通过（含 `golden-e2e`，见 [system-acceptance.md](../operations/system-acceptance.md)）。这不等于发布、全模型兼容或准确率证明。H2 已开工：ADR-0008 发现修订与 H2-1 pi 适配器（假 `pi` 确定性测试）已落地，真实模型验收未做。H0 剩余人工事项不阻塞 H1。
+**当前集成状态：** H1-1..H1-6 的工程实现已接入生产 dispatch/completion；组件已分别审查，fixture/fake-Provider、隔离 PostgreSQL、标准 Runner 网络构建、实际 named-volume 替换、受影响回归和 exact-payload 文档收尾均有本地父证据。lock-path 与 exit-boundary 两个 P2 已修复并经只读独立复审。本轮已完成 H1-5：已有 Windows llama.cpp 端点直连，隔离 PostgreSQL 下 reference Agent 的 research/order 成功、checkout/fault 失败均保留，标准 Runner 镜像直连 research 也成功；不修改断言刷绿。976 项后端测试、Rust/前端/Recorded E2E 与原契约 gate 通过。H1 本地工程与真实模型集成边界完成；hosted CI 已在 `b32da25` 全部通过（含 `golden-e2e`，见 [system-acceptance.md](../operations/system-acceptance.md)）。这不等于发布、全模型兼容或准确率证明。H2-1/H2-4 已完成：ADR-0008 发现修订、pi 适配器、真实 llama.cpp 下 reference 与 pi 的四 Environment 对比和 `03` 章；可选 H2-2/H2-3/H2-5 未做。H0 剩余人工事项不阻塞 H1。
 
 未开工的任务用 `docs/agents/triage-labels.md` 的词。`completed` 表示已经落地，不要重做。
 
@@ -165,7 +165,7 @@ H0 剩余只有 H0-1 的 GitHub 点击和 H0-2 的命名。命名未定不阻塞
 
 ### H2-1 pi 适配器（必须）
 
-- Status: `ready-for-agent`（适配器与确定性测试已落地；剩同一本地模型下的真实验收与 `03` 章，需运维先启动 llama.cpp 服务）
+- Status: `completed`（2026-11-03：适配器、假 `pi` 确定性测试、同一本地模型下 reference 与 pi 四个 Environment 各一次的真实验收和 `03` 章均已完成；见[验收记录](../history/h2-pi-live-acceptance-2026-11-03.md)）
 - 前置（已完成，ADR-0008 H2 修订）：`env_server` 的 `tools/list` 现在列出空参数 `submit_result`，`report_usage` 仍不可发现；`MCPAgentClient` 要求恰好一个 `submit_result` 并保留自己的 control 定义。pi 只能调用发现到的工具；不允许适配器在 pi 退出后代为 submit。
 - 注册 `pi-coding-agent.v1`（kind `external`）。适配器是薄 Python 模块，为每个 Run 生成私有 `PI_CODING_AGENT_DIR`：
   - `mcp.json`：一个 streamable-HTTP server 指向 `AGENTOPS_ENV_MCP_URL`，`exposure: "direct"`，`Authorization` header 写成 `Bearer ${AGENTOPS_ENV_TOKEN}` 插值；token 不进 argv，也不落盘。
@@ -192,7 +192,7 @@ H0 剩余只有 H0-1 的 GitHub 点击和 H0-2 的命名。命名未定不阻塞
 
 ### H2-4 接入说明
 
-- Status: `ready-for-agent`
+- Status: `completed`（`docs/learn/03-plug-in-your-agent.md` 第 3 节，示例已用真实 `env_server` 跑通）
 - 并入 H2-1 的学习交付：`docs/learn/03-plug-in-your-agent.md`，一页加一个约 20 行的自有循环示例。
 
 ### H2-5 Claude Code 适配器（可选）
