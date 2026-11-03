@@ -23,6 +23,7 @@ from app.final_evidence import FinalCheck, validate_final_check
 from app.phase1_events import event_notifier
 from app.scenario_assertions import evaluate_assertion_suite
 from app.scoring import compute_score
+from app.trials import aggregate, candidate_group_validates
 import app.scenarios  # noqa: F401 — register built-in Scenarios
 from app.scenario_registry import (
     ScenarioParamError,
@@ -84,6 +85,7 @@ from app.phase1_schemas import (
     TERMINAL_RUN_STATUSES,
     TrialGroupCreate,
     TrialGroupResponse,
+    TrialGroupSummary,
 )
 from app.durable_events import (
     TerminalFailureKind,
@@ -435,6 +437,44 @@ async def get_operations_overview(db: AsyncSession) -> OperationsOverviewRespons
     return await collect_operations_overview(db)
 
 
+def _trial_group_summary(group: TrialGroup, members: list[Run]) -> TrialGroupSummary:
+    ordered = sorted(members, key=lambda run: run.trial_index or 0)
+    result = aggregate(group.n, group.k, ordered)
+    return TrialGroupSummary(
+        id=group.id,
+        experiment_id=group.experiment_id,
+        policy_id=group.policy_id,
+        n=group.n,
+        k=group.k,
+        seed=group.seed,
+        created_at=group.created_at,
+        run_ids=[run.id for run in ordered],
+        state=result.state,
+        terminal=result.terminal,
+        successes=result.successes,
+        pass_at_1=result.pass_at_1,
+        pass_at_k=result.pass_at_k,
+        mean_score=result.mean_score,
+        mean_steps=result.mean_steps,
+    )
+
+
+async def _trial_members(db: AsyncSession, group_id: str) -> list[Run]:
+    # Fresh rows: other members may have completed in committed transactions.
+    return list(
+        (
+            await db.execute(
+                select(Run)
+                .where(Run.trial_group_id == group_id)
+                .order_by(Run.trial_index)
+                .execution_options(populate_existing=True)
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+
 async def experiment_response(db: AsyncSession, experiment: Experiment) -> ExperimentResponse:
     runs = list(
         (
@@ -469,6 +509,17 @@ async def experiment_response(db: AsyncSession, experiment: Experiment) -> Exper
         .scalars()
         .all()
     )
+    groups = list(
+        (
+            await db.execute(
+                select(TrialGroup)
+                .where(TrialGroup.experiment_id == experiment.id)
+                .order_by(TrialGroup.created_at.desc())
+            )
+        )
+        .scalars()
+        .all()
+    )
     active = next((item for item in policies if item.status == PolicyStatus.ACTIVE.value), None)
     candidate = next(
         (
@@ -493,6 +544,10 @@ async def experiment_response(db: AsyncSession, experiment: Experiment) -> Exper
         agent_id=experiment.agent_id,
         created_at=experiment.created_at,
         runs=[run_response(item) for item in runs],
+        trial_groups=[
+            _trial_group_summary(group, [run for run in runs if run.trial_group_id == group.id])
+            for group in groups
+        ],
         regression_cases=[RegressionCaseResponse.model_validate(item) for item in regression_cases],
         active_policy=policy_response(active) if active else None,
         candidate_policy=policy_response(candidate) if candidate else None,
@@ -682,16 +737,8 @@ async def create_trial_group(
     for run in runs:
         await db.refresh(run)
     await db.refresh(group)
-    return TrialGroupResponse(
-        id=group.id,
-        experiment_id=group.experiment_id,
-        policy_id=group.policy_id,
-        n=group.n,
-        k=group.k,
-        seed=group.seed,
-        created_at=group.created_at,
-        runs=[run_response(run) for run in runs],
-    )
+    summary = _trial_group_summary(group, runs)
+    return TrialGroupResponse(**summary.model_dump(), runs=[run_response(run) for run in runs])
 
 
 async def list_regression_cases(
@@ -1538,6 +1585,18 @@ async def _create_candidate(db: AsyncSession, run: Run) -> None:
     ).scalar_one_or_none()
     if existing is not None:
         return
+    if run.trial_group_id is not None:
+        # One candidate per baseline group; the caller holds the group lock.
+        sibling_policy = (
+            await db.execute(
+                select(Policy.id)
+                .join(Run, Run.id == Policy.source_run_id)
+                .where(Run.trial_group_id == run.trial_group_id)
+                .limit(1)
+            )
+        ).scalar_one_or_none()
+        if sibling_policy is not None:
+            return
     active = (
         await db.execute(
             select(Policy).where(
@@ -1572,13 +1631,27 @@ async def _record_terminal_effects(
     metrics: dict | None,
     projection: tuple[dict, dict, dict] | None = None,
 ) -> None:
+    group = None
+    if run.trial_group_id is not None:
+        # Lock order Job -> Run -> TrialGroup. Members that finish together
+        # serialize here, so the last one sees every sibling's terminal status.
+        group = (
+            await db.execute(
+                select(TrialGroup)
+                .where(TrialGroup.id == run.trial_group_id)
+                .with_for_update()
+                .execution_options(populate_existing=True)
+            )
+        ).scalar_one()
     await _analyze_and_score(db, run, metrics, projection)
     if run.kind == "baseline" and status in {
         RunStatus.FAILED.value,
         RunStatus.TIMED_OUT.value,
     }:
         await _create_candidate(db, run)
-    if run.kind == "replay" and run.policy_id and run.regression_case_id is None:
+    if run.kind == "replay" and run.policy_id and group is not None:
+        await _evaluate_candidate_group(db, group, run)
+    elif run.kind == "replay" and run.policy_id and run.regression_case_id is None:
         policy = await require_policy(db, run.policy_id)
         baseline = await require_run(db, run.source_run_id or policy.source_run_id)
         policy.score_delta = (run.score or 0.0) - (baseline.score or 0.0)
@@ -1587,6 +1660,30 @@ async def _record_terminal_effects(
             if status == RunStatus.SUCCEEDED.value and policy.score_delta > 0
             else PolicyStatus.CANDIDATE.value
         )
+
+
+async def _evaluate_candidate_group(db: AsyncSession, group: TrialGroup, run: Run) -> None:
+    """ADR-0010 validation once every candidate member is terminal."""
+    members = await _trial_members(db, group.id)
+    candidate = aggregate(group.n, group.k, members)
+    if candidate.state == "running":
+        return
+    policy = await require_policy(db, run.policy_id)
+    baseline_run = await require_run(db, policy.source_run_id)
+    baseline_members = await _trial_members(db, baseline_run.trial_group_id)
+    baseline = aggregate(group.n, group.k, baseline_members)
+    if group.n == 1:
+        # CONTEXT invariant 7 stands for a single trial.
+        policy.score_delta = (members[0].score or 0.0) - (baseline_members[0].score or 0.0)
+        validated = members[0].status == RunStatus.SUCCEEDED.value and policy.score_delta > 0
+    else:
+        policy.score_delta = (
+            candidate.mean_score - baseline.mean_score
+            if candidate.published and baseline.published
+            else None
+        )
+        validated = candidate_group_validates(baseline, candidate, group.n)
+    policy.status = PolicyStatus.VALIDATED.value if validated else PolicyStatus.CANDIDATE.value
 
 
 async def _evaluation_projection(db: AsyncSession, run: Run) -> tuple[dict, dict, dict]:
@@ -1817,31 +1914,63 @@ async def replay_policy(db: AsyncSession, policy_id: str) -> PolicyResponse:
     baseline = await require_run(db, policy.source_run_id)
     experiment = await require_experiment(db, policy.experiment_id)
     _ensure_experiment_scenario(experiment)
-    baseline_spec = EvaluationSpec.model_validate(baseline.evaluation_spec)
-    run_id = new_id()
-    replay_spec = _evaluation_spec(
-        run_id=run_id,
-        experiment=experiment,
-        seed=baseline_spec.seed,
-        execution_mode=baseline_spec.execution_mode,
-        agent_id=(
-            baseline_spec.agent_id
-            or _resolve_agent(None, baseline_spec.execution_mode)
-        ),
-        policy=PolicyPatch.model_validate(policy.patch),
-    )
-    run = Run(
-        id=run_id,
-        experiment_id=experiment.id,
-        kind="replay",
-        source_run_id=baseline.id,
-        policy_id=policy.id,
-        status=RunStatus.QUEUED.value,
-        evaluation_spec=replay_spec.model_dump(mode="json"),
-        metrics={},
-    )
-    db.add_all([run, RunnerJob(run_id=run.id, attempt=1)])
+    sources = [baseline]
+    group = None
+    if baseline.trial_group_id is not None:
+        # ADR-0010: a group baseline is replayed as a candidate group with the
+        # same n, k and seed, compared only once the baseline group published.
+        baseline_group = await db.get(TrialGroup, baseline.trial_group_id)
+        sources = await _trial_members(db, baseline_group.id)
+        if not aggregate(baseline_group.n, baseline_group.k, sources).published:
+            raise DomainError(
+                409,
+                "BASELINE_GROUP_NOT_PUBLISHED",
+                "Every baseline trial must finish without cancellation before a group replay",
+                {"trial_group_id": baseline_group.id},
+            )
+        group = TrialGroup(
+            experiment_id=experiment.id,
+            policy_id=policy.id,
+            n=baseline_group.n,
+            k=baseline_group.k,
+            seed=baseline_group.seed,
+        )
+        db.add(group)
+        await db.flush()
+    patch = PolicyPatch.model_validate(policy.patch)
+    runs = []
+    for source in sources:
+        source_spec = EvaluationSpec.model_validate(source.evaluation_spec)
+        run_id = new_id()
+        replay_spec = _evaluation_spec(
+            run_id=run_id,
+            experiment=experiment,
+            seed=source_spec.seed,
+            execution_mode=source_spec.execution_mode,
+            agent_id=(
+                source_spec.agent_id
+                or _resolve_agent(None, source_spec.execution_mode)
+            ),
+            policy=patch,
+        )
+        runs.append(
+            Run(
+                id=run_id,
+                experiment_id=experiment.id,
+                kind="replay",
+                source_run_id=source.id,
+                policy_id=policy.id,
+                trial_group_id=group.id if group else None,
+                trial_index=source.trial_index if group else None,
+                status=RunStatus.QUEUED.value,
+                evaluation_spec=replay_spec.model_dump(mode="json"),
+                metrics={},
+            )
+        )
+    db.add_all(runs)
+    db.add_all([RunnerJob(run_id=item.id, attempt=1) for item in runs])
     await db.flush()
+    run = runs[0]
 
     claimed = await db.execute(
         update(Policy)

@@ -158,6 +158,7 @@ export async function recordedHandler(method: string, url: string, body?: unknow
       agent_id: request.agent_id ?? null,
       created_at: "2026-07-16T09:00:00Z",
       runs: [],
+      trial_groups: [],
       regression_cases: [],
       active_policy: null,
       candidate_policy: null,

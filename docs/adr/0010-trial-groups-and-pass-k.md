@@ -5,6 +5,8 @@
 - Implementation: Phase 2 H3. Not in code at `8bd2ef0`.
 - Amended: 2026-11-03 for H3-1 — a `trial_groups` row holds `n`, `k` and
   the seed; aggregates are computed on read.
+- Amended: 2026-11-03 for H3-2 — publication, group replay and the
+  validation lock.
 - Depends on: [ADR-0007](0007-environment-agent-split.md)
 
 ## Context
@@ -75,6 +77,40 @@ its own RunnerJob. `n` is 1..20 and `k` is 1..`n`.
 Aggregates are not stored. H3-2 computes them from the member Runs on read,
 so no second copy can drift from the Runs, and an incomplete group has no
 pass^k to publish.
+
+## H3-2 amendment: publication, group replay and validation
+
+`app.trials` holds the estimator and the aggregate; the Control Plane calls it
+when rendering an Experiment and when a candidate member terminates.
+
+- A group publishes only when all `n` members are terminal and none was
+  cancelled. Cancellation is an operator action, not a failed attempt by the
+  Agent, so a group with a cancelled member reports `state = cancelled` and no
+  pass^k. `c` counts members whose status is `succeeded`, which already
+  requires the registered aggregate >= 1.0 (ADR-0012).
+- A Policy whose source Run belongs to a group is replayed as a candidate group
+  with the same `n`, `k` and seed. Member `i` replays baseline member `i`. The
+  request fails with `409 BASELINE_GROUP_NOT_PUBLISHED` until the baseline group
+  has published. `Policy.replay_run_id` stores the first member's id, so the
+  existing atomic claim (CONTEXT invariant 19) still yields exactly one group.
+- A baseline group yields at most one candidate Policy, not one per failed
+  member.
+- The Policy is decided when the last candidate member terminates. `n = 1`
+  keeps invariant 7. For `n > 1`, `score_delta` is the mean score delta, and
+  the Policy is validated if pass^k does not decrease and that delta is
+  positive. A group with a cancelled member returns the Policy to `candidate`.
+- Each member's terminal transaction locks the group row after its Job and
+  Run (lock order Job -> Run -> TrialGroup) and reads siblings only after that
+  lock. Without the lock, two members finishing together would each see the
+  other as unfinished, and the Policy would stay `replaying`. A PostgreSQL
+  test covers this and fails without the lock.
+
+Known weakness of the rule as accepted: when the baseline group's pass^k is 0,
+"pass^k does not decrease" always holds. One success in `n` candidate trials
+then gives a positive mean delta and validates the Policy. That contradicts the
+intent stated above, that a single lucky trial cannot validate. Tightening the
+rule, for example by requiring pass^k to increase, is a separate decision.
+Human activation still gates every Policy.
 
 ## Consequences
 

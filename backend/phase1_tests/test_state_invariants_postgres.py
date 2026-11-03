@@ -18,7 +18,7 @@ from sqlalchemy.sql.dml import Update
 import app.phase1_service as phase1_service
 from app.migrations import application_alembic_head
 from app.phase1_events import event_notifier
-from app.phase1_models import Experiment, Policy, Run, RunAnalysis, RunEvent, RunnerJob, RunnerAttempt, new_id, utcnow
+from app.phase1_models import Experiment, Policy, Run, RunAnalysis, RunEvent, RunnerJob, RunnerAttempt, TrialGroup, new_id, utcnow
 from app.phase1_schemas import EvaluationSpec, EventEnvelope, ExecutionFacts
 from test_cp_completion import facts
 
@@ -32,7 +32,7 @@ if not POSTGRES_URL.startswith("postgresql+asyncpg://"):
 
 POSTGRES_TABLES = (
     "experiments, runs, policies, regression_cases, runner_jobs, runner_attempts, "
-    "run_events, run_analyses, runner_presence"
+    "run_events, run_analyses, runner_presence, trial_groups"
 )
 
 
@@ -822,3 +822,70 @@ async def test_postgres_queued_cancel_and_claim_follow_the_same_lock_order(
             execution=ExecutionFacts.model_validate(facts(run_id)),
         )
         assert completed.status == "cancelled"
+
+
+async def _seed_candidate_group(factory: async_sessionmaker[AsyncSession]) -> tuple[str, list[tuple[str, str]]]:
+    """A published failed baseline group, its candidate Policy, and two claimed candidate members."""
+    now = utcnow()
+    experiment_id, baseline_group, candidate_group, policy_id = new_id(), new_id(), new_id(), new_id()
+
+    def spec(run_id: str) -> dict:
+        return EvaluationSpec(run_id=run_id, experiment_id=experiment_id, scenario_id="checkout-api-latency.v2",
+                              task="Investigate checkout API latency").model_dump(mode="json")
+
+    baseline_ids = [new_id(), new_id()]
+    members = [(new_id(), new_id()), (new_id(), new_id())]
+    async with factory.begin() as db:
+        db.add(Experiment(id=experiment_id, name="Group contention", task="Investigate checkout API latency",
+                          scenario_id="checkout-api-latency.v2", execution_mode="fixture", created_at=now))
+        db.add(TrialGroup(id=baseline_group, experiment_id=experiment_id, n=2, k=2, seed=42, created_at=now))
+        await db.flush()
+        for index, run_id in enumerate(baseline_ids, start=1):
+            db.add(Run(id=run_id, experiment_id=experiment_id, kind="baseline", status="failed", score=0.2,
+                       metrics={"steps": 6}, evaluation_spec=spec(run_id), trial_group_id=baseline_group,
+                       trial_index=index, queued_at=now, completed_at=now))
+        await db.flush()
+        db.add(Policy(id=policy_id, experiment_id=experiment_id, source_run_id=baseline_ids[0], status="replaying",
+                      replay_run_id=None, patch={"max_steps": 6}, rationale="contention", created_at=now))
+        await db.flush()
+        db.add(TrialGroup(id=candidate_group, experiment_id=experiment_id, policy_id=policy_id, n=2, k=2, seed=42,
+                          created_at=now))
+        await db.flush()
+        for index, (run_id, lease_id) in enumerate(members, start=1):
+            db.add(Run(id=run_id, experiment_id=experiment_id, kind="replay", status="claimed", metrics={},
+                       evaluation_spec=spec(run_id), source_run_id=baseline_ids[index - 1], policy_id=policy_id,
+                       trial_group_id=candidate_group, trial_index=index, queued_at=now, claimed_at=now))
+            await db.flush()
+            db.add(RunnerJob(run_id=run_id, attempt=1, lease_id=lease_id, runner_id="postgres-runner",
+                             lease_expires_at=now + timedelta(minutes=1)))
+            db.add(RunEvent(run_id=run_id, sequence=1, event_type="run_started",
+                            payload={"attempt": 1, "source": "environment"}, occurred_at=now))
+    return policy_id, members
+
+
+@pytest.mark.asyncio
+async def test_postgres_last_candidate_members_finishing_together_decide_the_policy(
+    postgres_db: async_sessionmaker[AsyncSession], monkeypatch
+) -> None:
+    # ADR-0010 H3-2: without the trial-group row lock, each completion would see
+    # its sibling still claimed and the Policy would stay replaying forever.
+    policy_id, members = await _seed_candidate_group(postgres_db)
+    await _synchronize_initial_lease_reads(monkeypatch, count=2)
+
+    async def complete(run_id: str, lease_id: str):
+        async with postgres_db() as db:
+            return await phase1_service.complete_job(
+                db, lease_id=lease_id, runner_id="postgres-runner", status="failed", failure_kind=None,
+                metrics=None, execution=ExecutionFacts.model_validate(facts(run_id)),
+            )
+
+    results = await asyncio.wait_for(
+        asyncio.gather(*(complete(run_id, lease_id) for run_id, lease_id in members), return_exceptions=True),
+        timeout=15,
+    )
+    assert not any(isinstance(result, Exception) for result in results), results
+    assert [result.status for result in results] == ["failed", "failed"]
+    async with postgres_db() as db:
+        policy = await db.get(Policy, policy_id)
+        assert policy is not None and policy.status == "candidate"
+        assert policy.score_delta == pytest.approx(0.0)  # both groups: no successes, mean 0

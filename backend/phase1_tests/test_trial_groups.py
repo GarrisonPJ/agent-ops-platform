@@ -160,3 +160,188 @@ def test_migration_upgrade_downgrade_keeps_existing_runs_outside_groups(tmp_path
         assert connection.execute(
             "SELECT name FROM sqlite_master WHERE type='table' AND name='trial_groups'").fetchone() is None
         assert connection.execute("SELECT id FROM runs").fetchone() == ("old-run",)
+
+
+# --- H3-2: aggregates and group policy validation through real completion ---
+
+from test_control_plane import envelope, step, upload  # noqa: E402
+from test_cp_completion import facts  # noqa: E402
+
+
+async def claim_any(client) -> dict | None:
+    response = await client.post("/api/internal/runner/jobs/claim", headers=AUTH, json={"runner_id": "runner-1"})
+    return response.json() if response.status_code == 200 else None
+
+
+async def finish(client, claimed: dict, outcome: str) -> dict:
+    """Drive one claimed Run: 's' = evidence-first success, 'f' = repeated logs failure, 'c' = cancel."""
+    run_id = claimed["run"]["run_id"]
+    if outcome == "c":
+        cancelled = await client.post(f"/api/runs/{run_id}/cancel")
+        assert cancelled.status_code == 200
+        completed = await client.post(
+            f"/api/internal/runner/jobs/{claimed['lease_id']}/complete", headers=AUTH,
+            json={"runner_id": "runner-1", "status": "cancelled", "execution": facts(run_id)})
+        assert completed.status_code == 200, completed.text
+        return completed.json()["run"]
+    if outcome == "s":
+        events = [
+            envelope(run_id, 1, "run_started"),
+            step(run_id, 2, 0, "check_service_health", "Service is healthy; latency is elevated."),
+            step(run_id, 3, 1, "query_service_metrics", "Payment dependency p95 is 1.8s."),
+            step(run_id, 4, 2, "fetch_service_logs", "Payment connection pool is saturated."),
+            envelope(run_id, 5, "step_completed", {"environment": {
+                "kind": "control", "control": "submit_result", "result": "ok",
+                "finalized": True, "check_called": True,
+                "final_check": {"scenario_id": "checkout-api-latency.v2", "final_observation": None},
+            }}),
+        ]
+        body = {"runner_id": "runner-1", "status": "succeeded", "execution": facts(run_id)}
+    else:
+        events = [envelope(run_id, 1, "run_started")] + [
+            step(run_id, index + 2, index, "fetch_service_logs", "The same noisy samples are returned.")
+            for index in range(6)
+        ]
+        body = {"runner_id": "runner-1", "status": "failed", "error": "step budget exhausted",
+                "execution": facts(run_id)}
+    await upload(client, claimed, events)
+    completed = await client.post(f"/api/internal/runner/jobs/{claimed['lease_id']}/complete",
+                                  headers=AUTH, json=body)
+    assert completed.status_code == 200, completed.text
+    assert completed.json()["run"]["status"] == {"s": "succeeded", "f": "failed"}[outcome]
+    return completed.json()["run"]
+
+
+async def drive(client, pattern: str, count: int | None = None) -> list[dict]:
+    """Claim `count` queued Runs and finish each by its trial_index: pattern[trial_index - 1]."""
+    finished = []
+    total = len(pattern) if count is None else count
+    while len(finished) < total:
+        claimed = await claim_any(client)
+        assert claimed is not None
+        run = (await client.get(f"/api/runs/{claimed['run']['run_id']}")).json()
+        finished.append(await finish(client, claimed, pattern[run["trial_index"] - 1]))
+    return finished
+
+
+async def group_of(client, experiment_id: str, group_id: str) -> dict:
+    detail = (await client.get(f"/api/experiments/{experiment_id}")).json()
+    return next(item for item in detail["trial_groups"] if item["id"] == group_id)
+
+
+async def baseline_group(client, pattern: str, k: int) -> tuple[dict, dict]:
+    experiment = await create_experiment(client)
+    created = (await client.post(f"/api/experiments/{experiment['id']}/trials",
+                                 json={"n": len(pattern), "k": k})).json()
+    assert (created["state"], created["terminal"], created["pass_at_k"]) == ("running", 0, None)
+    await drive(client, pattern)
+    return experiment, await group_of(client, experiment["id"], created["id"])
+
+
+async def test_group_publishes_pass_k_only_when_every_member_is_terminal(api) -> None:
+    client, _ = api
+    experiment = await create_experiment(client)
+    created = (await client.post(f"/api/experiments/{experiment['id']}/trials", json={"n": 3, "k": 2})).json()
+    await drive(client, "fsf", count=2)
+    partial = await group_of(client, experiment["id"], created["id"])
+    assert (partial["state"], partial["terminal"], partial["pass_at_1"], partial["pass_at_k"]) == (
+        "running", 2, None, None)
+    await drive(client, "fsf", count=1)
+    done = await group_of(client, experiment["id"], created["id"])
+    success_score = next(r for r in (await client.get(f"/api/experiments/{experiment['id']}")).json()["runs"]
+                         if r["status"] == "succeeded")["score"]
+    assert (done["state"], done["terminal"], done["successes"]) == ("complete", 3, 1)
+    assert done["pass_at_1"] == pytest.approx(1 / 3)
+    assert done["pass_at_k"] == 0.0  # C(1, 2) / C(3, 2)
+    assert done["mean_score"] == pytest.approx(success_score / 3)
+    assert done["mean_steps"] == pytest.approx((6 + 3 + 6) / 3)
+    assert done["run_ids"] == created["run_ids"]
+
+
+async def test_one_candidate_policy_per_baseline_group(api) -> None:
+    client, factory = api
+    experiment, _ = await baseline_group(client, "fff", 1)
+    async with factory() as db:
+        from app.phase1_models import Policy
+        policies = (await db.execute(select(Policy).where(Policy.experiment_id == experiment["id"]))).scalars().all()
+    assert len(policies) == 1
+
+
+async def test_group_replay_waits_for_published_baseline_group(api) -> None:
+    client, _ = api
+    experiment = await create_experiment(client)
+    await client.post(f"/api/experiments/{experiment['id']}/trials", json={"n": 2, "k": 1})
+    await drive(client, "ff", count=1)
+    candidate = (await client.get(f"/api/experiments/{experiment['id']}")).json()["candidate_policy"]
+    response = await client.post(f"/api/policies/{candidate['id']}/replay")
+    assert response.status_code == 409
+    assert response.json()["code"] == "BASELINE_GROUP_NOT_PUBLISHED"
+
+
+async def test_cancelled_baseline_member_blocks_group_replay(api) -> None:
+    client, _ = api
+    experiment, group = await baseline_group(client, "fc", 1)
+    assert group["state"] == "cancelled" and group["pass_at_1"] is None
+    candidate = (await client.get(f"/api/experiments/{experiment['id']}")).json()["candidate_policy"]
+    response = await client.post(f"/api/policies/{candidate['id']}/replay")
+    assert response.status_code == 409
+
+
+async def replay_group(client, experiment: dict) -> tuple[dict, dict]:
+    candidate = (await client.get(f"/api/experiments/{experiment['id']}")).json()["candidate_policy"]
+    replaying = await client.post(f"/api/policies/{candidate['id']}/replay")
+    assert replaying.status_code == 201
+    assert replaying.json()["status"] == "replaying"
+    again = await client.post(f"/api/policies/{candidate['id']}/replay")
+    assert again.json()["replay_run_id"] == replaying.json()["replay_run_id"]  # invariant 19
+    detail = (await client.get(f"/api/experiments/{experiment['id']}")).json()
+    group = next(item for item in detail["trial_groups"] if item["policy_id"] == candidate["id"])
+    return candidate, group
+
+
+async def test_candidate_group_mirrors_baseline_group(api) -> None:
+    client, _ = api
+    experiment, baseline = await baseline_group(client, "fsf", 2)
+    candidate, group = await replay_group(client, experiment)
+    assert (group["n"], group["k"], group["seed"], group["state"]) == (3, 2, baseline["seed"], "running")
+    runs = {run["id"]: run for run in (await client.get(f"/api/experiments/{experiment['id']}")).json()["runs"]}
+    members = [runs[run_id] for run_id in group["run_ids"]]
+    assert [m["trial_index"] for m in members] == [1, 2, 3]
+    assert {m["kind"] for m in members} == {"replay"}
+    assert [runs[m["source_run_id"]]["trial_index"] for m in members] == [1, 2, 3]
+    assert {m["evaluation_spec"]["seed"] for m in members} == {baseline["seed"]}
+    assert all(m["evaluation_spec"]["policy"] == candidate["patch"] for m in members)
+
+
+@pytest.mark.parametrize(("baseline_pattern", "candidate_pattern", "k", "expected"), [
+    ("fsf", "sss", 2, "validated"),
+    ("ssf", "sff", 2, "candidate"),   # pass^k drops
+    ("fsf", "fsf", 1, "candidate"),   # no mean improvement
+    ("fsf", "ssc", 2, "candidate"),   # cancelled candidate member: never published
+])
+async def test_candidate_group_validation(api, baseline_pattern, candidate_pattern, k, expected) -> None:
+    client, _ = api
+    experiment, baseline = await baseline_group(client, baseline_pattern, k)
+    candidate, group = await replay_group(client, experiment)
+    await drive(client, candidate_pattern, count=len(candidate_pattern) - 1)
+    policy = (await client.get(f"/api/experiments/{experiment['id']}")).json()["candidate_policy"]
+    assert policy["status"] == "replaying"  # nothing decided until the group is complete
+    await drive(client, candidate_pattern, count=1)
+    detail = (await client.get(f"/api/experiments/{experiment['id']}")).json()
+    decided = detail["candidate_policy"]
+    final_group = next(item for item in detail["trial_groups"] if item["id"] == group["id"])
+    assert decided["status"] == expected
+    if final_group["state"] == "complete":
+        assert decided["score_delta"] == pytest.approx(final_group["mean_score"] - baseline["mean_score"])
+    else:
+        assert decided["score_delta"] is None
+
+
+async def test_single_trial_group_keeps_invariant_seven(api) -> None:
+    client, _ = api
+    experiment, baseline = await baseline_group(client, "f", 1)
+    candidate, group = await replay_group(client, experiment)
+    await drive(client, "s")
+    decided = (await client.get(f"/api/experiments/{experiment['id']}")).json()["candidate_policy"]
+    assert decided["status"] == "validated"
+    assert decided["score_delta"] > 0

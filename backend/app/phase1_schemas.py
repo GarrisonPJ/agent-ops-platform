@@ -503,6 +503,30 @@ class RegressionCaseResponse(BaseModel):
     created_at: datetime
 
 
+class TrialGroupSummary(BaseModel):
+    """Computed on read from member Runs (ADR-0010); never stored."""
+
+    id: str
+    experiment_id: str
+    policy_id: str | None
+    n: int
+    k: int
+    seed: int
+    created_at: datetime
+    run_ids: list[str]
+    state: Literal["running", "complete", "cancelled"]
+    terminal: int
+    successes: int | None = None
+    pass_at_1: float | None = None
+    pass_at_k: float | None = None
+    mean_score: float | None = None
+    mean_steps: float | None = None
+
+
+class TrialGroupResponse(TrialGroupSummary):
+    runs: list[RunResponse] = Field(default_factory=list)
+
+
 class ExperimentResponse(BaseModel):
     id: str
     name: str
@@ -513,22 +537,10 @@ class ExperimentResponse(BaseModel):
     agent_id: str | None = None
     created_at: datetime
     runs: list[RunResponse] = Field(default_factory=list)
+    trial_groups: list[TrialGroupSummary] = Field(default_factory=list)
     regression_cases: list[RegressionCaseResponse] = Field(default_factory=list)
     active_policy: PolicyResponse | None = None
     candidate_policy: PolicyResponse | None = None
-
-
-class TrialGroupResponse(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: str
-    experiment_id: str
-    policy_id: str | None
-    n: int
-    k: int
-    seed: int
-    created_at: datetime
-    runs: list[RunResponse] = Field(default_factory=list)
 
 
 class AnalysisResponse(BaseModel):

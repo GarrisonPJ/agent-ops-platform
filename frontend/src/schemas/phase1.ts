@@ -183,6 +183,28 @@ export const scenarioSummarySchema = z
   })
   .strict();
 
+const nullableRate = z.number().min(0).max(1).nullable();
+
+export const trialGroupSummarySchema = z
+  .object({
+    id: z.string().min(1),
+    experiment_id: z.string().min(1),
+    policy_id: z.string().nullable(),
+    n: z.number().int().min(1).max(20),
+    k: z.number().int().min(1).max(20),
+    seed: z.number().int().nonnegative(),
+    created_at: z.string().min(1),
+    run_ids: z.array(z.string().min(1)),
+    state: z.enum(["running", "complete", "cancelled"]),
+    terminal: z.number().int().nonnegative(),
+    successes: z.number().int().nonnegative().nullable(),
+    pass_at_1: nullableRate,
+    pass_at_k: nullableRate,
+    mean_score: z.number().nullable(),
+    mean_steps: z.number().nonnegative().nullable(),
+  })
+  .strict();
+
 export const experimentSchema = z
   .object({
     id: z.string().min(1),
@@ -194,6 +216,7 @@ export const experimentSchema = z
     agent_id: agentIdSchema.nullable().optional(),
     created_at: z.string().min(1),
     runs: z.array(runSchema),
+    trial_groups: z.array(trialGroupSummarySchema).optional().default([]),
     regression_cases: z.array(regressionCaseSchema).optional().default([]),
     active_policy: policySchema.nullable(),
     candidate_policy: policySchema.nullable(),
@@ -263,6 +286,7 @@ export type RegressionCase = z.infer<typeof regressionCaseSchema>;
 export type AgentMetadata = z.infer<typeof agentMetadataSchema>;
 export type Scenario = z.infer<typeof scenarioSummarySchema>;
 export type Experiment = z.infer<typeof experimentSchema>;
+export type TrialGroupSummary = z.infer<typeof trialGroupSummarySchema>;
 export type FailureEvidence = z.infer<typeof failureEvidenceSchema>;
 export type RunAnalysis = z.infer<typeof runAnalysisSchema>;
 export type EventEnvelope = z.infer<typeof eventEnvelopeSchema>;

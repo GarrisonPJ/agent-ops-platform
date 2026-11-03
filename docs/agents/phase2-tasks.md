@@ -217,7 +217,7 @@ H0 剩余只有 H0-1 的 GitHub 点击和 H0-2 的命名。命名未定不阻塞
 
 ### H3-2 聚合与策略验证
 
-- Status: `ready-for-agent`
+- Status: `completed`（2026-11-03：`app.trials` 估计量与读时聚合，组 replay 与组锁验证，见 ADR-0010 H3-2 修订；`test_trials_estimator.py`、`test_trial_groups.py`、PostgreSQL 并发测试。已知弱点：baseline pass^k 为 0 时一次成功即可验证，是否收紧另行决定）
 - 实现 ADR-0010 的 `C(c,k)/C(n,k)`。组未全部终态时不发布 pass^k。
 - `k = 1` 的策略验证保持 CONTEXT 不变量 7。`n > 1` 时要求 pass^k 不下降且平均分差为正。
 - 验收：用脚本化的成功/失败组合测估计量，不调用模型。
