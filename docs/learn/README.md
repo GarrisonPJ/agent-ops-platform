@@ -12,7 +12,7 @@
 | 4 | [04-runner-lease-fencing.md](04-runner-lease-fencing.md) | 当前 lease/fencing、capability 与 ACK 清理 |
 | 5 | `05-analyzer-and-calibration.md` | H5 完成时 |
 | 6 | [Trial group 与 pass^k](06-pass-k.md) | 当前 trial group、估计量、发布规则与组级验证 |
-| 7 | `07-otel-mapping.md` | H4 完成时 |
+| 7 | [OTel GenAI 映射](07-otel-mapping.md) | 当前 span 映射、固定的规范 commit；对端截图未做 |
 
 还没写的章节不要找，它们尚未落地。当前生产 Runner 使用独立 Environment/MCP 与注册 Agent；CP 独占评分和终态。`01` 与 `04` 区分已集成代码、host/PostgreSQL、标准镜像/named-volume 与最终 exact-payload 验收；真实 llama.cpp + PostgreSQL trace/分析已补齐，但保留实际模型失败；H1 本地完成不代表发布、hosted CI 或分析器准确率。H2 及后续章节不提前实施。
 

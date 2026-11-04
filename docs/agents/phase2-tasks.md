@@ -247,7 +247,7 @@ H0 剩余只有 H0-1 的 GitHub 点击和 H0-2 的命名。命名未定不阻塞
 
 ### H4-2 对端验证
 
-- Status: `ready-for-human`（需要本地 Phoenix 或 Langfuse）
+- Status: `ready-for-human`（`07` 章已写并固定规范 commit `633cbb0`，Status: Development；剩向本地 Phoenix 或 Langfuse 发一条并截图）
 - 对 `:6006/v1/traces` 或 Langfuse `/api/public/otel/v1/traces` 打一条，截图放 `docs/`。
 - `docs/learn/07-otel-mapping.md` 写明 `semantic-conventions-genai` 的 commit，并写 Status: Development。
 
