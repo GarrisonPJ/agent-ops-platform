@@ -24,6 +24,7 @@ from app.phase1_events import event_notifier
 from app.scenario_assertions import evaluate_assertion_suite
 from app.scoring import compute_score
 from app.trials import aggregate, candidate_group_validates
+from app import otel_export
 import app.scenarios  # noqa: F401 — register built-in Scenarios
 from app.scenario_registry import (
     ScenarioParamError,
@@ -1760,8 +1761,35 @@ async def _commit_terminal_notifications(db: AsyncSession) -> None:
     except BaseException:
         db.info.pop("terminal_notifications", None)
         raise
-    for run_id, event in db.info.pop("terminal_notifications", []):
+    notifications = db.info.pop("terminal_notifications", [])
+    for run_id, event in notifications:
         await event_notifier.publish(run_id, [event])
+    if notifications and otel_export.export_enabled():
+        await _schedule_otel_export(db, [run_id for run_id, _ in notifications])
+
+
+async def _schedule_otel_export(db: AsyncSession, run_ids: list[str]) -> None:
+    """ADR-0011: read committed facts, then export off the request path."""
+    try:
+        agents = {item["id"]: item["name"] for item in list_registered_agents()}
+        roots = []
+        for run_id in run_ids:
+            run = await db.get(Run, run_id, populate_existing=True)
+            if run is None:
+                continue
+            events = (
+                await db.execute(
+                    select(RunEvent).where(RunEvent.run_id == run_id).order_by(RunEvent.sequence)
+                )
+            ).scalars().all()
+            roots.append(
+                otel_export.build_run_spans(
+                    run, events, agents.get((run.evaluation_spec or {}).get("agent_id"))
+                )
+            )
+        otel_export.schedule(roots)
+    except Exception:
+        otel_export.logger.warning("OTel export could not be prepared; Run state is unaffected")
 
 
 async def _completion_response(

@@ -239,7 +239,7 @@ H0 剩余只有 H0-1 的 GitHub 点击和 H0-2 的命名。命名未定不阻塞
 
 ### H4-1 映射与导出
 
-- Status: `ready-for-agent`
+- Status: `completed`（2026-11-04：`backend/app/otel_export.py`，OTel SDK/OTLP HTTP 固定 1.45.1 以保持 Runner 锁一致；终态提交后后台导出，一个 Run 一次请求；`test_otel_export.py` 覆盖映射属性、默认关闭不建导出器、失败不影响 Run、本地 collector 收到 protobuf；运维说明见 `docs/operations/otel-export.md`）
 - 依赖：H1-2 的事件仍是 `step_completed`。可整阶段推迟。
 - `backend/app/otel_export.py`。默认关闭。`AGENTOPS_OTEL_EXPORT=1` 才导出。
 - 映射见 ADR-0011。导出失败不改变 Run 状态。

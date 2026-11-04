@@ -13,6 +13,7 @@ Historical acceptance is archived separately, not presented as current proof.
 | Direct local-model setup, capture command and acceptance limits | [local-model.md](local-model.md) |
 | Backup and disposable restore rehearsal | [backup-restore.md](backup-restore.md) |
 | Experiment retention and redaction | [data-retention.md](data-retention.md) |
+| Optional OTel GenAI span export | [otel-export.md](otel-export.md) |
 
 Machine-readable rollup: `GET /api/operations/state`. Out-of-process probe:
 `make health-probe` or `python scripts/health_probe.py --include-state`.
