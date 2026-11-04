@@ -4,6 +4,7 @@ import EmptyState from "../components/EmptyState";
 import ErrorBanner from "../components/ErrorBanner";
 import LifecycleBadge from "../components/LifecycleBadge";
 import LoadingSkeleton from "../components/LoadingSkeleton";
+import TrialGroupsSection from "../components/TrialGroupsSection";
 import { toast } from "../lib/toast";
 import {
   formatDate,
@@ -187,6 +188,10 @@ export default function ExperimentDetailPage() {
         </div>
       </section>
 
+      {experiment.trial_groups.length > 0 ? (
+        <TrialGroupsSection groups={experiment.trial_groups} runs={experiment.runs} />
+      ) : null}
+
       <section aria-labelledby="runs-heading" className="mt-10">
         <div className="mb-4 flex items-end justify-between gap-4">
           <div>
@@ -235,6 +240,11 @@ export default function ExperimentDetailPage() {
                         <span className="font-semibold capitalize text-fg-primary hover:text-accent">
                           {run.kind}
                         </span>
+                        {run.trial_index != null ? (
+                          <span className="mt-1 block text-xs text-fg-muted">
+                            Trial {run.trial_index}
+                          </span>
+                        ) : null}
                         <span className="mt-1 block font-mono text-[11px] text-fg-subtle">
                           {run.id}
                         </span>

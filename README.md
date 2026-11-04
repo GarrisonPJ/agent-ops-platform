@@ -147,6 +147,8 @@ Historical Phase 1 hosted CI passed on `8bd2ef0`; it does not validate this H1 w
 
 No tracing SaaS, accounts, multi-tenancy, billing, Kubernetes, Docker-socket execution, untrusted code sandbox, vector memory, training export, LLM-as-judge, automatic activation, new Trace UI, annotation queues, or dataset management. MCP is a loopback Environment transport, not an open tool bus. Deployment and shared/public access require the roadmap's safety gate.
 
+The Trace UI is frozen. H3 shows trial-group pass^1/pass^k and per-trial status on the Experiment page only; the Trace, Analysis and Improve views gain no new views.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).

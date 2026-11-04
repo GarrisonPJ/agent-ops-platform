@@ -147,6 +147,8 @@ CI 基线为 Linux Node 22、Python 3.12、Rust 1.96、PostgreSQL 16 与锁定�
 
 不做 tracing SaaS、账号、多租户、计费、Kubernetes、Docker socket 执行、不可信代码沙箱、向量记忆、训练导出、LLM-as-judge、自动激活、新 Trace UI、标注队列或 dataset 管理。MCP 是 loopback Environment transport，不是开放工具总线。部署和共享/公网访问需通过 roadmap 的安全门。
 
+Trace UI 已冻结。H3 只在 Experiment 页显示 trial group 的 pass^1/pass^k 和每个 trial 的状态；Trace、Analysis、Improve 不新增视图。
+
 ## License
 
 MIT — 见 [LICENSE](LICENSE)。

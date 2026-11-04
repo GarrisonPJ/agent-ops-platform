@@ -14,6 +14,7 @@ import type {
   RunStatus,
   RegressionCase,
   Scenario,
+  TrialGroupSummary,
 } from "../schemas/phase1";
 
 export type {
@@ -32,6 +33,7 @@ export type {
   RunStatus,
   RegressionCase,
   Scenario,
+  TrialGroupSummary,
 };
 
 export type RunKind = Run["kind"];
