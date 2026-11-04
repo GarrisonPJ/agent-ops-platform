@@ -7,6 +7,8 @@
   the seed; aggregates are computed on read.
 - Amended: 2026-11-03 for H3-2 — publication, group replay and the
   validation lock.
+- Amended: 2026-11-04 (operator decision) — group validation requires a
+  strict pass^k increase.
 - Depends on: [ADR-0007](0007-environment-agent-split.md)
 
 ## Context
@@ -49,7 +51,8 @@ Policy validation:
 - Group size 1: invariant 7 stands (success and positive score delta).
 - Group size greater than 1: the candidate group must show pass^k greater
   than or equal to the baseline group at the same k, and a positive mean
-  score delta. A single lucky trial cannot validate a policy.
+  score delta. A single lucky trial cannot validate a policy. (Tightened to
+  a strict pass^k increase by the H3-2 amendment below.)
 
 Before/After for groups compares those aggregates plus the existing
 per-run comparison for a chosen pair. The Experiment page shows pass^1,
@@ -105,12 +108,20 @@ when rendering an Experiment and when a candidate member terminates.
   other as unfinished, and the Policy would stay `replaying`. A PostgreSQL
   test covers this and fails without the lock.
 
-Known weakness of the rule as accepted: when the baseline group's pass^k is 0,
-"pass^k does not decrease" always holds. One success in `n` candidate trials
-then gives a positive mean delta and validates the Policy. That contradicts the
-intent stated above, that a single lucky trial cannot validate. Tightening the
-rule, for example by requiring pass^k to increase, is a separate decision.
-Human activation still gates every Policy.
+Tightened rule (operator decision, 2026-11-04). "pass^k does not decrease"
+always holds when the baseline group's pass^k is 0. One success in `n`
+candidate trials would then give a positive mean delta and validate, which
+contradicts the intent that a single lucky trial cannot validate. For `n > 1`,
+the candidate group now needs a positive mean score delta and either:
+
+- a pass^k strictly above the baseline group's at the same `k`, or
+- pass^k = 1 when the baseline group is already at pass^k = 1, which cannot
+  increase.
+
+A strict increase needs at least `k` candidate successes and more successes
+than the baseline. With `n = k = 5` against a 0/5 baseline, only 5/5
+validates. `n = 1` still follows invariant 7. Human activation still gates
+every Policy.
 
 ## Consequences
 

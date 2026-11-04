@@ -80,11 +80,17 @@ def aggregate(n: int, k: int, members: Iterable[Member]) -> GroupAggregate:
 
 
 def candidate_group_validates(baseline: GroupAggregate, candidate: GroupAggregate, n: int) -> bool:
-    """n > 1: pass^k must not decrease and the mean score delta must be positive."""
+    """n > 1: positive mean score delta and a strictly higher pass^k (ADR-0010 H3-2).
+
+    "Not lower" would always hold against a pass^k = 0 baseline, so one lucky
+    candidate success could validate. Only a baseline already at pass^k = 1,
+    which cannot rise, is matched by a candidate that also stays at 1.
+    """
     if n < 2:
         raise ValueError("single trials use CONTEXT invariant 7")
     if not (baseline.published and candidate.published):
         return False
     assert baseline.pass_at_k is not None and candidate.pass_at_k is not None
     assert baseline.mean_score is not None and candidate.mean_score is not None
-    return candidate.pass_at_k >= baseline.pass_at_k and candidate.mean_score - baseline.mean_score > 0
+    improved = candidate.pass_at_k > baseline.pass_at_k or candidate.pass_at_k == baseline.pass_at_k == 1.0
+    return improved and candidate.mean_score - baseline.mean_score > 0

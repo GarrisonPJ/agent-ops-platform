@@ -318,6 +318,7 @@ async def test_candidate_group_mirrors_baseline_group(api) -> None:
     ("ssf", "sff", 2, "candidate"),   # pass^k drops
     ("fsf", "fsf", 1, "candidate"),   # no mean improvement
     ("fsf", "ssc", 2, "candidate"),   # cancelled candidate member: never published
+    ("fff", "sff", 3, "candidate"),   # one lucky success against pass^k = 0 (tightened rule)
 ])
 async def test_candidate_group_validation(api, baseline_pattern, candidate_pattern, k, expected) -> None:
     client, _ = api

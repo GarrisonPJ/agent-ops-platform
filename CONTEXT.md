@@ -109,7 +109,7 @@ claimed/running/cancelling -- exhausted attempts --> failed or cancelled
 The original numbering is retained for ADR references. These do not describe current functionality.
 
 26. H3: trials in a group share the EvaluationSpec except `run_id` and `trial_index`, with a fixed Environment seed.
-27. H3: group metrics use the unbiased pass^k estimator; published numbers state `k`. Validation for `k > 1` requires non-decreasing pass^k and positive mean score delta (extends invariant 7).
+27. H3: group metrics use the unbiased pass^k estimator; published numbers state `k`. Validation for groups of `n > 1` requires a positive mean score delta and a strictly higher pass^k than the baseline group, or pass^k = 1 when the baseline is already 1 (ADR-0010 H3-2; extends invariant 7).
 28. H4: OTel export is a lossy projection; RunEvent remains authoritative and export is never read back.
 
 ## Built-in scenarios

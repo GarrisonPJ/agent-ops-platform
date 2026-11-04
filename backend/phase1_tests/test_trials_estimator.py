@@ -94,15 +94,27 @@ def group(pattern: str, k: int, score: float = 0.9) -> GroupAggregate:
 
 
 @pytest.mark.parametrize(("baseline", "candidate", "k", "validated"), [
-    ("sff", "sss", 2, True),     # pass^k up, mean up
-    ("ssf", "sff", 2, False),    # pass^k down
-    ("ssf", "ssf", 2, False),    # equal pass^k, zero mean delta
-    ("sff", "ssf", 3, True),     # pass^3 both 0, mean up
-    ("fff", "sff", 3, True),     # documents ADR-0010 as written: baseline pass^k = 0 lets one success validate
+    ("sff", "sss", 2, True),       # pass^2 0 -> 1, mean up
+    ("sff", "ssf", 1, True),       # pass^1 1/3 -> 2/3, mean up
+    ("ssf", "sss", 3, True),       # pass^3 0 -> 1
+    ("ssf", "sff", 2, False),      # pass^k down
+    ("ssf", "ssf", 2, False),      # equal pass^k, zero mean delta
+    ("sff", "ssf", 3, False),      # pass^3 stays 0: more successes alone is not enough at k = 3
+    ("fff", "sff", 3, False),      # one lucky success no longer validates (tightened 2026-11-04)
+    ("fffff", "sssss", 5, True),   # against 0/5 only 5/5 validates at k = 5
+    ("fffff", "ssssf", 5, False),
     ("fff", "fff", 1, False),
 ])
 def test_group_validation_rule(baseline, candidate, k, validated) -> None:
     assert candidate_group_validates(group(baseline, k), group(candidate, k), len(baseline)) is validated
+
+
+@pytest.mark.parametrize(("baseline_score", "candidate_score", "validated"), [(0.8, 0.9, True), (0.9, 0.9, False)])
+def test_group_validation_at_the_pass_k_ceiling(baseline_score, candidate_score, validated) -> None:
+    # A baseline already at pass^k = 1 cannot be exceeded; staying at 1 with a higher mean score validates.
+    baseline, candidate = group("sss", 2, score=baseline_score), group("sss", 2, score=candidate_score)
+    assert candidate_group_validates(baseline, candidate, 3) is validated
+    assert not candidate_group_validates(baseline, group("ssf", 2, score=1.0), 3)
 
 
 def test_group_validation_needs_both_groups_published_and_n_above_one() -> None:
