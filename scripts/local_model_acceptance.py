@@ -75,8 +75,7 @@ def validate_capture(run: dict, events: list[dict], analysis: dict) -> dict:
     }
 
 
-def capture(api_url: str, scenario: str, output: Path, timeout_seconds: float,
-            agent_id: str = AGENTS[0]) -> dict:
+def _client(api_url: str):
     # Bypass proxy env for the explicitly selected local product API. No Provider
     # credential or configuration ever enters the Experiment request.
     http = urllib.request.build_opener(urllib.request.ProxyHandler({}))
@@ -88,38 +87,77 @@ def capture(api_url: str, scenario: str, output: Path, timeout_seconds: float,
         with http.open(req, timeout=10) as response:
             return response.read()
 
-    def save(name, value):
-        (output/name).write_text(json.dumps(value, indent=2) + "\n")
+    return request
 
-    output.mkdir(mode=0o700)
+
+def _save(output: Path, name: str, value) -> None:
+    (output/name).write_text(json.dumps(value, indent=2) + "\n")
+
+
+def _experiment(request, output: Path, scenario: str, agent_id: str) -> dict:
     task, params = CASES[scenario]
     experiment = json.loads(request("/api/experiments", {
         "name": f"Local model acceptance: {scenario} / {agent_id}", "task": task,
         "scenario_id": scenario, "scenario_params": params,
         "execution_mode": "provider", "agent_id": agent_id,
     }))
-    save("experiment.json", experiment)
-    run = json.loads(request("/api/experiments/" + experiment["id"] + "/runs", {}))
-    save("created.json", run)
-    rid = run["id"]
+    _save(output, "experiment.json", experiment)
+    return experiment
+
+
+def _observe(request, output: Path, rid: str, timeout_seconds: float, agent_id: str) -> dict:
     deadline = time.monotonic() + timeout_seconds
     while True:
         run = json.loads(request("/api/runs/" + rid))
-        save("final.json", run)
+        _save(output, "final.json", run)
         if run["status"] in TERMINAL:
             break
         if time.monotonic() >= deadline:
             raise TimeoutError("Observation deadline reached; inspect recorded Run ID before retrying")
         time.sleep(0.5)
     analysis = json.loads(request("/api/runs/" + rid + "/analysis"))
-    save("analysis.json", analysis)
-    save("diagnostics.json", json.loads(request("/api/operations/runs/" + rid)))
+    _save(output, "analysis.json", analysis)
+    _save(output, "diagnostics.json", json.loads(request("/api/operations/runs/" + rid)))
     stream = request("/api/runs/" + rid + "/stream?after=0").decode()
     (output/"events.sse").write_text(stream)
     events = [json.loads(line[6:]) for line in stream.splitlines() if line.startswith("data: ")]
     result = validate_capture(run, events, analysis) | {"agent_id": agent_id}
-    save("summary.json", result)
+    _save(output, "summary.json", result)
     return result
+
+
+def capture(api_url: str, scenario: str, output: Path, timeout_seconds: float,
+            agent_id: str = AGENTS[0]) -> dict:
+    request = _client(api_url)
+    output.mkdir(mode=0o700)
+    experiment = _experiment(request, output, scenario, agent_id)
+    run = json.loads(request("/api/experiments/" + experiment["id"] + "/runs", {}))
+    _save(output, "created.json", run)
+    return _observe(request, output, run["id"], timeout_seconds, agent_id)
+
+
+def capture_trials(api_url: str, scenario: str, output: Path, timeout_seconds: float,
+                   agent_id: str, n: int, k: int) -> dict:
+    """ADR-0010 trial group: n Runs on one seed; the Control Plane computes pass^k."""
+    request = _client(api_url)
+    output.mkdir(mode=0o700)
+    experiment = _experiment(request, output, scenario, agent_id)
+    group = json.loads(request("/api/experiments/" + experiment["id"] + "/trials", {"n": n, "k": k}))
+    _save(output, "created.json", group)
+    runs = []
+    for index, rid in enumerate(group["run_ids"], start=1):
+        member = output / f"trial-{index}"
+        member.mkdir(mode=0o700)
+        # Trials run one after another on one Runner; each gets its own deadline.
+        runs.append(_observe(request, member, rid, timeout_seconds, agent_id) | {"trial_index": index})
+    detail = json.loads(request("/api/experiments/" + experiment["id"]))
+    summary = next(item for item in detail["trial_groups"] if item["id"] == group["id"])
+    _save(output, "trial_group.json", summary)
+    if summary["state"] != "complete":
+        raise ValueError("Trial group did not publish; inspect member Runs")
+    if summary["successes"] != sum(run["status"] == "succeeded" for run in runs):
+        raise ValueError("Trial group successes disagree with captured member Runs")
+    return {"scenario_id": scenario, "agent_id": agent_id, "trial_group": summary, "runs": runs}
 
 
 def main() -> int:
@@ -130,7 +168,13 @@ def main() -> int:
     parser.add_argument("--timeout-seconds", type=float, default=90)
     parser.add_argument("--require-success", action="store_true", help="Exit nonzero if any selected task fails")
     parser.add_argument("--agent-id", choices=AGENTS, default=AGENTS[0])
+    parser.add_argument("--trials", type=int, help="Run an n-trial group per scenario (ADR-0010)")
+    parser.add_argument("--k", type=int, help="pass^k parameter for --trials; default n")
     args = parser.parse_args()
+    if args.k is not None and args.trials is None:
+        parser.error("--k requires --trials")
+    if args.trials is not None and not (1 <= args.trials <= 20 and 1 <= (args.k or args.trials) <= args.trials):
+        parser.error("--trials must be 1..20 and --k 1..n")
     url = urlparse(args.api_url)
     if url.scheme != "http" or url.hostname not in {"127.0.0.1", "localhost", "::1"} or url.username or url.password or url.query or url.fragment or url.path not in {"", "/"}:
         parser.error("--api-url must be a credential-free loopback HTTP origin")
@@ -140,9 +184,18 @@ def main() -> int:
     if args.output_directory.stat().st_mode & 0o077:
         parser.error("--output-directory must have owner-only permissions")
     scenarios = list(dict.fromkeys(args.scenario or ["multi-step-research.v2"]))
-    results = [capture(args.api_url, scenario, args.output_directory/scenario, args.timeout_seconds, args.agent_id)
-               for scenario in scenarios]
-    summary = {"capture_completed": True, "all_tasks_succeeded": all(r["status"] == "succeeded" for r in results), "runs": results}
+    if args.trials is not None:
+        groups = [capture_trials(args.api_url, scenario, args.output_directory/scenario, args.timeout_seconds,
+                                 args.agent_id, args.trials, args.k or args.trials)
+                  for scenario in scenarios]
+        results = [run for group in groups for run in group["runs"]]
+        summary = {"capture_completed": True,
+                   "all_tasks_succeeded": all(r["status"] == "succeeded" for r in results), "groups": groups}
+    else:
+        results = [capture(args.api_url, scenario, args.output_directory/scenario, args.timeout_seconds, args.agent_id)
+                   for scenario in scenarios]
+        summary = {"capture_completed": True,
+                   "all_tasks_succeeded": all(r["status"] == "succeeded" for r in results), "runs": results}
     (args.output_directory/"summary.json").write_text(json.dumps(summary, indent=2) + "\n")
     print(json.dumps(summary, indent=2))
     return int(args.require_success and not summary["all_tasks_succeeded"])

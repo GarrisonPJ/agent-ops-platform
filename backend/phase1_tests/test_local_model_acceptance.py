@@ -79,3 +79,11 @@ def test_agent_choices_are_registered_provider_agents_only():
     result = subprocess.run([sys.executable, module.__file__, "--output-directory", "/nonexistent/x",
                              "--agent-id", "fixture-agent.v1"], capture_output=True, timeout=10)
     assert result.returncode == 2 and b"invalid choice" in result.stderr
+
+
+@pytest.mark.parametrize("args", [["--k", "2"], ["--trials", "0"], ["--trials", "21"], ["--trials", "3", "--k", "4"]])
+def test_trial_options_are_bounded(args):
+    import subprocess, sys
+    result = subprocess.run([sys.executable, module.__file__, "--output-directory", "/nonexistent/x", *args],
+                            capture_output=True, timeout=10)
+    assert result.returncode == 2
