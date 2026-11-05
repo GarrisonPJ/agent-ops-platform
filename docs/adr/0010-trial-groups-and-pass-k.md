@@ -77,6 +77,12 @@ except `run_id`, so an Agent cannot tell a trial from a single Run. Each member
 is an ordinary Run of kind `baseline` (or `replay` in a candidate group) with
 its own RunnerJob. `n` is 1..20 and `k` is 1..`n`.
 
+The shared seed is the Environment seed. An Agent's sampler seed is a
+separate Runner-only Provider input. With `AGENTOPS_PROVIDER_SEED=per-run`
+([ADR-0003](0003-openai-compatible-provider-boundary.md) H3 amendment) it
+differs per member, which endpoints with a pinned default seed need for
+independent trials.
+
 Aggregates are not stored. H3-2 computes them from the member Runs on read,
 so no second copy can drift from the Runs, and an incomplete group has no
 pass^k to publish.

@@ -153,6 +153,11 @@ def test_config_interpolates_secrets_and_mirrors_provider_settings() -> None:
     }]
     unset = pi_agent.models_config(settings())["providers"]["agentops"]["models"][0]
     assert "maxTokens" not in unset and "samplingParams" not in unset
+    seeded = pi_agent.models_config(settings(seed=7))["providers"]["agentops"]["models"][0]
+    assert seeded["samplingParams"] == {"seed": 7}
+    per_run = settings(seed="per-run").for_run("run-a")
+    assert pi_agent.models_config(per_run)["providers"]["agentops"]["models"][0]["samplingParams"] == {
+        "seed": per_run.seed}
     assert API_KEY not in json.dumps(full) + json.dumps(mcp)
 
 

@@ -172,7 +172,7 @@ async def test_reference_reserves_submit_regression(monkeypatch, max_steps) -> N
 
     monkeypatch.setattr(reference_agent, "MCPAgentClient", Environment)
     monkeypatch.setattr(reference_agent, "OpenAICompatibleProvider", Provider)
-    monkeypatch.setattr(reference_agent.ProviderSettings, "from_env", lambda: None)
+    monkeypatch.setattr(reference_agent.ProviderSettings, "from_env", lambda: SimpleNamespace(for_run=lambda run_id: None))
     spec = AgentSpec("t", "checkout-api-latency.v2", max_steps, 1000, False, {})
     assert await reference_agent.run(spec) == 0
     assert calls.count("world") == max_steps
@@ -406,7 +406,7 @@ def agent_boundaries(monkeypatch):
             return reply
     monkeypatch.setattr(reference_agent, "MCPAgentClient", lambda *a, **kw: environment)
     monkeypatch.setattr(reference_agent, "OpenAICompatibleProvider", Provider)
-    monkeypatch.setattr(reference_agent.ProviderSettings, "from_env", lambda: None)
+    monkeypatch.setattr(reference_agent.ProviderSettings, "from_env", lambda: SimpleNamespace(for_run=lambda run_id: None))
     monkeypatch.setenv("AGENTOPS_ENV_TOKEN", TOKEN)
     return state
 

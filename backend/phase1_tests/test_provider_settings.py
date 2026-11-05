@@ -6,6 +6,7 @@ Read test_independent_agents.py for MCP Agent integration coverage.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 
 import httpx
@@ -19,12 +20,14 @@ OPTIONS = {
     "REASONING_EFFORT": "none",
     "PARALLEL_TOOL_CALLS": "false",
 }
+SEED = "AGENTOPS_PROVIDER_SEED"
 
 
 @pytest.fixture(autouse=True)
 def isolated_settings(monkeypatch):
     for suffix in OPTIONS:
         monkeypatch.delenv("AGENTOPS_PROVIDER_" + suffix, raising=False)
+    monkeypatch.delenv(SEED, raising=False)
     monkeypatch.setenv("AGENTOPS_PROVIDER_BASE_URL", "http://provider.invalid/v1")
     monkeypatch.setenv("AGENTOPS_PROVIDER_API_KEY", "PRIVATE_TEST_KEY")
     monkeypatch.setenv("AGENTOPS_PROVIDER_MODEL", "fake-model")
@@ -137,3 +140,55 @@ async def test_unsupported_options_do_not_trigger_semantic_fallback(monkeypatch)
             await OpenAICompatibleProvider(ProviderSettings.from_env(), client=client).chat([], [])
     assert len(calls) == 1 and calls[0]["reasoning_effort"] == "none"
     assert "PRIVATE_UPSTREAM_BODY" not in str(captured.value)
+
+
+@pytest.mark.parametrize("raw", ["-1", "2147483648", "abc", "PER-RUN", "1.5", "1_0", "+1"])
+def test_invalid_seed_fails_closed(monkeypatch, raw):
+    monkeypatch.setenv(SEED, raw)
+    with pytest.raises(ProviderError) as captured:
+        ProviderSettings.from_env()
+    assert captured.value.code == "PROVIDER_CONFIGURATION_ERROR"
+    assert captured.value.attempts == 0 and not captured.value.retryable
+
+
+@pytest.mark.parametrize(("raw", "expected"), [("0", 0), (" 42 ", 42), ("2147483647", 2147483647)])
+def test_integer_seed_is_sent_unchanged(monkeypatch, raw, expected):
+    monkeypatch.setenv(SEED, raw)
+    settings = ProviderSettings.from_env()
+    assert settings.request_options() == {"seed": expected}
+    assert settings.for_run("run-a").request_options() == {"seed": expected}
+
+
+def test_blank_seed_is_omitted(monkeypatch):
+    monkeypatch.setenv(SEED, "  ")
+    assert "seed" not in ProviderSettings.from_env().for_run("run-a").request_options()
+
+
+def test_per_run_seed_follows_the_run_id_sha256_rule(monkeypatch):
+    monkeypatch.setenv(SEED, "per-run")
+    settings = ProviderSettings.from_env()
+    with pytest.raises(RuntimeError):
+        settings.request_options()
+    seed = settings.for_run("run-a").request_options()["seed"]
+    expected = int.from_bytes(hashlib.sha256(b"run-a").digest()[:4], "big") & 0x7FFFFFFF
+    assert seed == expected and 0 <= seed <= 2147483647
+    assert settings.for_run("run-a").request_options()["seed"] == seed
+    assert settings.for_run("run-b").request_options()["seed"] != seed
+
+
+@pytest.mark.asyncio
+async def test_seed_appears_in_the_chat_request_body(monkeypatch):
+    monkeypatch.setenv(SEED, "per-run")
+    settings = ProviderSettings.from_env().for_run("run-a")
+    bodies = []
+
+    def respond(request):
+        bodies.append(json.loads(request.content))
+        return httpx.Response(200, json={
+            "choices": [{"finish_reason": "stop", "message": {"content": "ok"}}],
+            "usage": {"prompt_tokens": 1, "completion_tokens": 1},
+        })
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+        await OpenAICompatibleProvider(settings, client=client).chat([], [])
+    assert bodies[0]["seed"] == settings.seed

@@ -7,6 +7,8 @@
   Scenario into the registered `reference-openai-compatible.v1` agent
 - Amended: 2026-11-01 for H1-5 — bounded optional Runner-only generation
   settings replace a temporary local-model request-options proxy
+- Amended: 2026-11-05 for H3 — optional Runner-only sampler `SEED`, including
+  a per-Run mode so trial groups can sample independently
 
 ## Context
 
@@ -83,6 +85,33 @@ Local-model acceptance records the exact settings and real success/failure.
 CI tests this boundary with fake Providers, without a GPU or external service.
 One successful real-model Run plus faithfully captured failures validates H1's
 integration, not model accuracy, universal compatibility, or a pass-rate claim.
+
+## H3 amendment: sampler seed
+
+Trial groups (ADR-0010) assume independent trials. The installed llama.cpp
+endpoint pins a default sampler seed, so identical requests return identical
+output even at temperature 1. Every reference-Agent trial was then a copy of
+one trajectory (`docs/history/h3-pass-k-temp1-2026-11-05.md`). Operator decision
+(2026-11-05): add one more optional Runner-only setting, `AGENTOPS_PROVIDER_SEED`:
+
+- unset or blank: no `seed` field, the existing request shape;
+- an integer 0..2147483647: sent unchanged as `seed` on every request;
+- `per-run`: each Agent sends `seed` derived from its own `run_id`, the first
+  four bytes of SHA-256(`run_id`) masked to 31 bits.
+
+The derived seed is stable for a Run, so a recovered Attempt repeats it. It
+differs between trials, because every trial is a separate Run. It is a sampling
+input only. It is not the Environment seed, which stays fixed for a trial group,
+and it never enters scoring, assertions or success. The same rules as the H1-5
+options apply: operator-only, validated before the first request, never accepted
+through Experiment/API/frontend inputs, and rejected fields surface normally.
+External adapters map it where their client allows; the pi adapter passes it
+through `samplingParams`.
+
+A pinned or per-Run seed makes sampling reproducible per request only on
+endpoints that honour `seed`. It does not guarantee bitwise-identical output
+across hardware or runtime builds, and it does not make trials independent of
+the shared prompt and Environment.
 
 ## Consequences
 

@@ -8,10 +8,11 @@ Read ``reference_agent.py`` for the H1 loop and ADR-0003 for the trust boundary.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import math
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from time import perf_counter
 from typing import Any, Callable
 from urllib.parse import urlparse
@@ -30,6 +31,8 @@ from app.phase1_schemas import EvaluationSpec
 DEFAULT_TIMEOUT_MS = 10_000
 DEFAULT_MAX_RETRIES = 1
 MAX_RETRIES = 3
+MAX_SEED = 2_147_483_647
+PER_RUN_SEED = "per-run"
 
 
 @dataclass(frozen=True)
@@ -45,12 +48,25 @@ class ProviderSettings:
     temperature: float | None = None
     reasoning_effort: str | None = None
     parallel_tool_calls: bool | None = None
+    # An int, or PER_RUN_SEED until for_run() derives one from the run_id.
+    seed: int | str | None = None
+
+    def for_run(self, run_id: str) -> ProviderSettings:
+        """Resolve a per-run seed; stable for a Run so a recovered Attempt repeats it."""
+        if self.seed != PER_RUN_SEED:
+            return self
+        digest = hashlib.sha256(run_id.encode("utf-8")).digest()
+        return replace(self, seed=int.from_bytes(digest[:4], "big") & MAX_SEED)
 
     def request_options(self) -> dict[str, object]:
         """Omit unspecified options; never accept arbitrary request overrides."""
+        if isinstance(self.seed, str):
+            raise RuntimeError("per-run seed must be resolved with for_run() before use")
         return {
             name: value
-            for name in ("max_tokens", "temperature", "reasoning_effort", "parallel_tool_calls")
+            for name in (
+                "max_tokens", "temperature", "reasoning_effort", "parallel_tool_calls", "seed",
+            )
             if (value := getattr(self, name)) is not None
         }
 
@@ -109,6 +125,7 @@ class ProviderSettings:
                     "AGENTOPS_PROVIDER_PARALLEL_TOOL_CALLS", {"true", "false"}
                 )) is None else parallel == "true"
             ),
+            seed=_optional_seed(),
         )
 
 
@@ -281,7 +298,7 @@ async def run_provider_agent(
     """Run the safe fixture tools selected by an OpenAI-compatible model."""
 
     try:
-        settings = ProviderSettings.from_env()
+        settings = ProviderSettings.from_env().for_run(spec.run_id)
     except ProviderError as error:
         _emit_provider_error(emit, error)
         return 1
@@ -434,6 +451,21 @@ def _optional_choice_env(name: str, allowed: set[str]) -> str | None:
             retryable=False, attempts=0,
         )
     return value
+
+
+def _optional_seed() -> int | str | None:
+    raw = os.getenv("AGENTOPS_PROVIDER_SEED", "").strip()
+    if not raw:
+        return None
+    if raw == PER_RUN_SEED:
+        return raw
+    # ASCII digits only: int() would also accept signs, underscores and Unicode digits.
+    if raw.isascii() and raw.isdigit() and int(raw) <= MAX_SEED:
+        return int(raw)
+    raise ProviderError(
+        "PROVIDER_CONFIGURATION_ERROR", "Invalid Provider seed",
+        retryable=False, attempts=0,
+    )
 
 
 def _optional_temperature() -> float | None:

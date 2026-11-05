@@ -27,8 +27,10 @@ models, keys, generation settings, commands or scripts.
 | `AGENTOPS_PROVIDER_TEMPERATURE` | Optional finite number 0..2 |
 | `AGENTOPS_PROVIDER_REASONING_EFFORT` | Optional `none`, `minimal`, `low`, `medium`, `high`, `xhigh` |
 | `AGENTOPS_PROVIDER_PARALLEL_TOOL_CALLS` | Optional exact `true`/`false`, sent as JSON boolean |
+| `AGENTOPS_PROVIDER_SEED` | Optional integer 0..2147483647, or exact `per-run`; sent as `seed` |
 
 Blank/unset optional settings omit fields, preserving the original request shape.
+Use `per-run` for trial groups: each Run derives its own stable seed from its `run_id`, so trials sample independently on endpoints that pin a default seed.
 An endpoint may support fewer options/values; HTTP rejection is surfaced normally,
 not silently retried with different settings. Invalid local settings fail before
 the first request. See [ADR-0003](../adr/0003-openai-compatible-provider-boundary.md).

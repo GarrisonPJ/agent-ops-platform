@@ -76,7 +76,7 @@ def models_config(settings: ProviderSettings) -> dict[str, object]:
     """Mirror the reference agent's Runner-only Provider settings where pi can."""
     sampling = {
         name: value
-        for name in ("temperature", "reasoning_effort", "parallel_tool_calls")
+        for name in ("temperature", "reasoning_effort", "parallel_tool_calls", "seed")
         if (value := getattr(settings, name)) is not None
     }
     model: dict[str, object] = {
@@ -193,7 +193,7 @@ def _write_private(path: Path, text: str) -> None:
 
 async def run(spec: AgentSpec) -> int:
     try:
-        settings = ProviderSettings.from_env()
+        settings = ProviderSettings.from_env().for_run(spec.run_id)
         endpoint = validate_endpoint(os.environ.get("AGENTOPS_ENV_MCP_URL", ""))
         token = validate_token(os.environ.get("AGENTOPS_ENV_TOKEN", ""))
     except (ProviderError, MCPAgentError) as error:

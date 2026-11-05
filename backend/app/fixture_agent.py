@@ -47,6 +47,7 @@ class AgentSpec:
     policy: bool
     scenario_params: dict[str, str]
     instruction_patch: tuple[str, ...] = ()
+    run_id: str = ""
 
 
 # Wire rules stay Agent-owned: no CP/world/registry imports.
@@ -195,6 +196,7 @@ def read_spec() -> AgentSpec:
         parsed.policy.max_steps if parsed.policy is not None else 6,
         parsed.limits.timeout_ms, parsed.policy is not None, parsed.scenario_params,
         tuple(parsed.policy.instruction_patch) if parsed.policy is not None else (),
+        parsed.run_id,
     )
 
 

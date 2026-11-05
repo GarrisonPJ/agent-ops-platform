@@ -21,7 +21,7 @@ from app.phase1_provider import OpenAICompatibleProvider, ProviderError, Provide
 
 async def run(spec: AgentSpec) -> int:
     try:
-        settings = ProviderSettings.from_env()
+        settings = ProviderSettings.from_env().for_run(spec.run_id)
         provider = OpenAICompatibleProvider(settings)
     except ProviderError as error:
         _error(error.code)
