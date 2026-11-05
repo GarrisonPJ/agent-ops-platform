@@ -72,6 +72,9 @@ Experiment 页（`frontend/src/components/TrialGroupsSection.tsx`）只展示这
 这时 pass^k 会被高估：它更接近"这一条轨迹成不成功"，而不是"k 次独立尝试都成功的概率"。
 发布数字时必须写明模型、Environment 版本、`n`、`k` 和温度。
 
+在这个端点上，温度 1 也没有帮助：已安装的 llama.cpp 服务固定了默认采样 seed（42），
+相同请求在温度 1 下仍得到相同输出，所以 reference Agent 的 trial 依然是复制。
+
 ## 7. 真实数据
 
 同一 Windows llama.cpp（`swift-1.5-27b-iq3xxs`，context 8192），温度 0，每格一个
@@ -86,7 +89,28 @@ Experiment 页（`frontend/src/components/TrialGroupsSection.tsx`）只展示这
 
 每组 5 次 trial 的世界调用序列和分数完全相同，pass^5 恒等于 pass^1。这就是第 6 节说的高估：
 数字看起来是"5 次都成功的概率"，实际只是"这一条轨迹成不成功"。要看到分布，需要温度大于 0
-或改变 seed；温度 1.0 的对比组尚未运行。
+或改变 seed。
+
+2026-11-05 在同一端点用温度 1 又跑了四个 Environment（[记录](../history/h3-pass-k-temp1-2026-11-05.md)），
+同样 `n = 5`、`k = 5`、Environment seed 42：
+
+| Agent | Environment | 成功 | pass^1 | pass^5 | 5 次 trial 的不同轨迹数 |
+|---|---|---|---|---|---|
+| reference | research | 5/5 | 1.0 | 1.0 | 1 |
+| reference | fault | 0/5 | 0.0 | 0.0 | 1 |
+| reference | checkout | 0/5 | 0.0 | 0.0 | 1 |
+| reference | order | 5/5 | 1.0 | 1.0 | 1 |
+| pi | research | 5/5 | 1.0 | 1.0 | 1 |
+| pi | fault | 2/5 | 0.4 | 0.0 | 2 |
+| pi | checkout | 0/5（全部 `timed_out`） | 0.0 | 0.0 | 1 |
+| pi | order | 3/5 | 0.6 | 0.0 | 2 |
+
+发现：已安装的 llama.cpp 服务固定了默认采样 seed（42）。直接检查中，同一个聊天请求在温度 1、
+不带 `seed` 字段时发两次，输出相同；`"seed":1` 与 `"seed":2` 的输出则不同。所以 reference
+Agent 的各组在温度 1 下仍是一条轨迹的复制。pi 的 fault 和 order 组出现分歧，可能原因是 pi 的
+prompt 在每次 Run 之间有差异（例如私有临时路径），这一点未验证，也不是独立采样。结论：在这个
+端点上，温度 0 和温度 1 都不能让相同请求产生独立 trial；需要变化的采样 seed（服务端随机 seed，
+或每个 Run 的请求 seed）。这个选项目前不存在，是待决事项。
 
 ## 8. 怎么复现
 

@@ -21,8 +21,8 @@ amendments. Reading guide: [06-pass-k.md](../learn/06-pass-k.md).
   `config/agents.external.toml`. Each cell is one
   `POST /api/experiments/{id}/trials` group with `n = 5`, `k = 5` and seed 42.
   The five members ran one after another on one Runner.
-- A temperature-1.0 comparison pass was planned. It was stopped before it
-  created any Run, because the operator needed the GPU, and it remains open.
+- The temperature-1 comparison ran on 2026-11-05:
+  [h3-pass-k-temp1-2026-11-05.md](h3-pass-k-temp1-2026-11-05.md).
 
 ## Outcomes (n = 5, k = 5, temperature 0)
 
@@ -73,6 +73,7 @@ and `264fa42` (H3-3 page). The commit carrying this record runs its own CI.
 
 Four groups of five at temperature 0 on one model. This is not a pass rate,
 not evidence about other models or temperatures, and not analyzer accuracy
-(H5). The temperature-1.0 comparison is still to be run. Capture directories
+(H5). The temperature-1 comparison is in
+[h3-pass-k-temp1-2026-11-05.md](h3-pass-k-temp1-2026-11-05.md). Capture directories
 stay outside the repository; no API key, capability token or Provider body is
 published.

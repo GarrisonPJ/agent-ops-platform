@@ -17,9 +17,9 @@ Experiment → Baseline → Trace → Analysis → Candidate Policy
 
 H1 集成已实现独立的 Environment/MCP 与 fixture/reference Agent 进程、Rust 租约/Attempt fencing 监督、运维 TOML Agent 注册表、CP 独占评分/完成裁决，以及四个内置 Environment。协议 v1 仍用 `scenario_id`；三个规范世界使用 **v2**，`order-support.v1` 保持自己的身份。旧三个世界 v1 ID 被拒绝，不提供别名或迁移。
 
-**H1 本地工程与真实模型集成验收已完成。** 已安装的 Windows llama.cpp 经 reference Agent 完成 research 和有状态订单 Run；checkout/fault 失败如实保留。hosted CI 已在 `b32da25` 通过。这不等于所有模型兼容、发布、cold-cache、跨平台或公开部署验收。H2-1 增加了外部 `pi-coding-agent.v1`（宿主机 Runner 上的 pi 1.3.0，可选注册表；见[接入你自己的 Agent](docs/learn/03-plug-in-your-agent.md)）。H3 增加了 trial group，Experiment 页显示 **pass^k**（`POST /api/experiments/{id}/trials`；见 [pass^k](docs/learn/06-pass-k.md)）。其他外部适配器、H4 **OTel 导出**、H5 真实模型分布准确率研究均是未来工作，不是当前功能。参见[任务清单](docs/agents/phase2-tasks.md)、[里程碑](ROADMAP.zh-CN.md)与[验收边界](docs/operations/system-acceptance.md)。
+**H1 本地工程与真实模型集成验收已完成。** 已安装的 Windows llama.cpp 经 reference Agent 完成 research 和有状态订单 Run；checkout/fault 失败如实保留。hosted CI 已在 `b32da25` 通过。这不等于所有模型兼容、发布、cold-cache、跨平台或公开部署验收。H2-1 增加了外部 `pi-coding-agent.v1`（宿主机 Runner 上的 pi 1.3.0，可选注册表；见[接入你自己的 Agent](docs/learn/03-plug-in-your-agent.md)）。H3 增加了 trial group，Experiment 页显示 **pass^k**（`POST /api/experiments/{id}/trials`；见 [pass^k](docs/learn/06-pass-k.md)）。H4 提供可选的 OTel GenAI span 导出，默认关闭（见 [OTel 导出](docs/operations/otel-export.md)）。其他外部适配器、H5 真实模型分布准确率研究均是未来工作，不是当前功能。参见[任务清单](docs/agents/phase2-tasks.md)、[里程碑](ROADMAP.zh-CN.md)与[验收边界](docs/operations/system-acceptance.md)。
 
-Langfuse、Phoenix 擅长 trace 存储与浏览；本项目负责确定性世界、监督执行/恢复、失败机制和人工策略门禁。未来互操作见 ADR-0011，当前没有 OTel exporter。校准是六合同确定性机制门，**不是已发布的准确率结论**。
+Langfuse、Phoenix 擅长 trace 存储与浏览；本项目负责确定性世界、监督执行/恢复、失败机制和人工策略门禁。互操作见 ADR-0011；已有可选的 OTel GenAI span 导出器，默认关闭。校准是六合同确定性机制门，**不是已发布的准确率结论**。
 
 ## 本地 fixture 快速启动
 

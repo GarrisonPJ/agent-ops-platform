@@ -11,7 +11,7 @@
 
 **可以降级：** H2-2、H2-3、H2-5、整个 H4、H5-2 至少标注 20 条。
 
-**当前集成状态：** H1-1..H1-6 的工程实现已接入生产 dispatch/completion；组件已分别审查，fixture/fake-Provider、隔离 PostgreSQL、标准 Runner 网络构建、实际 named-volume 替换、受影响回归和 exact-payload 文档收尾均有本地父证据。lock-path 与 exit-boundary 两个 P2 已修复并经只读独立复审。本轮已完成 H1-5：已有 Windows llama.cpp 端点直连，隔离 PostgreSQL 下 reference Agent 的 research/order 成功、checkout/fault 失败均保留，标准 Runner 镜像直连 research 也成功；不修改断言刷绿。976 项后端测试、Rust/前端/Recorded E2E 与原契约 gate 通过。H1 本地工程与真实模型集成边界完成；hosted CI 已在 `b32da25` 全部通过（含 `golden-e2e`，见 [system-acceptance.md](../operations/system-acceptance.md)）。这不等于发布、全模型兼容或准确率证明。H2-1/H2-4 已完成：ADR-0008 发现修订、pi 适配器、真实 llama.cpp 下 reference 与 pi 的四 Environment 对比和 `03` 章；可选 H2-2/H2-3/H2-5 未做。H3 已完成：trial group、读时 pass^k、按组且严格提升的策略验证、Experiment 页展示、`06` 章与真实 n=5 温度 0 运行；温度 1.0 对比未跑。H0 剩余人工事项不阻塞 H1。
+**当前集成状态：** H1-1..H1-6 的工程实现已接入生产 dispatch/completion；组件已分别审查，fixture/fake-Provider、隔离 PostgreSQL、标准 Runner 网络构建、实际 named-volume 替换、受影响回归和 exact-payload 文档收尾均有本地父证据。lock-path 与 exit-boundary 两个 P2 已修复并经只读独立复审。本轮已完成 H1-5：已有 Windows llama.cpp 端点直连，隔离 PostgreSQL 下 reference Agent 的 research/order 成功、checkout/fault 失败均保留，标准 Runner 镜像直连 research 也成功；不修改断言刷绿。976 项后端测试、Rust/前端/Recorded E2E 与原契约 gate 通过。H1 本地工程与真实模型集成边界完成；hosted CI 已在 `b32da25` 全部通过（含 `golden-e2e`，见 [system-acceptance.md](../operations/system-acceptance.md)）。这不等于发布、全模型兼容或准确率证明。H2-1/H2-4 已完成：ADR-0008 发现修订、pi 适配器、真实 llama.cpp 下 reference 与 pi 的四 Environment 对比和 `03` 章；可选 H2-2/H2-3/H2-5 未做。H3 已完成：trial group、读时 pass^k、按组且严格提升的策略验证、Experiment 页展示、`06` 章与真实 n=5 温度 0 运行；温度 1.0 对比已于 2026-11-05 运行，暴露出端点固定采样 seed 的问题（[记录](../history/h3-pass-k-temp1-2026-11-05.md)）。H0 剩余人工事项不阻塞 H1。
 
 未开工的任务用 `docs/agents/triage-labels.md` 的词。`completed` 表示已经落地，不要重做。
 
@@ -224,7 +224,7 @@ H0 剩余只有 H0-1 的 GitHub 点击和 H0-2 的命名。命名未定不阻塞
 
 ### H3-3 Experiment 页展示
 
-- Status: `completed`（2026-11-04：`TrialGroupsSection` 与有组/无组页面测试、README 写明 Trace UI 冻结；真实 n=5、k=5 温度 0 运行见[记录](../history/h3-pass-k-live-2026-11-04.md)，温度 1.0 对比未跑）
+- Status: `completed`（2026-11-04：`TrialGroupsSection` 与有组/无组页面测试、README 写明 Trace UI 冻结；真实 n=5、k=5 温度 0 运行见[记录](../history/h3-pass-k-live-2026-11-04.md)，温度 1.0 对比已于 2026-11-05 运行，暴露出端点固定采样 seed 的问题，见[记录](../history/h3-pass-k-temp1-2026-11-05.md)）
 - 只改 Experiment 详情：pass^1、pass^k、每个 trial 的状态。
 - Trace / Analysis / Improve 的信息架构不新增视图。在 README 写明 Trace UI 冻结。
 - 验收：前端单测覆盖有组与无组两种 Experiment。
