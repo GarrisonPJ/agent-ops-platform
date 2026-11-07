@@ -11,7 +11,7 @@
 
 **可以降级：** H2-2、H2-3、H2-5、整个 H4、H5-2 至少标注 20 条。
 
-**当前集成状态：** H1-1..H1-6 的工程实现已接入生产 dispatch/completion；组件已分别审查，fixture/fake-Provider、隔离 PostgreSQL、标准 Runner 网络构建、实际 named-volume 替换、受影响回归和 exact-payload 文档收尾均有本地父证据。lock-path 与 exit-boundary 两个 P2 已修复并经只读独立复审。本轮已完成 H1-5：已有 Windows llama.cpp 端点直连，隔离 PostgreSQL 下 reference Agent 的 research/order 成功、checkout/fault 失败均保留，标准 Runner 镜像直连 research 也成功；不修改断言刷绿。976 项后端测试、Rust/前端/Recorded E2E 与原契约 gate 通过。H1 本地工程与真实模型集成边界完成；hosted CI 已在 `b32da25` 全部通过（含 `golden-e2e`，见 [system-acceptance.md](../operations/system-acceptance.md)）。这不等于发布、全模型兼容或准确率证明。H2-1/H2-4 已完成：ADR-0008 发现修订、pi 适配器、真实 llama.cpp 下 reference 与 pi 的四 Environment 对比和 `03` 章；可选 H2-2/H2-3/H2-5 未做。H3 已完成：trial group、读时 pass^k、按组且严格提升的策略验证、Experiment 页展示、`06` 章与真实 n=5 温度 0 运行；温度 1.0 对比已于 2026-11-05 运行，暴露出端点固定采样 seed 的问题（[记录](../history/h3-pass-k-temp1-2026-11-05.md)）。H0 剩余人工事项不阻塞 H1。
+**当前集成状态：** H1-1..H1-6 的工程实现已接入生产 dispatch/completion；组件已分别审查，fixture/fake-Provider、隔离 PostgreSQL、标准 Runner 网络构建、实际 named-volume 替换、受影响回归和 exact-payload 文档收尾均有本地父证据。lock-path 与 exit-boundary 两个 P2 已修复并经只读独立复审。本轮已完成 H1-5：已有 Windows llama.cpp 端点直连，隔离 PostgreSQL 下 reference Agent 的 research/order 成功、checkout/fault 失败均保留，标准 Runner 镜像直连 research 也成功；不修改断言刷绿。976 项后端测试、Rust/前端/Recorded E2E 与原契约 gate 通过。H1 本地工程与真实模型集成边界完成；hosted CI 已在 `b32da25` 全部通过（含 `golden-e2e`，见 [system-acceptance.md](../operations/system-acceptance.md)）。这不等于发布、全模型兼容或准确率证明。H2-1/H2-4 已完成：ADR-0008 发现修订、pi 适配器、真实 llama.cpp 下 reference 与 pi 的四 Environment 对比和 `03` 章；可选 H2-2/H2-3/H2-5 未做。H3 已完成：trial group、读时 pass^k、按组且严格提升的策略验证、Experiment 页展示、`06` 章与真实 n=5 温度 0 运行；温度 1.0 对比已于 2026-11-05 运行，暴露出端点固定采样 seed 的问题（[记录](../history/h3-pass-k-temp1-2026-11-05.md)），2026-11-07 的每 Run seed 运行见[记录](../history/h3-pass-k-seed-2026-11-07.md)。H4 已完成：OTel GenAI 导出与 Phoenix 对端验证（[07 章](../learn/07-otel-mapping.md)）。H0 剩余人工事项不阻塞 H1。
 
 未开工的任务用 `docs/agents/triage-labels.md` 的词。`completed` 表示已经落地，不要重做。
 
@@ -224,7 +224,7 @@ H0 剩余只有 H0-1 的 GitHub 点击和 H0-2 的命名。命名未定不阻塞
 
 ### H3-3 Experiment 页展示
 
-- Status: `completed`（2026-11-04：`TrialGroupsSection` 与有组/无组页面测试、README 写明 Trace UI 冻结；真实 n=5、k=5 温度 0 运行见[记录](../history/h3-pass-k-live-2026-11-04.md)，温度 1.0 对比已于 2026-11-05 运行，暴露出端点固定采样 seed 的问题，见[记录](../history/h3-pass-k-temp1-2026-11-05.md)）
+- Status: `completed`（2026-11-04：`TrialGroupsSection` 与有组/无组页面测试、README 写明 Trace UI 冻结；真实 n=5、k=5 温度 0 运行见[记录](../history/h3-pass-k-live-2026-11-04.md)，温度 1.0 对比已于 2026-11-05 运行，暴露出端点固定采样 seed 的问题，见[记录](../history/h3-pass-k-temp1-2026-11-05.md)；2026-11-07 用 `AGENTOPS_PROVIDER_SEED=per-run` 重跑，见[记录](../history/h3-pass-k-seed-2026-11-07.md)）
 - 只改 Experiment 详情：pass^1、pass^k、每个 trial 的状态。
 - Trace / Analysis / Improve 的信息架构不新增视图。在 README 写明 Trace UI 冻结。
 - 验收：前端单测覆盖有组与无组两种 Experiment。
@@ -247,7 +247,7 @@ H0 剩余只有 H0-1 的 GitHub 点击和 H0-2 的命名。命名未定不阻塞
 
 ### H4-2 对端验证
 
-- Status: `ready-for-human`（`07` 章已写并固定规范 commit `633cbb0`，Status: Development；剩向本地 Phoenix 或 Langfuse 发一条并截图）
+- Status: `completed`（2026-11-07：Phoenix 收到一个 Run 的 trace，根 span `invoke_agent OpenAI-compatible reference agent` 加 8 个 `execute_tool` 子 span，截图 `docs/screenshots/otel-phoenix.png`；本地 Phoenix 需要 `PHOENIX_ENABLE_AUTH=false`；见 [07 章](../learn/07-otel-mapping.md)第 5 节；规范 commit `633cbb0`）
 - 对 `:6006/v1/traces` 或 Langfuse `/api/public/otel/v1/traces` 打一条，截图放 `docs/`。
 - `docs/learn/07-otel-mapping.md` 写明 `semantic-conventions-genai` 的 commit，并写 Status: Development。
 
@@ -277,12 +277,12 @@ H0 剩余只有 H0-1 的 GitHub 点击和 H0-2 的命名。命名未定不阻塞
 
 ### H6-1 README
 
-- Status: `ready-for-agent`（等 H3 有真实数字后再改“结果”段；定位段已在 2026-10-17 改过）
+- Status: `completed`（2026-11-07：见 [README.md](../../README.md)）
 - 补：Ollama 30 秒路径、架构图、截图或 GIF、带模型名和 `n`/`k` 的 pass^k、一段“为什么不是 Langfuse”。
 
 ### H6-2 Write-up
 
-- Status: `ready-for-agent`
+- Status: `completed`（2026-11-07：见 [docs/writeup.md](../writeup.md)）
 - `docs/writeup.md`：建了什么、2026-10 市场变成什么样、砍了什么、数字从哪来。
 
 ### H6-3 Recorded demo

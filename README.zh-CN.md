@@ -4,7 +4,7 @@
 
 # AgentOps Workbench
 
-**面向工具型 Agent 的自托管可靠性试验台。** 让运维注册的 Agent 在确定、可重置的 Environment 中运行，查看规则化失败分析，对比候选 Policy 与 baseline，最后由人决定是否激活；Agent 和分析器都不能自动激活策略。
+**面向工具型 Agent 的自托管可靠性试验台。** 让运维注册的 Agent（确定性 fixture、参考 OpenAI-compatible 循环，或外部 pi coding agent）在确定、可重置的 Environment 中运行。得到重复 trial 的 pass^k、规则化失败分析，以及候选 Policy 与 baseline 的对比。是否激活 Policy 由人决定，Agent 和分析器都不能决定。
 
 仓库名为 `agent-ops-platform`；产品限定名用于区别无关的 [AgentOps-AI SDK](https://github.com/AgentOps-AI/agentops)。
 
@@ -13,35 +13,53 @@ Experiment → Baseline → Trace → Analysis → Candidate Policy
            → Replay → Before / After → 人工 Activate 或 Reject
 ```
 
-## 当前范围
+## 快速启动
 
-H1 集成已实现独立的 Environment/MCP 与 fixture/reference Agent 进程、Rust 租约/Attempt fencing 监督、运维 TOML Agent 注册表、CP 独占评分/完成裁决，以及四个内置 Environment。协议 v1 仍用 `scenario_id`；三个规范世界使用 **v2**，`order-support.v1` 保持自己的身份。旧三个世界 v1 ID 被拒绝，不提供别名或迁移。
-
-**H1 本地工程与真实模型集成验收已完成。** 已安装的 Windows llama.cpp 经 reference Agent 完成 research 和有状态订单 Run；checkout/fault 失败如实保留。hosted CI 已在 `b32da25` 通过。这不等于所有模型兼容、发布、cold-cache、跨平台或公开部署验收。H2-1 增加了外部 `pi-coding-agent.v1`（宿主机 Runner 上的 pi 1.3.0，可选注册表；见[接入你自己的 Agent](docs/learn/03-plug-in-your-agent.md)）。H3 增加了 trial group，Experiment 页显示 **pass^k**（`POST /api/experiments/{id}/trials`；见 [pass^k](docs/learn/06-pass-k.md)）。H4 提供可选的 OTel GenAI span 导出，默认关闭（见 [OTel 导出](docs/operations/otel-export.md)）。其他外部适配器、H5 真实模型分布准确率研究均是未来工作，不是当前功能。参见[任务清单](docs/agents/phase2-tasks.md)、[里程碑](ROADMAP.zh-CN.md)与[验收边界](docs/operations/system-acceptance.md)。
-
-Langfuse、Phoenix 擅长 trace 存储与浏览；本项目负责确定性世界、监督执行/恢复、失败机制和人工策略门禁。互操作见 ADR-0011；已有可选的 OTel GenAI span 导出器，默认关闭。校准是六合同确定性机制门，**不是已发布的准确率结论**。
-
-## 本地 fixture 快速启动
-
-需要 Docker Compose 与 Make。Fixture 不需要模型、GPU、云 API Key 或外部服务。
+需要 Docker Compose 与 Make。fixture 路径不需要模型、GPU、云 API Key 或外部服务。
 
 ```bash
 cp .env.example .env
 make demo
 ```
 
-运行 `make` 的用户必须能访问 Docker daemon（Linux 上即属于 `docker` 组）。若 API 连接数据库超时或发布端口无响应，先看[本地环境故障](docs/operations/reliability-and-local-validation.md#wsl-proxy-and-local-verification-boundary)再排查代码。
-
-本地开发以外必须替换示例 `RUNNER_TOKEN`，API 与 Runner 接收同一个显式 Token。演示数据库凭据仅限本地；可信内网部署也需单独的 Secret/访问审查，不要公开暴露服务。
-
-打开 [http://localhost:5173](http://localhost:5173)：创建 Experiment，观察 baseline 失败，查看 Analysis，Replay 候选，然后 Activate 或 Reject。规范 checkout 为 `checkout-api-latency.v2`：baseline 重复六次 logs，replay 按 health → metrics → logs 三次世界调用成功。第一次激活可能先排队 RegressionCase replay；审查后须再次显式激活。
+打开 [http://localhost:5173](http://localhost:5173)：创建 Experiment，观察 baseline 失败，查看 Analysis，Replay 候选，然后 Activate 或 Reject。规范 checkout 为 `checkout-api-latency.v2`：baseline 重复六次 logs，replay 按 health → metrics → logs 三次世界调用成功。第一次激活可能先排队合格的 RegressionCase replay；审查后须再次显式激活。
 
 ```bash
 make logs      # API、Runner、Web 日志
 make down      # 停止栈，保留 named volumes
 ```
 
-## Agent 与可选模型配置
+运行 `make` 的用户必须能访问 Docker daemon（Linux 上即属于 `docker` 组）。若 API 连接数据库超时或发布端口无响应，先看[本地环境故障](docs/operations/reliability-and-local-validation.md#wsl-proxy-and-local-verification-boundary)再排查代码。
+
+本地开发以外必须替换示例 `RUNNER_TOKEN`，API 与 Runner 接收同一个显式 Token。演示数据库凭据仅限本地；可信内网部署也需单独的 Secret/访问审查，不要公开暴露服务。
+
+## 本地模型路径
+
+需要一个**已经安装**、由操作者管理的 OpenAI-compatible 端点；本仓库不安装运行时或模型。在快速启动的栈上：
+
+1. 设置只给 Runner 的变量（API key 来自你自己的密钥来源）：
+
+   ```bash
+   AGENTOPS_PROVIDER_BASE_URL=http://127.0.0.1:8080/v1
+   AGENTOPS_PROVIDER_API_KEY=<from your secret source>
+   AGENTOPS_PROVIDER_MODEL=swift-1.5-27b-iq3xxs
+   AGENTOPS_PROVIDER_TIMEOUT_MS=60000
+   AGENTOPS_PROVIDER_MAX_RETRIES=1
+   # 可选；空值/未设置时不发送。先确认端点支持。
+   AGENTOPS_PROVIDER_MAX_TOKENS=256
+   AGENTOPS_PROVIDER_TEMPERATURE=0
+   AGENTOPS_PROVIDER_REASONING_EFFORT=none
+   AGENTOPS_PROVIDER_PARALLEL_TOOL_CALLS=false
+   ```
+
+2. 重启 Runner 使其生效。
+3. 在 UI 中用 `reference-openai-compatible.v1` 运行 Experiment。
+
+验收运行用的就是这套配置：Windows 原生 llama.cpp 服务。**本仓库的验收运行没有验证 Ollama。** 未经测试的示例：`AGENTOPS_PROVIDER_BASE_URL=http://127.0.0.1:11434/v1` 配 `AGENTOPS_PROVIDER_MODEL=qwen3:8b`。
+
+`127.0.0.1` 指 Runner 自己的网络命名空间：容器到 Windows/宿主机服务的路由必须另行验证，不要为此扩大监听或关闭防火墙。先用适中 context/并发，显存预算包含权重**和** KV cache。[本地模型 runbook](docs/operations/local-model.md)提供直连配置、有界生成参数及 `scripts/local_model_acceptance.py`；[带日期的记录](docs/history/h1-live-model-acceptance-2026-11-01.md)说明实际 llama.cpp 结果。CI 使用 fake Provider，不下载模型。
+
+## Agents
 
 `GET /api/agents` 只返回元数据，不返回命令。正常 `config/agents.toml` 注册：
 
@@ -49,38 +67,23 @@ make down      # 停止栈，保留 named volumes
 |---|---|
 | `fixture-agent.v1` | 确定性 MCP 决策；fixture/CI 默认路径 |
 | `reference-openai-compatible.v1` | 使用 Runner 配置的 OpenAI-compatible Provider 的 MCP 工具循环 |
+| `pi-coding-agent.v1` | 宿主机 Runner 上的外部 pi 1.3.0；可选注册表（`config/agents.external.toml`），见[接入你自己的 Agent](docs/learn/03-plug-in-your-agent.md) |
 
 省略 `agent_id` 时按 `execution_mode` 选择；显式注册 ID 优先，未知 ID fail closed。浏览器不能提供 argv、Provider 地址、模型或凭据。见[注册表 runbook](docs/operations/agent-registry.md)。
-
-对于**已经安装**、由操作者管理的 Provider，只配置 Runner：
-
-```bash
-AGENTOPS_PROVIDER_BASE_URL=http://127.0.0.1:11434/v1
-AGENTOPS_PROVIDER_API_KEY=local-placeholder
-AGENTOPS_PROVIDER_MODEL=qwen3:8b
-AGENTOPS_PROVIDER_TIMEOUT_MS=60000
-AGENTOPS_PROVIDER_MAX_RETRIES=1
-# 可选；空值/未设置时不发送。先确认端点支持。
-AGENTOPS_PROVIDER_MAX_TOKENS=256
-AGENTOPS_PROVIDER_TEMPERATURE=0
-AGENTOPS_PROVIDER_REASONING_EFFORT=none
-AGENTOPS_PROVIDER_PARALLEL_TOOL_CALLS=false
-```
-
-这是配置示例，不是已验证模型结果。`127.0.0.1` 指 Runner 自己的网络命名空间；容器到 Windows/宿主机服务的路由必须另行验证，不要为此扩大监听或关闭防火墙。先用适中 context/并发，显存预算包含权重**和** KV cache。[本地模型 runbook](docs/operations/local-model.md)提供直连配置、有界生成参数及 `scripts/local_model_acceptance.py`；[验收记录](docs/history/h1-live-model-acceptance-2026-11-01.md)说明实际 llama.cpp 结果，不冒称 Ollama/vLLM 通过。CI 使用 fake Provider，不下载模型。
 
 ## 架构与信任边界
 
 ```mermaid
 flowchart LR
-    UI[React / RTK Query] -->|HTTP + SSE| CP[Python Control Plane]
-    CP -->|独占数据库访问| DB[(PostgreSQL)]
+    B[Browser: React / RTK Query] -->|HTTP + SSE| CP[FastAPI Control Plane]
+    CP -->|sole DB access| DB[(PostgreSQL)]
     R[Rust Runner] -->|claim / heartbeat / events / complete| CP
-    R -->|spec + capability| E[Environment Server]
-    R -->|注册 argv + task| A[Agent-under-test]
+    R -->|spec + capability| E[app.env_server<br/>MCP Environment]
+    R -->|registered argv + task| A[Agent: fixture / reference / pi]
     A -->|loopback MCP tools| E
-    E -->|可信 JSONL 事实| R
-    A -. 可选 chat/completions .-> P[运维 Provider]
+    E -->|trusted JSONL facts| R
+    A -. optional chat/completions .-> P[Operator model endpoint]
+    CP -. optional OTel GenAI spans, off by default .-> O[OTel backend]
 ```
 
 - CP 独占持久化、断言评分、Run 终态与权威 completion ACK；Rust 不是第二评分器。
@@ -95,6 +98,46 @@ flowchart LR
 
 详见[领域不变量](CONTEXT.md)、[架构](docs/agentops_closed_loop_architecture.md)与 [ADR](docs/adr/)。
 
+## 截图
+
+Recorded Preview，深色主题，无后端。
+
+| | |
+|---|---|
+| [Experiments](docs/screenshots/current-experiments.png) | Experiment 列表，含最近 Run 状态和分数 |
+| [Experiment detail](docs/screenshots/current-experiment-detail.png) | Policy 状态（无激活策略、已验证候选）与该 Experiment 的 Run |
+| [Run: Trace](docs/screenshots/current-run-trace.png) | 失败的 baseline Run，Trace 视图显示第一步工具调用 |
+| [Run: Analysis](docs/screenshots/current-run-analysis.png) | 同一 Run 的 Analysis 视图：失败分类与主导失败 |
+| [Run: Improve](docs/screenshots/current-run-improve.png) | 候选 Policy diff 与 before/after replay 对比 |
+
+![Experiment detail](docs/screenshots/current-experiment-detail.png)
+![Run: Improve](docs/screenshots/current-run-improve.png)
+
+## pass^k 结果：谨慎阅读
+
+一个模型、一个端点：Windows llama.cpp 服务（build `b12018`），别名 `swift-1.5-27b-iq3xxs`，context 8192。每格是一个 trial group，**n = 5** 次 trial、**k = 5**，Environment seed 42，全新 PostgreSQL，宿主机 control plane 与 Rust Runner。主示例：`temperature=1`、`max_tokens=256`、`reasoning_effort=none`、`parallel_tool_calls=false`，并使用每 Run 采样 seed（`AGENTOPS_PROVIDER_SEED=per-run`），`reference-openai-compatible.v1`，2026-11-07 运行（[记录](docs/history/h3-pass-k-seed-2026-11-07.md)）：
+
+| Agent | Environment | 成功 | pass^1 | pass^5 | 不同轨迹数 |
+|---|---|---|---|---|---|
+| reference | research | 5/5 | 1.0 | 1.0 | 1 |
+| reference | fault | 2/5 | 0.4 | 0.0 | 3 |
+| reference | checkout | 0/5 | 0.0 | 0.0 | 1 |
+| reference | order | 5/5 | 1.0 | 1.0 | 1 |
+
+有了独立采样，fault 的 trial 分化为 3 条轨迹（之前是 0/5、1 条轨迹）。research、checkout、order 每组仍只有一条轨迹，说明在这些任务上模型的选择本身是稳定的，而不是 seed 造成的复制。fault 的 pass^1 为 0.4、pass^5 为 0.0：偶尔成功不等于可靠成功。
+
+**温度 0 会高估可靠性。** 温度 0 时每个组都重复同一条轨迹，pass^5 等于 pass^1（[记录](docs/history/h3-pass-k-live-2026-11-04.md)）：reference 的 research 5/5、fault 0/5，pi 的 research 5/5、fault 5/5，pass^5 全都等于 pass^1。温度 1 时服务端固定的默认采样 seed 仍让 reference Agent 的 trial 成为复制（[记录](docs/history/h3-pass-k-temp1-2026-11-05.md)）。每 Run seed 才带来独立 trial。以上都是一个模型、一个 Environment seed、n = 5：不是通过率，不是准确率结论，也不是其他模型的证据。见 [pass^k](docs/learn/06-pass-k.md)。
+
+## 为什么不是 Langfuse/Phoenix？
+
+Langfuse、Phoenix、Braintrust 等产品已经能很好地存储和展示 trace、数据集与 replay diff，本项目不重做 trace UI。对自托管用户仍稀缺的是：可对**外部** Agent 在可重置环境上复现运行并报告 pass^k 的 harness，加上确定性失败分类和人工 Policy 门禁。启用后，Control Plane 导出 OTel GenAI span（默认关闭；见 [OTel 导出](docs/operations/otel-export.md)），这些工具可以直接消费 trace。一个 Run 的 trace 已被本地 Phoenix 接收（根 `invoke_agent` span 加 8 个 `execute_tool` 子 span；本地 Phoenix 需要 `PHOENIX_ENABLE_AUTH=false`），见 [OTel 映射](docs/learn/07-otel-mapping.md)与 `docs/screenshots/otel-phoenix.png`。本项目不再以通用评估平台自居。
+
+## 当前范围
+
+H1 已实现独立的 Environment/MCP 与 fixture/reference Agent 进程、Rust 租约/Attempt fencing 监督、运维 TOML Agent 注册表、CP 独占评分/完成裁决，以及四个内置 Environment。协议 v1 仍用 `scenario_id`；三个规范世界使用 **v2**，`order-support.v1` 保持自己的身份。旧世界 v1 ID 被拒绝，不提供别名或迁移。
+
+**H1 本地工程与真实模型集成验收已完成**：已安装的 Windows llama.cpp 经 reference Agent 完成 research 和有状态订单 Run；checkout/fault 失败如实保留。hosted CI 已在 `b32da25` 通过。这不等于所有模型兼容、发布、cold-cache、跨平台或公开部署验收。**H2-1 已完成**（`pi-coding-agent.v1`）。**H3 已完成**（trial group 与 Experiment 页的 pass^k，`POST /api/experiments/{id}/trials`）。**H4 已完成**（可选 OTel GenAI span 导出，已用本地 Phoenix 验证）。H5 模型分布准确率研究和其他可选外部适配器尚未完成，不是当前功能。校准是六合同确定性机制门，**不是已发布的准确率结论**。参见[任务清单](docs/agents/phase2-tasks.md)、[里程碑](ROADMAP.zh-CN.md)、互操作用的 [ADR-0011](docs/adr/0011-otel-genai-export.md)与[验收边界](docs/operations/system-acceptance.md)。
+
 ## Recorded Preview
 
 ```bash
@@ -108,15 +151,15 @@ VITE_MOCK_API=true npm run dev
 ## 验证
 
 ```bash
-make test-backend       # 内部从 backend/ 执行
+make test-backend       # run from backend/ internally
 make test-frontend
 make test-rust
 make fmt-check
 make check-contracts
 
-# 针对全新、隔离、已启动的栈
+# Against a fresh, isolated running stack
 python3 scripts/golden_e2e.py
-# 仅用于该隔离栈：终止并重建其 Runner
+# Destructive to that stack's Runner process only: kills and recreates it
 python3 scripts/recovery_e2e.py
 
 cd frontend && npm run e2e:recorded
@@ -124,9 +167,9 @@ cd frontend && npm run e2e:recorded
 
 CI 基线为 Linux Node 22、Python 3.12、Rust 1.96、PostgreSQL 16 与锁定依赖。PostgreSQL 专项必须用全新独占库；SQLite/skip 不能替代并发证据。[本地 runbook](docs/operations/reliability-and-local-validation.md)说明工具链、代理、Runner 递归依赖验证、校准/恢复和证据边界。
 
-`make check-contracts` 导出 schema 后与 Git index 对比，已在提交后的规范 v2 基线上通过；旧 dirty-index 默认差异是历史记录。交付前继续运行原 gate，不为隐藏 drift 回退 v2、stage 生成差异或削弱检查。
+`make check-contracts` 导出 schema 后与 Git index 对比。保持该 gate 不变并在交付前重跑；不要为隐藏 drift 回退 v2 或 stage 生成差异。
 
-历史 Phase 1 hosted CI 在 `8bd2ef0` 通过，不验证当前 H1 工作树。标准本地 Runner 构建/运行、离线派生镜像、host 测试、实际 volume 替换和真实模型都是不同声明。当前本地收尾有标准网络构建镜像与全新 volume 替换的父证据，本轮另有 host PostgreSQL 及标准 Runner 镜像 host-network 的真实模型直连验收；H1 的 hosted CI 另在 `b32da25` 通过；以上都不声称 cold-cache/fresh-base 可复现。[当前验收](docs/operations/system-acceptance.md)与[带日期历史](docs/history/)分开记录。
+H1 的 hosted CI 在 `b32da25` 通过；历史 Phase 1 hosted CI 在 `8bd2ef0` 通过，不验证 H1。以上都不声称 cold-cache/fresh-base 可复现。[当前验收](docs/operations/system-acceptance.md)与[带日期历史](docs/history/)分开记录。
 
 ## 仓库与阅读地图
 

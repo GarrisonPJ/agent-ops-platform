@@ -75,6 +75,9 @@ Experiment 页（`frontend/src/components/TrialGroupsSection.tsx`）只展示这
 在这个端点上，温度 1 也没有帮助：已安装的 llama.cpp 服务固定了默认采样 seed（42），
 相同请求在温度 1 下仍得到相同输出，所以 reference Agent 的 trial 依然是复制。
 
+要得到独立采样，可以设置 `AGENTOPS_PROVIDER_SEED=per-run`：每个 Run 使用自己的采样 seed
+（ADR-0003 H3 修订，提交 `f00ef7d`）。这样同一组里的 trial 不再是同一个 seed 下的复制。
+
 ## 7. 真实数据
 
 同一 Windows llama.cpp（`swift-1.5-27b-iq3xxs`，context 8192），温度 0，每格一个
@@ -110,7 +113,27 @@ Experiment 页（`frontend/src/components/TrialGroupsSection.tsx`）只展示这
 Agent 的各组在温度 1 下仍是一条轨迹的复制。pi 的 fault 和 order 组出现分歧，可能原因是 pi 的
 prompt 在每次 Run 之间有差异（例如私有临时路径），这一点未验证，也不是独立采样。结论：在这个
 端点上，温度 0 和温度 1 都不能让相同请求产生独立 trial；需要变化的采样 seed（服务端随机 seed，
-或每个 Run 的请求 seed）。这个选项目前不存在，是待决事项。
+或每个 Run 的请求 seed）。每个 Run 的请求 seed 后来已实现，见下一段。
+
+2026-11-07 用 `AGENTOPS_PROVIDER_SEED=per-run` 在同一端点、同样设置（温度 1、`max_tokens` 256、
+`reasoning_effort` none、`parallel_tool_calls` false、`n = 5`、`k = 5`、Environment seed 42、
+全新 PostgreSQL）下重跑（[记录](../history/h3-pass-k-seed-2026-11-07.md)）。
+reference（`reference-openai-compatible.v1`）：
+
+| Agent | Environment | 成功 | pass^1 | pass^5 | 5 次 trial 的不同轨迹数 |
+|---|---|---|---|---|---|
+| reference | research | 5/5 | 1.0 | 1.0 | 1 |
+| reference | fault | 2/5 | 0.4 | 0.0 | 3 |
+| reference | checkout | 0/5 | 0.0 | 0.0 | 1 |
+| reference | order | 5/5 | 1.0 | 1.0 | 1 |
+
+同样设置下 2026-11-05 跑过 pi（批次在两组后中断）：research 5/5、pass^1 1.0、pass^5 1.0、1 条轨迹；
+fault 1/5、pass^1 0.2、pass^5 0.0、2 条轨迹。pi 的 checkout 和 order 没有用每 Run seed 运行。
+
+解读：有了每 Run seed，reference 的 fault 组分化成 3 条轨迹；之前温度 0 和固定 seed 的温度 1
+都是 0/5、1 条轨迹。research、checkout、order 在独立采样下每组仍只有一条轨迹，说明在这些任务上
+模型的选择本身是稳定的，而不是 seed 造成的复制。fault 的 pass^1 为 0.4、pass^5 为 0：偶尔成功
+不等于可靠成功。仍然只是一个模型、一个 Environment seed、n = 5，不是通过率。
 
 ## 8. 怎么复现
 

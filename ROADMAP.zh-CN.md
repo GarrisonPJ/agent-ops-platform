@@ -20,7 +20,7 @@ Phase 1 hosted CI 在 `8bd2ef0` 通过，其计数只属于该历史快照。H1 
 
 H1-5 已使用已安装的 Windows llama.cpp 端点完成直连：新建 PostgreSQL 下 research/order 成功、checkout/fault 失败均保留，标准 Runner 镜像 research 也成功。四项 Runner-only 可选生成参数替代临时代理。见[验收记录](docs/history/h1-live-model-acceptance-2026-11-01.md)，不冒称 Ollama/vLLM、稳定通过率或分析器准确率。本轮不下载模型、不改 Windows/网络/防火墙、不公开部署、不启动 H2。
 
-H2-1 已完成：`submit_result` 可发现（ADR-0008 H2 修订），`pi-coding-agent.v1` 通过可选外部注册表运行，同一本地模型下 reference 与 pi 已在四个 Environment 各跑一次（[记录](docs/history/h2-pi-live-acceptance-2026-11-03.md)）。H3 已完成：trial group、读时 pass^k 与严格的组级验证；温度 0 下每个真实组都重复同一条轨迹，pass^5 等于 pass^1（[记录](docs/history/h3-pass-k-live-2026-11-04.md)）。温度 1 没有改善：端点固定了默认采样 seed，reference Agent 的 trial 仍是复制（[记录](docs/history/h3-pass-k-temp1-2026-11-05.md)）。尚未实现：可选外部适配器（H2-2/H2-3/H2-5）、H5 真实分布一致性研究。当前校准仍为 `provisional_mechanics`、`publishable_accuracy=false`；后续自标注研究必须披露方法局限。
+H2-1 已完成：`submit_result` 可发现（ADR-0008 H2 修订），`pi-coding-agent.v1` 通过可选外部注册表运行，同一本地模型下 reference 与 pi 已在四个 Environment 各跑一次（[记录](docs/history/h2-pi-live-acceptance-2026-11-03.md)）。H3 已完成：trial group、读时 pass^k 与严格的组级验证；温度 0 下每个真实组都重复同一条轨迹，pass^5 等于 pass^1（[记录](docs/history/h3-pass-k-live-2026-11-04.md)）。温度 1 没有改善：端点固定了默认采样 seed，reference Agent 的 trial 仍是复制（[记录](docs/history/h3-pass-k-temp1-2026-11-05.md)）。可选的 `AGENTOPS_PROVIDER_SEED=per-run` 让每个 Run 使用自己的采样 seed；启用后 reference Agent 的 fault 组分化为 3 条轨迹（2/5，pass^5 为 0.0），其余组仍为一条（[记录](docs/history/h3-pass-k-seed-2026-11-07.md)）。H4 已完成：OTel GenAI 导出，并已用本地 Phoenix 验证（[章节](docs/learn/07-otel-mapping.md)）。尚未实现：可选外部适配器（H2-2/H2-3/H2-5）、H5 真实分布一致性研究。当前校准仍为 `provisional_mechanics`、`publishable_accuracy=false`；后续自标注研究必须披露方法局限。
 
 ## 里程碑
 
@@ -35,10 +35,10 @@ H2-1 已完成：`submit_result` 可发现（ADR-0008 H2 修订），`pi-coding-
 | P0 | Phase 2 — Harness H0（门面与决策） | 进行中 | ADR、LICENSE、规范、学习地图和[任务清单](docs/agents/phase2-tasks.md)已在仓库内。仍开放：GitHub About、对外名称（H0-2）。 |
 | P0 | Phase 2 — Harness H1（Environment/Agent 拆分） | 完成（本地工程 + 真实模型集成） | 独立进程路径、P2 修复、确定性回归、标准镜像/volume 与直连 reference Agent trace/分析已验收。模型失败保留；hosted CI 已在 `b32da25` 通过；发布仍未建立。 |
 | P1 | Phase 2 — Harness H2（外部 Agent） | 必做范围完成（H2-1、H2-4） | pi 适配器及同一模型下 reference 与 pi 的四 Environment 对比（[记录](docs/history/h2-pi-live-acceptance-2026-11-03.md)）；Agents SDK / Codex / Claude Code 可选，未做。 |
-| P1 | Phase 2 — Harness H3（trial 与 pass^k） | 已完成 | Trial group、读时 pass^k、严格的组级策略验证、Experiment 摘要；真实 n = 5、k = 5 温度 0 运行已记录（[记录](docs/history/h3-pass-k-live-2026-11-04.md)）；2026-11-05 的温度 1 运行显示端点固定了默认采样 seed，相同请求仍得到相同 trial（[记录](docs/history/h3-pass-k-temp1-2026-11-05.md)）。 |
-| P2 | Phase 2 — Harness H4（OTel 导出） | 进行中（H4-1 导出已完成；H4-2 真实 collector 验证未做） | OTLP GenAI 投影，默认关闭（[运维文档](docs/operations/otel-export.md)）。 |
+| P1 | Phase 2 — Harness H3（trial 与 pass^k） | 已完成 | Trial group、读时 pass^k、严格的组级策略验证、Experiment 摘要；真实 n = 5、k = 5 温度 0 运行已记录（[记录](docs/history/h3-pass-k-live-2026-11-04.md)）；2026-11-05 的温度 1 运行显示端点固定了默认采样 seed，相同请求仍得到相同 trial（[记录](docs/history/h3-pass-k-temp1-2026-11-05.md)）；可选的每 Run 采样 seed（`AGENTOPS_PROVIDER_SEED=per-run`）提供独立采样，已于 2026-11-07 运行（[记录](docs/history/h3-pass-k-seed-2026-11-07.md)）。 |
+| P2 | Phase 2 — Harness H4（OTel 导出） | 已完成（导出与 Phoenix 验证） | OTLP GenAI 投影，默认关闭（[运维文档](docs/operations/otel-export.md)）；本地 Phoenix 已收到一个 Run 的 trace（[章节](docs/learn/07-otel-mapping.md)）。 |
 | P2 | Phase 2 — Harness H5（校准研究） | 计划中 | 分析器回归门不变；约 40 条真实 Run 的自标注一致性研究。 |
-| P1 | Phase 2 — Harness H6（打包） | 计划中 | README、write-up、recorded demo。 |
+| P1 | Phase 2 — Harness H6（打包） | 进行中（README 与 write-up 已完成；H6-3 recorded demo 刷新未做） | README、write-up、recorded demo。 |
 | Gate | 安全门 | 条件触发 | 启用有副作用工具、不可信用户或共享/公网运行前必须完成。 |
 
 时间表：Phase 2 为 2026-10-17 至约 2027-01-09（12 周）。
@@ -84,7 +84,7 @@ flowchart LR
   Otel --> Langfuse[Langfuse / Phoenix]
 ```
 
-此图是完整 Phase 2 目标，不是当前能力清单：H1 实现 Environment/注册 Agent 双进程；Trials、外部适配器、pass^k 和 OTel 属于后续阶段。工具事实由 MCP Environment 采集，Agent 不发可信 JSONL。
+此图是完整 Phase 2 目标，不是当前能力清单：H1 实现 Environment/注册 Agent 双进程；外部适配器属于后续阶段；Trials、pass^k 和 OTel 导出已实现。工具事实由 MCP Environment 采集，Agent 不发可信 JSONL。
 
 ### 决策
 
