@@ -56,6 +56,11 @@ Run 不是 `succeeded`、或 Environment 结果不是 `ok` 时，span status 为
 - 默认导出器把一个 Run 以一次 `application/x-protobuf` POST 发到本地假 collector 的
   `/v1/traces`，请求体可解析为 `ExportTraceServiceRequest`，且不含 Runner token。
 
-## 5. 尚未完成
+## 5. 对端验证（Phoenix）
 
-H4-2 要求的对端验证（向真实 Phoenix `:6006/v1/traces` 或 Langfuse 发一条并截图）还没有做。
+- 日期：2026-11-07
+- 镜像：`arizephoenix/phoenix@sha256:1f9a144a5357b4973e93a15718f050247cb7a4ee7b7c6c06ecb91b5eed3fbaad`（仅绑定 `127.0.0.1:6006`；该镜像对非回环监听默认开启鉴权，OTLP 返回 401，因此本地验证用 `PHOENIX_ENABLE_AUTH=false` 启动）。
+- Run：`78677ed3-d976-44f6-8a00-91424b38c281`（`reference-openai-compatible.v1`，`multi-step-research.v2`，succeeded），用 `build_run_spans` + `emit` 经 `OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:6006` 发送。
+- Phoenix 中观察到一条 trace：根 span `invoke_agent OpenAI-compatible reference agent`（`gen_ai.conversation.id` = run_id，`gen_ai.agent.id` = `reference-openai-compatible.v1`，`gen_ai.operation.name` = `invoke_agent`，以及 `agentops.*` 属性），下挂 8 个 `execute_tool ...` 子 span（`report_usage`、`search_documents`、`fetch_document`、`submit_answer`、`submit_result`）。
+
+![Phoenix 中的 Run trace](../screenshots/otel-phoenix.png)
