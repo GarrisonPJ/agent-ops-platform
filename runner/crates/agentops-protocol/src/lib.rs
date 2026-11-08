@@ -454,6 +454,10 @@ pub struct RunResponse {
     pub source_run_id: Option<String>,
     pub policy_id: Option<String>,
     pub regression_case_id: Option<String>,
+    #[serde(default)]
+    pub trial_group_id: Option<String>,
+    #[serde(default)]
+    pub trial_index: Option<u32>,
     pub status: CompletionStatus,
     pub score: Option<f64>,
     pub metrics: Value,
@@ -527,6 +531,53 @@ mod tests {
             limits: ExecutionLimits::default(),
             scenario_params: HashMap::new(),
         }
+    }
+
+    fn completion_json(extra: Value) -> Value {
+        let mut run = json!({
+            "id": "run-1",
+            "experiment_id": "experiment-1",
+            "kind": "baseline",
+            "source_run_id": null,
+            "policy_id": null,
+            "regression_case_id": null,
+            "status": "succeeded",
+            "score": null,
+            "metrics": {},
+            "evaluation_spec": serde_json::to_value(spec()).unwrap(),
+            "error": null,
+            "queued_at": "2026-07-16T00:00:00Z",
+            "started_at": null,
+            "completed_at": null
+        });
+        run.as_object_mut()
+            .unwrap()
+            .extend(extra.as_object().unwrap().clone());
+        json!({
+            "run_id": "run-1",
+            "attempt": 1,
+            "terminal_sequence": 2,
+            "status": "succeeded",
+            "run": run
+        })
+    }
+
+    #[test]
+    fn completion_response_accepts_trial_fields() {
+        let raw = completion_json(json!({"trial_group_id": "tg-1", "trial_index": 3}));
+        let parsed: CompletionResponse = serde_json::from_value(raw).unwrap();
+        assert_eq!(parsed.run.trial_group_id.as_deref(), Some("tg-1"));
+        assert_eq!(parsed.run.trial_index, Some(3));
+    }
+
+    #[test]
+    fn completion_response_accepts_null_or_missing_trial_fields() {
+        let nulls = completion_json(json!({"trial_group_id": null, "trial_index": null}));
+        let parsed: CompletionResponse = serde_json::from_value(nulls).unwrap();
+        assert_eq!(parsed.run.trial_group_id, None);
+        let missing: CompletionResponse =
+            serde_json::from_value(completion_json(json!({}))).unwrap();
+        assert_eq!(missing.run.trial_index, None);
     }
 
     #[test]
