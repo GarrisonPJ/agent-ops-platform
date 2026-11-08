@@ -98,3 +98,28 @@ test("keeps the run workspace usable on mobile and by keyboard", async ({
   );
   expect(overflow).toBeLessThanOrEqual(1);
 });
+
+test("shows the trial group pass^k summary and per-trial rows on the experiment page", async ({
+  page,
+}) => {
+  await page.goto("/experiments/00000000-0000-4000-8000-000000000105");
+  await expect(page.getByText("Recorded Demo Data")).toBeVisible();
+
+  const group = page.getByLabel(
+    "Trial group 00000000-0000-4000-8000-000000000301",
+  );
+  await expect(group.getByText("Baseline trials · n=5, k=5")).toBeVisible();
+  await expect(group.getByText("2/5 trials succeeded.")).toBeVisible();
+
+  const metric = (label: string) =>
+    group.locator("dt", { hasText: label }).locator("xpath=following-sibling::dd");
+  await expect(metric("pass^1")).toHaveText("40.0%");
+  await expect(metric("pass^5")).toHaveText("0.0%");
+
+  const trials = group.getByRole("list", { name: "Trials" }).getByRole("link");
+  await expect(trials).toHaveCount(5);
+  for (let index = 0; index < 5; index += 1) {
+    await expect(trials.nth(index)).toContainText(`#${index + 1}`);
+    await expect(trials.nth(index)).toContainText(index < 2 ? "Succeeded" : "Failed");
+  }
+});

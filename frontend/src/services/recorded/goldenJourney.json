@@ -234,9 +234,505 @@
     "task": "Investigate checkout API latency",
     "scenario_id": "checkout-api-latency.v2",
     "created_at": "2026-07-15T14:20:00Z",
-    "runs": [],
+    "runs": [
+      {
+        "id": "00000000-0000-4000-8000-000000000311",
+        "experiment_id": "00000000-0000-4000-8000-000000000105",
+        "kind": "baseline",
+        "source_run_id": null,
+        "policy_id": null,
+        "regression_case_id": null,
+        "status": "succeeded",
+        "score": 1.0,
+        "metrics": {
+          "event_retries": 0,
+          "steps": 6,
+          "latency_ms": 0,
+          "token_prompt": null,
+          "token_completion": null,
+          "total_tokens": null,
+          "agent_usage": {
+            "source": "agent_reported",
+            "token_prompt": null,
+            "token_completion": null,
+            "context_window": null
+          },
+          "environment": {
+            "finalized": true,
+            "check_called": true
+          },
+          "score_breakdown": {
+            "success_reward": 0.13333333333333333,
+            "cost_penalty": -0.0,
+            "latency_penalty": -0.0,
+            "tool_failure_penalty": -0.0
+          },
+          "assertions": {
+            "aggregate": 0.13333333333333333,
+            "combination": "weighted",
+            "assertions": [
+              {
+                "type": "tool-used",
+                "score": 0.0,
+                "passed": false,
+                "weight": 1.0,
+                "threshold": 1.0,
+                "detail": "tools=['fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs']"
+              },
+              {
+                "type": "tool-used",
+                "score": 0.0,
+                "passed": false,
+                "weight": 1.0,
+                "threshold": 1.0,
+                "detail": "tools=['fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs']"
+              },
+              {
+                "type": "tool-sequence",
+                "score": 0.0,
+                "passed": false,
+                "weight": 2.0,
+                "threshold": 1.0,
+                "detail": "expected=['check_service_health', 'query_service_metrics', 'fetch_service_logs'] actual=['fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs']"
+              },
+              {
+                "type": "step-count",
+                "score": 0.6666666666666666,
+                "passed": false,
+                "weight": 1.0,
+                "threshold": 1.0,
+                "detail": "steps=6 min=None max=4"
+              }
+            ]
+          }
+        },
+        "evaluation_spec": {
+          "schema_version": 1,
+          "run_id": "00000000-0000-4000-8000-000000000102",
+          "experiment_id": "00000000-0000-4000-8000-000000000105",
+          "scenario_id": "checkout-api-latency.v2",
+          "task": "Investigate checkout API latency",
+          "seed": 42,
+          "execution_mode": "fixture",
+          "agent_id": "fixture-agent.v1",
+          "policy": null,
+          "limits": {
+            "timeout_ms": 60000,
+            "max_output_bytes": 1048576
+          },
+          "scenario_params": {}
+        },
+        "error": "Agent execution failed",
+        "queued_at": "2026-07-16T08:00:01Z",
+        "started_at": "2026-07-16T08:00:02Z",
+        "completed_at": "2026-07-16T08:00:03Z",
+        "trial_group_id": "00000000-0000-4000-8000-000000000301",
+        "trial_index": 1
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000312",
+        "experiment_id": "00000000-0000-4000-8000-000000000105",
+        "kind": "baseline",
+        "source_run_id": null,
+        "policy_id": null,
+        "regression_case_id": null,
+        "status": "succeeded",
+        "score": 1.0,
+        "metrics": {
+          "event_retries": 0,
+          "steps": 6,
+          "latency_ms": 0,
+          "token_prompt": null,
+          "token_completion": null,
+          "total_tokens": null,
+          "agent_usage": {
+            "source": "agent_reported",
+            "token_prompt": null,
+            "token_completion": null,
+            "context_window": null
+          },
+          "environment": {
+            "finalized": true,
+            "check_called": true
+          },
+          "score_breakdown": {
+            "success_reward": 0.13333333333333333,
+            "cost_penalty": -0.0,
+            "latency_penalty": -0.0,
+            "tool_failure_penalty": -0.0
+          },
+          "assertions": {
+            "aggregate": 0.13333333333333333,
+            "combination": "weighted",
+            "assertions": [
+              {
+                "type": "tool-used",
+                "score": 0.0,
+                "passed": false,
+                "weight": 1.0,
+                "threshold": 1.0,
+                "detail": "tools=['fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs']"
+              },
+              {
+                "type": "tool-used",
+                "score": 0.0,
+                "passed": false,
+                "weight": 1.0,
+                "threshold": 1.0,
+                "detail": "tools=['fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs']"
+              },
+              {
+                "type": "tool-sequence",
+                "score": 0.0,
+                "passed": false,
+                "weight": 2.0,
+                "threshold": 1.0,
+                "detail": "expected=['check_service_health', 'query_service_metrics', 'fetch_service_logs'] actual=['fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs']"
+              },
+              {
+                "type": "step-count",
+                "score": 0.6666666666666666,
+                "passed": false,
+                "weight": 1.0,
+                "threshold": 1.0,
+                "detail": "steps=6 min=None max=4"
+              }
+            ]
+          }
+        },
+        "evaluation_spec": {
+          "schema_version": 1,
+          "run_id": "00000000-0000-4000-8000-000000000102",
+          "experiment_id": "00000000-0000-4000-8000-000000000105",
+          "scenario_id": "checkout-api-latency.v2",
+          "task": "Investigate checkout API latency",
+          "seed": 42,
+          "execution_mode": "fixture",
+          "agent_id": "fixture-agent.v1",
+          "policy": null,
+          "limits": {
+            "timeout_ms": 60000,
+            "max_output_bytes": 1048576
+          },
+          "scenario_params": {}
+        },
+        "error": "Agent execution failed",
+        "queued_at": "2026-07-16T08:00:01Z",
+        "started_at": "2026-07-16T08:00:02Z",
+        "completed_at": "2026-07-16T08:00:03Z",
+        "trial_group_id": "00000000-0000-4000-8000-000000000301",
+        "trial_index": 2
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000313",
+        "experiment_id": "00000000-0000-4000-8000-000000000105",
+        "kind": "baseline",
+        "source_run_id": null,
+        "policy_id": null,
+        "regression_case_id": null,
+        "status": "failed",
+        "score": 0.0,
+        "metrics": {
+          "event_retries": 0,
+          "steps": 6,
+          "latency_ms": 0,
+          "token_prompt": null,
+          "token_completion": null,
+          "total_tokens": null,
+          "agent_usage": {
+            "source": "agent_reported",
+            "token_prompt": null,
+            "token_completion": null,
+            "context_window": null
+          },
+          "environment": {
+            "finalized": true,
+            "check_called": true
+          },
+          "score_breakdown": {
+            "success_reward": 0.13333333333333333,
+            "cost_penalty": -0.0,
+            "latency_penalty": -0.0,
+            "tool_failure_penalty": -0.0
+          },
+          "assertions": {
+            "aggregate": 0.13333333333333333,
+            "combination": "weighted",
+            "assertions": [
+              {
+                "type": "tool-used",
+                "score": 0.0,
+                "passed": false,
+                "weight": 1.0,
+                "threshold": 1.0,
+                "detail": "tools=['fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs']"
+              },
+              {
+                "type": "tool-used",
+                "score": 0.0,
+                "passed": false,
+                "weight": 1.0,
+                "threshold": 1.0,
+                "detail": "tools=['fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs']"
+              },
+              {
+                "type": "tool-sequence",
+                "score": 0.0,
+                "passed": false,
+                "weight": 2.0,
+                "threshold": 1.0,
+                "detail": "expected=['check_service_health', 'query_service_metrics', 'fetch_service_logs'] actual=['fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs']"
+              },
+              {
+                "type": "step-count",
+                "score": 0.6666666666666666,
+                "passed": false,
+                "weight": 1.0,
+                "threshold": 1.0,
+                "detail": "steps=6 min=None max=4"
+              }
+            ]
+          }
+        },
+        "evaluation_spec": {
+          "schema_version": 1,
+          "run_id": "00000000-0000-4000-8000-000000000102",
+          "experiment_id": "00000000-0000-4000-8000-000000000105",
+          "scenario_id": "checkout-api-latency.v2",
+          "task": "Investigate checkout API latency",
+          "seed": 42,
+          "execution_mode": "fixture",
+          "agent_id": "fixture-agent.v1",
+          "policy": null,
+          "limits": {
+            "timeout_ms": 60000,
+            "max_output_bytes": 1048576
+          },
+          "scenario_params": {}
+        },
+        "error": "Agent execution failed",
+        "queued_at": "2026-07-16T08:00:01Z",
+        "started_at": "2026-07-16T08:00:02Z",
+        "completed_at": "2026-07-16T08:00:03Z",
+        "trial_group_id": "00000000-0000-4000-8000-000000000301",
+        "trial_index": 3
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000314",
+        "experiment_id": "00000000-0000-4000-8000-000000000105",
+        "kind": "baseline",
+        "source_run_id": null,
+        "policy_id": null,
+        "regression_case_id": null,
+        "status": "failed",
+        "score": 0.0,
+        "metrics": {
+          "event_retries": 0,
+          "steps": 6,
+          "latency_ms": 0,
+          "token_prompt": null,
+          "token_completion": null,
+          "total_tokens": null,
+          "agent_usage": {
+            "source": "agent_reported",
+            "token_prompt": null,
+            "token_completion": null,
+            "context_window": null
+          },
+          "environment": {
+            "finalized": true,
+            "check_called": true
+          },
+          "score_breakdown": {
+            "success_reward": 0.13333333333333333,
+            "cost_penalty": -0.0,
+            "latency_penalty": -0.0,
+            "tool_failure_penalty": -0.0
+          },
+          "assertions": {
+            "aggregate": 0.13333333333333333,
+            "combination": "weighted",
+            "assertions": [
+              {
+                "type": "tool-used",
+                "score": 0.0,
+                "passed": false,
+                "weight": 1.0,
+                "threshold": 1.0,
+                "detail": "tools=['fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs']"
+              },
+              {
+                "type": "tool-used",
+                "score": 0.0,
+                "passed": false,
+                "weight": 1.0,
+                "threshold": 1.0,
+                "detail": "tools=['fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs']"
+              },
+              {
+                "type": "tool-sequence",
+                "score": 0.0,
+                "passed": false,
+                "weight": 2.0,
+                "threshold": 1.0,
+                "detail": "expected=['check_service_health', 'query_service_metrics', 'fetch_service_logs'] actual=['fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs']"
+              },
+              {
+                "type": "step-count",
+                "score": 0.6666666666666666,
+                "passed": false,
+                "weight": 1.0,
+                "threshold": 1.0,
+                "detail": "steps=6 min=None max=4"
+              }
+            ]
+          }
+        },
+        "evaluation_spec": {
+          "schema_version": 1,
+          "run_id": "00000000-0000-4000-8000-000000000102",
+          "experiment_id": "00000000-0000-4000-8000-000000000105",
+          "scenario_id": "checkout-api-latency.v2",
+          "task": "Investigate checkout API latency",
+          "seed": 42,
+          "execution_mode": "fixture",
+          "agent_id": "fixture-agent.v1",
+          "policy": null,
+          "limits": {
+            "timeout_ms": 60000,
+            "max_output_bytes": 1048576
+          },
+          "scenario_params": {}
+        },
+        "error": "Agent execution failed",
+        "queued_at": "2026-07-16T08:00:01Z",
+        "started_at": "2026-07-16T08:00:02Z",
+        "completed_at": "2026-07-16T08:00:03Z",
+        "trial_group_id": "00000000-0000-4000-8000-000000000301",
+        "trial_index": 4
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000315",
+        "experiment_id": "00000000-0000-4000-8000-000000000105",
+        "kind": "baseline",
+        "source_run_id": null,
+        "policy_id": null,
+        "regression_case_id": null,
+        "status": "failed",
+        "score": 0.0,
+        "metrics": {
+          "event_retries": 0,
+          "steps": 6,
+          "latency_ms": 0,
+          "token_prompt": null,
+          "token_completion": null,
+          "total_tokens": null,
+          "agent_usage": {
+            "source": "agent_reported",
+            "token_prompt": null,
+            "token_completion": null,
+            "context_window": null
+          },
+          "environment": {
+            "finalized": true,
+            "check_called": true
+          },
+          "score_breakdown": {
+            "success_reward": 0.13333333333333333,
+            "cost_penalty": -0.0,
+            "latency_penalty": -0.0,
+            "tool_failure_penalty": -0.0
+          },
+          "assertions": {
+            "aggregate": 0.13333333333333333,
+            "combination": "weighted",
+            "assertions": [
+              {
+                "type": "tool-used",
+                "score": 0.0,
+                "passed": false,
+                "weight": 1.0,
+                "threshold": 1.0,
+                "detail": "tools=['fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs']"
+              },
+              {
+                "type": "tool-used",
+                "score": 0.0,
+                "passed": false,
+                "weight": 1.0,
+                "threshold": 1.0,
+                "detail": "tools=['fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs']"
+              },
+              {
+                "type": "tool-sequence",
+                "score": 0.0,
+                "passed": false,
+                "weight": 2.0,
+                "threshold": 1.0,
+                "detail": "expected=['check_service_health', 'query_service_metrics', 'fetch_service_logs'] actual=['fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs']"
+              },
+              {
+                "type": "step-count",
+                "score": 0.6666666666666666,
+                "passed": false,
+                "weight": 1.0,
+                "threshold": 1.0,
+                "detail": "steps=6 min=None max=4"
+              }
+            ]
+          }
+        },
+        "evaluation_spec": {
+          "schema_version": 1,
+          "run_id": "00000000-0000-4000-8000-000000000102",
+          "experiment_id": "00000000-0000-4000-8000-000000000105",
+          "scenario_id": "checkout-api-latency.v2",
+          "task": "Investigate checkout API latency",
+          "seed": 42,
+          "execution_mode": "fixture",
+          "agent_id": "fixture-agent.v1",
+          "policy": null,
+          "limits": {
+            "timeout_ms": 60000,
+            "max_output_bytes": 1048576
+          },
+          "scenario_params": {}
+        },
+        "error": "Agent execution failed",
+        "queued_at": "2026-07-16T08:00:01Z",
+        "started_at": "2026-07-16T08:00:02Z",
+        "completed_at": "2026-07-16T08:00:03Z",
+        "trial_group_id": "00000000-0000-4000-8000-000000000301",
+        "trial_index": 5
+      }
+    ],
     "active_policy": null,
-    "candidate_policy": null
+    "candidate_policy": null,
+    "trial_groups": [
+      {
+        "id": "00000000-0000-4000-8000-000000000301",
+        "experiment_id": "00000000-0000-4000-8000-000000000105",
+        "policy_id": null,
+        "n": 5,
+        "k": 5,
+        "seed": 7,
+        "created_at": "2026-07-16T08:30:00Z",
+        "run_ids": [
+          "00000000-0000-4000-8000-000000000311",
+          "00000000-0000-4000-8000-000000000312",
+          "00000000-0000-4000-8000-000000000313",
+          "00000000-0000-4000-8000-000000000314",
+          "00000000-0000-4000-8000-000000000315"
+        ],
+        "state": "complete",
+        "terminal": 5,
+        "successes": 2,
+        "pass_at_1": 0.4,
+        "pass_at_k": 0.0,
+        "mean_score": 0.4,
+        "mean_steps": 6.0
+      }
+    ]
   },
   "baseline_analysis": {
     "run_id": "00000000-0000-4000-8000-000000000102",
