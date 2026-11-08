@@ -53,3 +53,16 @@ latest-report replacement, abandoned-attempt isolation, both assertion input
 paths, and nonempty planning controls. Retain the six-contract disagreement
 gate and both projected-trajectory and ignored-metadata tamper checks. This
 ADR approves the repair, not H1 acceptance or diagnostic accuracy claims.
+
+## H5 amendment (2026-11-08): `author_self_labeled` review status
+
+The v1 review-record sidecar had no honest value for labels produced by the
+project author alone: `agent_generated_provisional` is wrong for human labels,
+and `independent_human` / `multi_reviewer` claim independence that does not
+exist. `reviewer.status` therefore also accepts `author_self_labeled`.
+
+A record with this status can never set `publishable_accuracy=true`, and the
+report classifies it `accuracy_status=provisional_mechanics`. `publishable`
+still requires `independent_human` or `multi_reviewer`, at least two unique
+reviewer IDs, and completed adjudication. Packet, digest, and strict-binding
+mechanics do not change.

@@ -29,12 +29,15 @@ unknowns, a disagreement list with the labeling rule that failed, known biases,
 and a methodology section (sample selection, single self-labeler, correlated
 baseline/replay pairs, no confidence intervals).
 
-**`publishable_accuracy`:** Provisional and regression artifacts keep
-`publishable_accuracy=false`. For the agreement study, `publishable_accuracy` may
-be `true` when the sidecar and report use `--require-binding`, labels are
-author-generated (`reviewer=author` or equivalent), and the published
-methodology states that labels are author-generated. Independent human labels
-and adjudication are a documented limitation, not a publication gate.
+**`publishable_accuracy`:** Single-author self-labeling can only reach
+`accuracy_status=provisional_mechanics`. The sidecar uses reviewer status
+`author_self_labeled` and `publishable_accuracy=false`; the validator rejects
+`publishable_accuracy=true` for that status. `publishable` requires an
+independent second labeler: reviewer status `independent_human` or
+`multi_reviewer`, at least two unique reviewer IDs, completed adjudication,
+per-case evidence and uncertainty, and `--require-binding`. The author's
+agreement study is published as provisional mechanics with its single-labeler
+limitation stated.
 
 **Frozen mechanics:** Do not add new binding, digest, snapshot-identity, or
 strict-mode behavior; maintain existing contracts only.
@@ -143,14 +146,14 @@ round-robin export strata.
 
 **Procedure:** Export an analysis-blind packet (`python -m app.calibration_review`).
 Label using the rules in **Prepare labels**. Prepare a v1 sidecar with
-`reviewer=author` (or equivalent), per-case evidence and uncertainty, and
+reviewer status `author_self_labeled`, per-case evidence and uncertainty, and
 hashes for binding. Run
 `python -m app.calibration_report --require-binding`.
 
 **Publication (in `docs/`):** Confusion matrix per dimension; precision, recall,
 and F1; coverage including unknowns; disagreement list with the labeling rule
 that failed; known biases (single self-labeler, correlated pairs, analysis-blind
-but not outcome-blind packet). Methodology must state author-generated labels.
+but not outcome-blind packet). Methodology must state author-generated labels; the result is `provisional_mechanics`, not `publishable`.
 
 **Feedback:** Poor agreement should drive separately approved analyzer rule
 changes, a semantic revision bump, and a rerun of the six-contract regression gate. Never tune
@@ -254,8 +257,8 @@ sidecar records the packet snapshot, explicit analyzer revision, packet-file
 SHA-256, labels-file SHA-256,
 one identity row per Run (`scenario_id`, `execution_mode`, `kind`, and `task`),
 reviewer status and method, evidence/uncertainty, and adjudication status.
-A single-author agreement study sets adjudication to `not_applicable`: there
-is no second reviewer. Provisional mechanics sidecars stay `pending`.
+A single-author agreement study uses reviewer status `author_self_labeled` and
+sets adjudication to `not_applicable`: there is no second reviewer. Provisional mechanics sidecars stay `pending`.
 Each packet case records a canonical `trajectory_sha256` derived from its
 sanitized trajectory and an `event_stream_sha256` fidelity digest derived from
 all persisted `RunEvent` rows. Historical provisional sidecars from a local
@@ -266,14 +269,13 @@ running a new strict report. The exporter creates only the packet; it does not
 create labels or a sidecar. Do not treat a historical file digest as evidence
 that it satisfies the current binding contract.
 
-Provisional and regression-gate sidecars must keep `publishable_accuracy` set to
-`false`. For an agreement-study publication, the sidecar may set
-`publishable_accuracy=true` when reviewer metadata identifies the author (for
-example `reviewer_ids` including `author`), every case includes non-empty
-evidence and uncertainty, and the published methodology states that labels are
-author-generated. The report requires `--require-binding` for a publishable
-claim; otherwise it refuses that claim. Missing case evidence or uncertainty is
-rejected regardless of publishable status. Valid unknown dimensions do not by
+Provisional, regression-gate, and `author_self_labeled` sidecars must keep
+`publishable_accuracy` set to `false`; the validator rejects `true` for them.
+A `publishable` claim needs an independent second labeler (`independent_human`
+or `multi_reviewer`, two or more unique reviewer IDs, completed adjudication),
+every case with non-empty evidence and uncertainty, and `--require-binding`.
+Missing case evidence or uncertainty is rejected regardless of publishable
+status. Valid unknown dimensions do not by
 themselves force `publishable_accuracy` to `false`; binding and coverage
 limitations still apply. A publishable record does not establish complete
 coverage or a representative sample. Report the coverage and selection
@@ -358,8 +360,8 @@ event-stream digests against the database, and canonical `sha256:<64hex>`
 does not prove external snapshot authenticity.
 
 The JSON output includes `accuracy_status`: `provisional_mechanics` for a
-bound non-publishable review, `publishable` when the sidecar's publishable gate
-passes (see **Scope and status**), and `unbound` for legacy calls. It also
+bound non-publishable review (including every `author_self_labeled` record),
+`publishable` only when an independent-reviewer sidecar passes the publishable gate (see **Scope and status**), and `unbound` for legacy calls. It also
 reports TP, FP, FN, and TN for each dimension and across assessed Run/dimension
 pairs (`micro`), plus precision, recall, F1, and the Run IDs with disagreements.
 Predictions for unknown dimensions contribute no confusion counts or
@@ -378,8 +380,8 @@ Run IDs and provenance before sharing a report.
 The packet is analysis-blind (not outcome-blind): trajectory metadata can reveal
 outcomes. The command verifies structure and binding; synthetic fixtures test
 mechanics only. Publish agreement-study metrics only with methodology, sample
-selection, author-label limitation, and coverage or correlation limits documented
-in `docs/`.
+selection, the single-author limitation (`provisional_mechanics`, no
+inter-rater agreement), and coverage or correlation limits documented in `docs/`.
 
 ## History
 

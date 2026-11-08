@@ -110,7 +110,11 @@ Each number in this note comes from one dated record or one tracked doc. The rec
 
 Run IDs, trial group IDs, the model file hash and the build fingerprint are in the records. The raw capture directories are kept outside the repository ([H3 record](history/h3-pass-k-live-2026-11-04.md), "Limits").
 
-## Limits
+## Limitations
+
+- **Scope of the evidence.** All live evidence comes from one 27B IQ3_XXS quantized local model with an 8192-token context, at n = 5-scale samples. The conclusions are about mechanism, not general policy efficacy.
+- **Seed divergence demonstrated once.** Per-Run seed divergence was shown only on the reference agent's fault-injection scenario ([H3 per-Run seed record](history/h3-pass-k-seed-2026-11-07.md)).
+- **Calibration is single-author.** Labels come from the project author alone, with no inter-rater agreement; the status is `provisional_mechanics`, and `publishable` needs an independent second labeler ([evaluation-calibration](evaluation-calibration.md)).
 
 - **No pass rate.** The records say the sampled Runs are not a pass-rate estimate ([H1 record](history/h1-live-model-acceptance-2026-11-01.md), "Acceptance conclusion and limits"; [H3 record](history/h3-pass-k-live-2026-11-04.md), "Limits").
 - **One model, one machine.** Only a Windows-native llama.cpp service with one 27B GGUF was exercised. No Ollama or vLLM run is recorded. Ollama and vLLM remain the intended targets, not tested ones ([system-acceptance](operations/system-acceptance.md)).

@@ -107,7 +107,10 @@ class ReviewerMetadata(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     status: Literal[
-        "agent_generated_provisional", "independent_human", "multi_reviewer"
+        "agent_generated_provisional",
+        "author_self_labeled",
+        "independent_human",
+        "multi_reviewer",
     ]
     reviewer_ids: list[str] = Field(min_length=1)
     method: str = Field(min_length=1)
@@ -159,6 +162,14 @@ class ReviewRecord(BaseModel):
             and self.publishable_accuracy
         ):
             raise ValueError("agent-generated review cannot be publishable")
+        if (
+            self.reviewer.status == "author_self_labeled"
+            and self.publishable_accuracy
+        ):
+            raise ValueError(
+                "author self-labeled review cannot be publishable; "
+                "publishable requires an independent second labeler"
+            )
         if (
             self.reviewer.status == "multi_reviewer"
             and len(self.reviewer.reviewer_ids) < 2

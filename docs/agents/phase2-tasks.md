@@ -257,7 +257,7 @@ H0 剩余只有 H0-1 的 GitHub 点击和 H0-2 的命名。命名未定不阻塞
 
 ### H5-1 文档拆分（已完成正文）
 
-- Status: `completed`
+- Status: `completed`（2026-11-08：修正 `evaluation-calibration.md` 与代码的矛盾后才算完成；单人自标最高只能到 `provisional_mechanics`，`publishable` 需独立第二标注员）
 - 机制冻结。H1 的 ADR-0013 已将分析器升至 `failure-analyzer.v3`；H5 若发现新规则问题，须新 ADR/新 revision，并重跑六合同门。不要加新的绑定字段。
 
 ### H5-2 自标注
@@ -266,6 +266,7 @@ H0 剩余只有 H0-1 的 GitHub 点击和 H0-2 的命名。命名未定不阻塞
 - 用现有 `python -m app.calibration_review` 导出约 40 条终态 Run（时间不够则 20 条）：覆盖 3–4 个 Environment，含本地模型；有外部适配器时各抽几条。
 - 作者在不看 `run_analyses` 的前提下标注。发布混淆矩阵、覆盖率、分歧和偏差，放在 `docs/`，并写明标签是作者自己标的。
 - 验收：六合同 CI 门仍绿；文档里没有“等待独立标注员”作为阻塞项。
+- 2026-11-08：sidecar 的 `reviewer.status` 用新增的 `author_self_labeled`；结果固定为 `provisional_mechanics`，不得设 `publishable_accuracy=true`（ADR-0013 修订）。
 
 ### H5 学习交付
 

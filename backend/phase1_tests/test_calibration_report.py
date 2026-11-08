@@ -1007,3 +1007,40 @@ async def test_report_rejects_missing_and_nonterminal_runs(api) -> None:
     async with factory() as db:
         with pytest.raises(ValueError, match="not terminal"):
             await report_labeled_runs(db, queued_labels)
+
+
+def _author_self_labeled_record(*, publishable: bool) -> dict:
+    return {
+        "packet": {"source_snapshot": "snapshot-1", "case_count": 1},
+        "reviewer": {
+            "status": "author_self_labeled",
+            "reviewer_ids": ["author"],
+            "method": "single author, analysis-blind",
+        },
+        "adjudication": {"status": "not_applicable"},
+        "cases": [
+            {
+                "run_id": str(uuid4()),
+                "scenario_id": "checkout-api-latency.v2",
+                "execution_mode": "fixture",
+                "kind": "baseline",
+                "task": "Investigate checkout latency",
+                "evidence": ["step 1"],
+                "uncertainty": "none",
+            }
+        ],
+        "publishable_accuracy": publishable,
+    }
+
+
+def test_review_record_accepts_author_self_labeled_non_publishable() -> None:
+    record = ReviewRecord.model_validate(
+        _author_self_labeled_record(publishable=False)
+    )
+    assert record.reviewer.status == "author_self_labeled"
+    assert record.publishable_accuracy is False
+
+
+def test_review_record_rejects_publishable_author_self_labeled() -> None:
+    with pytest.raises(ValidationError, match="author self-labeled"):
+        ReviewRecord.model_validate(_author_self_labeled_record(publishable=True))
