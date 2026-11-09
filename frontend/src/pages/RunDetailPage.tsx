@@ -50,6 +50,7 @@ const TABS = ["trace", "analysis", "improve"] as const;
 type Tab = (typeof TABS)[number];
 
 const PENDING_STATUSES: RunStatus[] = ["queued", "claimed", "running", "cancelling"];
+const TERMINAL_STATUSES: RunStatus[] = ["succeeded", "failed", "cancelled", "timed_out"];
 
 function isTab(value: string | null): value is Tab {
   return TABS.includes(value as Tab);
@@ -60,13 +61,22 @@ function formatFailureType(value: string): string {
 }
 
 function effectiveStatus(run: Run, events: EventEnvelope[]): RunStatus {
+  if (!PENDING_STATUSES.includes(run.status)) return run.status;
   const last = events[events.length - 1];
   if (!last) return run.status;
   if (last.type === "run_completed") return "succeeded";
-  if (last.type === "run_failed") return "failed";
+  if (last.type === "run_failed") {
+    const reported = last.payload.status;
+    return TERMINAL_STATUSES.includes(reported as RunStatus) ? (reported as RunStatus) : "failed";
+  }
   if (last.type === "run_cancelled") return "cancelled";
   if (last.type === "run_started" && PENDING_STATUSES.includes(run.status)) return "running";
   return run.status;
+}
+
+function processOutputText(event: EventEnvelope): string {
+  const { content } = event.payload;
+  return typeof content === "string" ? content : "";
 }
 
 function stepPayload(event: EventEnvelope): StepCompletedPayload {
@@ -207,9 +217,7 @@ function TracePanel({
         <details className="rounded-md border border-border bg-bg-card p-4">
           <summary className="cursor-pointer text-sm font-semibold">Process output</summary>
           <pre className="schema-scroll mt-3 max-h-64 overflow-auto whitespace-pre-wrap font-mono text-xs leading-5 text-fg-muted">
-            {outputEvents
-              .map((event) => String(event.payload.line ?? event.payload.output ?? ""))
-              .join("\n")}
+            {outputEvents.map((event) => processOutputText(event)).join("\n")}
           </pre>
         </details>
       ) : null}
