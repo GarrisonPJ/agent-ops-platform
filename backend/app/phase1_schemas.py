@@ -29,6 +29,7 @@ from app.scenario_ids import (
     SCENARIO_ID_PATTERN,
     SCENARIO_PARAM_KEY_PATTERN,
 )
+from app.agent_error_codes import AgentErrorCode
 from app.agent_registry import AGENT_ID_PATTERN, MAX_AGENT_ID_LENGTH
 ALLOWED_POLICY_TOOLS = frozenset(
     {
@@ -677,12 +678,23 @@ class ExecutionFacts(StrictModel):
     check_succeeded: StrictBool
     planned_environment_teardown: StrictBool
     failure: ExecutionFailure | None
+    # ADR-0009 H5-era amendment: the allowlisted last stderr line of the Agent.
+    # Optional so older Runners (which never send it) keep working. Diagnostics
+    # only: it must not feed status, score, success or the evidence gate.
+    agent_error_code: AgentErrorCode | None = None
 
     @field_validator("failure", mode="before")
     @classmethod
     def exact_failure(cls, value: object) -> object:
         if value is not None and not isinstance(value, (str, ExecutionFailure)):
             raise ValueError("failure must be null or an exact execution failure")
+        return value
+
+    @field_validator("agent_error_code", mode="before")
+    @classmethod
+    def exact_agent_error_code(cls, value: object) -> object:
+        if value is not None and not isinstance(value, (str, AgentErrorCode)):
+            raise ValueError("agent_error_code must be null or an allowlisted code")
         return value
 
 

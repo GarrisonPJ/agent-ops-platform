@@ -1241,6 +1241,82 @@ async fn dual_supervision_reconstructs_environment_line_across_agent_exit_bounda
     .await;
 }
 
+const READY_THEN_SLEEP_ENV: &str = r#"
+import json, time
+print(json.dumps({"type":"env_ready", "payload":{"mcp_url":"http://127.0.0.1:43129/mcp"}}), flush=True)
+time.sleep(30)
+"#;
+
+async fn supervise_with_agent(
+    env_code: &str,
+    agent_code: &str,
+    max_output_bytes: usize,
+) -> (crate::ExecutionFacts, TestServer) {
+    let server = TestServer::start("continue", 0).await;
+    let mut run_claim = claim(10_000);
+    run_claim.run.evaluation_spec.limits.max_output_bytes = max_output_bytes;
+    let outcome = worker(&server, "pass".to_string())
+        .supervise_attempt(
+            &run_claim,
+            TrustedCommand::new("/usr/bin/python3", vec!["-c", env_code]),
+            TrustedCommand::new("/usr/bin/python3", vec!["-c", agent_code]),
+        )
+        .await
+        .unwrap();
+    (outcome, server)
+}
+
+// ADR-0009: only the Agent's allowlisted final stderr line is reported, and it
+// is diagnostics: the terminal decision (ADR-0002/ADR-0012) stays agent_exit.
+#[tokio::test]
+async fn dual_supervision_reports_allowlisted_final_agent_stderr_code() {
+    let agent_code = r#"
+import sys
+sys.stderr.write("UNIQUE_RAW_STDERR_TRACE\nPI_PROVIDER_ERROR\n")
+sys.exit(1)
+"#;
+    let (outcome, _server) = supervise_with_agent(READY_THEN_SLEEP_ENV, agent_code, 65_536).await;
+
+    assert_eq!(outcome.failure, Some(ExecutionFailure::AgentExit));
+    assert_eq!(outcome.agent_error_code, Some("PI_PROVIDER_ERROR"));
+    assert!(!outcome.eligible);
+}
+
+#[tokio::test]
+async fn dual_supervision_ignores_untrusted_code_sources() {
+    // Agent stdout, an earlier stderr line, and Environment stderr are not reported.
+    let agent_code = r#"
+import sys
+print("PI_PROVIDER_ERROR", flush=True)
+sys.stderr.write("PROVIDER_TIMEOUT\nlater line\n")
+sys.exit(1)
+"#;
+    let env_code = r#"
+import json, sys, time
+sys.stderr.write("PI_PROVIDER_ERROR\n")
+sys.stderr.flush()
+print(json.dumps({"type":"env_ready", "payload":{"mcp_url":"http://127.0.0.1:43130/mcp"}}), flush=True)
+time.sleep(30)
+"#;
+    let (outcome, _server) = supervise_with_agent(env_code, agent_code, 65_536).await;
+
+    assert_eq!(outcome.failure, Some(ExecutionFailure::AgentExit));
+    assert_eq!(outcome.agent_error_code, None);
+}
+
+#[tokio::test]
+async fn dual_supervision_agent_stderr_code_does_not_bypass_output_limit() {
+    let agent_code = r#"
+import os, sys
+os.write(2, b"x" * 4096 + b"\nPI_PROVIDER_ERROR\n")
+sys.exit(1)
+"#;
+    let (outcome, _server) = supervise_with_agent(READY_THEN_SLEEP_ENV, agent_code, 1024).await;
+
+    assert_eq!(outcome.failure, Some(ExecutionFailure::OutputLimitExceeded));
+    assert!(!outcome.eligible);
+}
+
 #[tokio::test]
 async fn dual_supervision_shared_environment_output_limit_fails_closed_after_drains() {
     let server = TestServer::start("continue", 0).await;

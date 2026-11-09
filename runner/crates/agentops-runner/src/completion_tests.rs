@@ -141,3 +141,22 @@ async fn explicit_unknown_agent_never_falls_back_to_operator_override() {
         "internal"
     );
 }
+
+#[tokio::test]
+async fn completion_carries_agent_error_code_only_when_present() {
+    for code in [Some("PI_PROVIDER_ERROR"), None] {
+        let server = TestServer::start("continue", 0).await;
+        let runner = worker(&server, "pass".into());
+        let claimed = claim(10_000);
+        let mut facts = ExecutionFacts::new(&claimed);
+        facts.failure = Some(ExecutionFailure::AgentExit);
+        facts.agent_error_code = code;
+        runner.complete_facts(&claimed, facts).await.unwrap();
+
+        let execution = &server.completion().await["execution"];
+        match code {
+            Some(code) => assert_eq!(execution["agent_error_code"], code),
+            None => assert!(execution.get("agent_error_code").is_none()),
+        }
+    }
+}

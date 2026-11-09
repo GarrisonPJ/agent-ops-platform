@@ -63,7 +63,7 @@ async def run(spec: AgentSpec) -> int:
                     return 1
                 call = response.tool_calls[0]
                 if call.name not in environment.world_tool_names and call.name != "submit_result":
-                    _error("PROVIDER_TOOL_UNSUPPORTED")
+                    _error("PROVIDER_UNSUPPORTED_TOOL")
                     return 1
                 if call.name == "submit_result":
                     if call.arguments:

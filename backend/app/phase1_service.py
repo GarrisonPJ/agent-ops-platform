@@ -88,6 +88,7 @@ from app.phase1_schemas import (
     TrialGroupResponse,
     TrialGroupSummary,
 )
+from app.agent_error_codes import AGENT_ERROR_CATEGORIES, AgentErrorCode
 from app.durable_events import (
     TerminalFailureKind,
     normalize_event_payload,
@@ -1693,6 +1694,23 @@ async def _evaluation_projection(db: AsyncSession, run: Run) -> tuple[dict, dict
     return trajectory, metrics, evaluate_assertion_suite(suite, trajectory)
 
 
+def _attach_agent_error(
+    projection: tuple[dict, dict, dict], code: AgentErrorCode | None
+) -> None:
+    """Record the Agent-reported code as diagnostics (ADR-0009 amendment).
+
+    The code lands in new keys only. `status`, `evidence_valid`, the assertion
+    result and every score input are left exactly as the events produced them.
+    """
+    if code is None:
+        return
+    category = AGENT_ERROR_CATEGORIES[code]
+    trajectory, metrics, _assertions = projection
+    trajectory["agent_error"] = {"code": code.value, "category": category.value}
+    metrics["agent_error_code"] = code.value
+    metrics["agent_error_category"] = category.value
+
+
 async def _terminalize(
     db: AsyncSession,
     job: RunnerJob,
@@ -1858,6 +1876,7 @@ async def complete_job(
         if expires_at is None or expires_at <= utcnow():
             raise DomainError(409, "LEASE_EXPIRED", "Runner lease has expired")
         projection = await _evaluation_projection(db, run)
+        _attach_agent_error(projection, execution.agent_error_code)
         eligible = (
             execution.eligible
             and execution.submitted

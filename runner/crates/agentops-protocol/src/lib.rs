@@ -6,6 +6,45 @@ use serde_json::Value;
 
 pub const SCHEMA_VERSION: u16 = 1;
 
+/// Longest Agent stderr line (without its newline) the Runner will consider.
+pub const MAX_AGENT_ERROR_LINE_BYTES: usize = 64;
+
+/// Closed set of failure codes an Agent may print as its last stderr line.
+/// Agent output is untrusted, so the Runner reports a line only when it equals
+/// one of these exactly. Must equal `app.agent_error_codes.AgentErrorCode`
+/// (checked by `backend/phase1_tests/test_runner_protocol_contract.py`).
+pub const AGENT_ERROR_CODES: &[&str] = &[
+    "PROVIDER_NOT_CONFIGURED",
+    "PROVIDER_CONFIGURATION_ERROR",
+    "PROVIDER_TIMEOUT",
+    "PROVIDER_UNAVAILABLE",
+    "PROVIDER_RATE_LIMITED",
+    "PROVIDER_HTTP_ERROR",
+    "PROVIDER_INVALID_RESPONSE",
+    "PROVIDER_STEP_LIMIT",
+    "PROVIDER_UNSUPPORTED_TOOL",
+    "PROVIDER_UNKNOWN",
+    "PROVIDER_SUBMIT_REQUIRED",
+    "PROVIDER_SUBMIT_INVALID",
+    "PI_PROVIDER_ERROR",
+    "PI_STOP_LENGTH",
+    "MCP_ENDPOINT_INVALID",
+    "MCP_TOKEN_INVALID",
+    "MCP_DISCOVERY_INVALID",
+    "MCP_CONNECTION_FAILED",
+    "MCP_CALL_INVALID",
+    "MCP_CALL_FAILED",
+    "MCP_USAGE_REJECTED",
+    "INVALID_SPEC",
+    "AGENT_FAILED",
+    "AGENT_TIMEOUT",
+    "AGENT_CANCELLED",
+    "PI_NOT_FOUND",
+    "PI_SUBMIT_REQUIRED",
+    "PI_EXIT_NONZERO",
+    "PI_ABORTED",
+];
+
 /// Local stdout-only readiness message; this is deliberately not a RunEvent.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
@@ -409,6 +448,10 @@ pub struct ExecutionFacts<'a> {
     pub check_succeeded: bool,
     pub planned_environment_teardown: bool,
     pub failure: Option<ExecutionFailure>,
+    /// Agent-reported diagnostics only (ADR-0009). Omitted when absent so an
+    /// older Control Plane that forbids unknown fields still accepts the body.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_error_code: Option<&'a str>,
 }
 
 #[derive(Debug, Serialize)]
@@ -804,6 +847,29 @@ mod tests {
     }
 
     #[test]
+    fn execution_facts_omit_agent_error_code_unless_present() {
+        let mut facts = execution_facts("run-1", Some(ExecutionFailure::AgentExit));
+        let json = serde_json::to_value(&facts).unwrap();
+        assert!(json.get("agent_error_code").is_none());
+        facts.agent_error_code = Some("PI_PROVIDER_ERROR");
+        let json = serde_json::to_value(&facts).unwrap();
+        assert_eq!(json["agent_error_code"], "PI_PROVIDER_ERROR");
+        let text = json.to_string();
+        let parsed: ExecutionFacts<'_> = serde_json::from_str(&text).unwrap();
+        assert_eq!(parsed, facts);
+    }
+
+    #[test]
+    fn agent_error_codes_are_unique_and_fit_the_line_bound() {
+        let mut seen = std::collections::HashSet::new();
+        for code in AGENT_ERROR_CODES {
+            assert!(seen.insert(*code), "duplicate {code}");
+            assert!(code.len() <= MAX_AGENT_ERROR_LINE_BYTES);
+            assert!(code.bytes().all(|b| b.is_ascii_uppercase() || b == b'_'));
+        }
+    }
+
+    #[test]
     fn rejects_invalid_event_and_child_lifecycle_event() {
         let event = EventEnvelope {
             schema_version: 1,
@@ -834,6 +900,7 @@ mod tests {
             check_succeeded: failure.is_none(),
             planned_environment_teardown: failure.is_none(),
             failure,
+            agent_error_code: None,
         }
     }
 

@@ -16,11 +16,13 @@ from pathlib import Path
 
 import pytest
 
+from app.agent_error_codes import AgentErrorCode
 from app.phase1_schemas import (
     ClaimedRun,
     ClaimResponse,
     CompletionResponse,
     EvaluationSpec,
+    ExecutionFacts,
     RunResponse,
 )
 
@@ -49,7 +51,22 @@ def rust_struct_fields(name: str) -> set[str]:
         ("ClaimedRun", ClaimedRun),
         ("ClaimResponse", ClaimResponse),
         ("EvaluationSpec", EvaluationSpec),
+        ("ExecutionFacts", ExecutionFacts),
     ],
 )
 def test_rust_struct_fields_match_backend_model(rust_name, model):
     assert rust_struct_fields(rust_name) == set(model.model_fields)
+
+
+def test_rust_agent_error_allowlist_matches_python():
+    """The Runner reports only codes the backend accepts, and vice versa."""
+    source = RUST_LIB.read_text()
+    match = re.search(
+        r"pub const AGENT_ERROR_CODES: &\[&str\] = &\[(.*?)\];", source, re.DOTALL
+    )
+    assert match, "AGENT_ERROR_CODES not found"
+    rust_codes = re.findall(r'"([^"]*)"', match.group(1))
+    assert len(rust_codes) == len(set(rust_codes)), "duplicate Rust code"
+    assert set(rust_codes) == {code.value for code in AgentErrorCode}
+    bound = re.search(r"pub const MAX_AGENT_ERROR_LINE_BYTES: usize = (\d+);", source)
+    assert bound and all(len(code) <= int(bound.group(1)) for code in rust_codes)

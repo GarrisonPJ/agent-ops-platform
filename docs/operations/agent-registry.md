@@ -69,7 +69,9 @@ The task is written to pi's stdin, never passed as an argument, because pi
 treats an argument starting with `@` as a file to read. pi's JSONL is parsed
 and discarded rather than forwarded, so it does not count against
 `max_output_bytes`. The adapter stops pi after an accepted `submit_result`,
-as the reference loop does, and reports only fixed codes on stderr:
+as the reference loop does. On failure it prints exactly one fixed code as the
+last stderr line, which the Runner reports only if it is on the closed allowlist
+(ADR-0009 H5-era amendment; diagnostics, never a Run outcome):
 `PI_NOT_FOUND`, `PI_PROVIDER_ERROR` (pi exits 0 after failed retries),
 `PI_SUBMIT_REQUIRED`, `PI_EXIT_NONZERO`, `PI_ABORTED`, `PI_STOP_LENGTH`,
 `AGENT_TIMEOUT` or `AGENT_CANCELLED`. A zero exit is not Run success. pi never

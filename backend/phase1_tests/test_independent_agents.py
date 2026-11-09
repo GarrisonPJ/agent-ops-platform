@@ -457,8 +457,8 @@ async def test_reference_usage_unknown_is_sticky_per_dimension(agent_boundaries,
 @pytest.mark.parametrize("response,code", [
     (reply(content="completed naturally"), "PROVIDER_SUBMIT_REQUIRED"),
     (reply("world", "submit_result"), "PROVIDER_SUBMIT_REQUIRED"),
-    (reply("unknown"), "PROVIDER_TOOL_UNSUPPORTED"),
-    (reply("report_usage"), "PROVIDER_TOOL_UNSUPPORTED"),
+    (reply("unknown"), "PROVIDER_UNSUPPORTED_TOOL"),
+    (reply("report_usage"), "PROVIDER_UNSUPPORTED_TOOL"),
     (reply("submit_result", arguments={"score": 1}), "PROVIDER_SUBMIT_INVALID"),
     (ProviderError("PROVIDER_HTTP_ERROR", "RAW_SECRET", retryable=False, attempts=1), "PROVIDER_HTTP_ERROR"),
 ])

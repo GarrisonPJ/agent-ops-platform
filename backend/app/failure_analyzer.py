@@ -246,7 +246,14 @@ def _assertion_failure_evidence(
     result = assertion_result if assertion_result is not None else evaluate_assertion_suite(assertion_suite, trajectory)
     # ADR-0013: absence of tools before a Provider failure is execution evidence,
     # not an observed planning choice. The caller's assertion result stays intact.
-    if not trajectory.get("steps") and trajectory.get("provider_error") is True:
+    # The same holds when the Agent reported that infrastructure or startup
+    # kept it from acting (ADR-0009 amendment). `agent_behavior` codes are the
+    # model's own outcome, so planning attribution stands for them.
+    reported = _agent_error(trajectory)
+    if not trajectory.get("steps") and (
+        trajectory.get("provider_error") is True
+        or (reported is not None and reported[1] in _NO_ACTION_CATEGORIES)
+    ):
         return []
     evidence: list[FailureEvidence] = []
     classification_by_assertion = {
@@ -298,8 +305,62 @@ def _reported_context_evidence(trajectory: dict) -> list[FailureEvidence]:
     )]
 
 
+_NO_ACTION_CATEGORIES = frozenset({"provider", "environment_connection", "agent_startup"})
+
+
+def _agent_error(trajectory: dict) -> tuple[str, str] | None:
+    """Return (code, category) of a well-formed Agent-reported failure code."""
+    value = trajectory.get("agent_error")
+    if not isinstance(value, dict):
+        return None
+    code, category = value.get("code"), value.get("category")
+    if isinstance(code, str) and isinstance(category, str) and code and category:
+        return code, category
+    return None
+
+
+def _agent_reported_failure_evidence(trajectory: dict) -> list[FailureEvidence]:
+    """Interpret an Agent-reported failure code; never for a successful Run.
+
+    The code is an untrusted claim, so it only adds diagnostic evidence. A
+    `provider` code (infrastructure only) drives the provider dimension exactly
+    as a controlled provider error event does; `environment_connection` and
+    `agent_startup` are execution evidence; `agent_behavior` adds nothing, so
+    the assertion and budget evidence stand.
+    """
+    reported = _agent_error(trajectory)
+    if reported is None or trajectory.get("status") == "success":
+        return []
+    code, category = reported
+    steps = trajectory.get("steps", [])
+    last_index = steps[-1].get("index") if steps else None
+    if category == "provider" and not trajectory.get("provider_error"):
+        return [FailureEvidence(
+            dimension="execution", step_index=last_index,
+            reason=f"Agent reported provider failure {code}",
+            severity=1.0,
+            details={"source": "agent_reported", "agent_error_code": code},
+            failure_type=FailureClassification.PROVIDER_ERROR.value,
+        )]
+    if category == "environment_connection":
+        return [FailureEvidence(
+            dimension="execution", step_index=last_index,
+            reason=f"Agent reported Environment connection failure {code}",
+            severity=1.0,
+            details={"source": "agent_reported", "agent_error_code": code},
+        )]
+    if category == "agent_startup":
+        return [FailureEvidence(
+            dimension="execution", step_index=last_index,
+            reason=f"Agent reported startup failure {code}",
+            severity=1.0,
+            details={"source": "agent_reported", "agent_error_code": code},
+        )]
+    return []
+
+
 def _run_level_failure_evidence(trajectory: dict) -> list[FailureEvidence]:
-    evidence: list[FailureEvidence] = []
+    evidence: list[FailureEvidence] = _agent_reported_failure_evidence(trajectory)
     steps = trajectory.get("steps", [])
     last_index = steps[-1].get("index") if steps else None
     if trajectory.get("provider_error"):

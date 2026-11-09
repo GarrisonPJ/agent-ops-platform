@@ -32,6 +32,16 @@ Agent 的输出都不可信：stdout/stderr 只被 Runner 读走并计入 `max_o
 2. 任务完成时**自己**调用一次空参数的 `submit_result`。没有有效提交，CP 一定判失败。
 3. 在 Run timeout 内退出。
 
+失败时：把**恰好一个**白名单失败码（`app/agent_error_codes.py`，如 `PROVIDER_UNAVAILABLE`、
+`MCP_CONNECTION_FAILED`、`INVALID_SPEC`）作为 stderr 的**最后一行**打印，再退出。Runner 只保留
+Agent stderr 最后一个以换行结尾、不超过 64 字节的行；它与白名单逐字相等才会作为
+`agent_error_code` 上报，否则什么都不上报（stdout、更早的行、自由文本、过长的行一律丢弃）。
+该码是 Agent 的自述，只写进 Run 的 `metrics`（`agent_error_code` / `agent_error_category`），不改变
+status、分数或成功判定。类别只用于失败分析归因：`provider`（仅基础设施，如 `PROVIDER_UNAVAILABLE`）、
+`environment_connection`（`MCP_*`）、`agent_startup`（`INVALID_SPEC`、`PI_NOT_FOUND`）、
+`agent_behavior`（模型自身的结果，如 `PROVIDER_STEP_LIMIT`、`PROVIDER_UNSUPPORTED_TOOL`）。
+模型属于被测 Agent，所以 `agent_behavior` 不会把“零步骤失败”从 planning 归因里摘掉。
+
 不能：评分、发 `step_completed`、把 token 写进 argv/文件/输出、用退出码 0 冒充成功。
 成功只由 CP 根据可信证据和注册 aggregate >= 1.0 判定（ADR-0012）。
 

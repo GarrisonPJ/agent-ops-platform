@@ -67,8 +67,8 @@ reference agent by `execution_mode` (ADR-0007); this does not preserve old-v1
 world execution.
 
 Adapters are thin: they translate environment variables into the upstream
-CLI or SDK call, attach the MCP URL, and may forward upstream stdout as
-`process_output`. They do not score, and they do not emit `step_completed`.
+CLI or SDK call and attach the MCP URL. They do not forward upstream stdout
+(see the H5-era amendment: the Runner discards it). They do not score, and they do not emit `step_completed`.
 Agent-reported success and exit zero cannot determine Run success; Control Plane
 alone applies ADR-0012's trusted-evidence and aggregate gate.
 
@@ -112,6 +112,61 @@ from pi's JSONL stop reason instead of trusting the exit code. The adapter
 parses and discards that JSONL, which would otherwise count against
 `max_output_bytes`, and it stops pi at an accepted submission, as the reference
 loop returns.
+
+## H5-era amendment (2026-11-09): agent-reported error code
+
+The Runner never implemented forwarding an adapter's stdout as `process_output`;
+the sentence above is corrected. In the split Environment/Agent path the Agent's
+stdout and stderr are untrusted and are only counted against `max_output_bytes`.
+Their content is discarded, never persisted and never uploaded.
+
+One narrow channel is added so the Control Plane can tell why an Agent died. An
+adapter prints exactly one failure code as the last line of its stderr before
+exiting. For the Agent's stderr only (not its stdout, not the Environment's
+streams) the Runner keeps the last complete newline-terminated line, at most 64
+bytes; a longer line is discarded without being buffered. After the Agent exits,
+if that line, minus a trailing `\r`, equals a code in one closed allowlist, the
+Runner reports it as `agent_error_code` in the completion's execution facts.
+Anything else (other text, an earlier line, an unterminated line, a longer line)
+reports nothing. The allowlist is defined once in Python
+(`app.agent_error_codes`) and once in Rust (`AGENT_ERROR_CODES` in the protocol
+crate); a contract test keeps them equal, and an unknown value is rejected with
+422. An older Runner omits the field.
+
+The code is an Agent claim, labelled agent-reported, and is diagnostics only. It
+is stored in Run `metrics` as `agent_error_code` and `agent_error_category`. It
+cannot change Run status, score, success, the terminal failure kind, or the
+ADR-0012 trusted-evidence gate.
+
+The category is an explicit Python-only table, used as attribution for analysis.
+The model is part of the Agent-under-test, so `provider` means infrastructure
+only:
+
+- `provider`: `PROVIDER_NOT_CONFIGURED`, `PROVIDER_CONFIGURATION_ERROR`,
+  `PROVIDER_TIMEOUT`, `PROVIDER_UNAVAILABLE`, `PROVIDER_RATE_LIMITED`,
+  `PROVIDER_HTTP_ERROR`, `PROVIDER_INVALID_RESPONSE`, `PROVIDER_UNKNOWN`,
+  `PI_PROVIDER_ERROR`.
+- `environment_connection`: every `MCP_*` code.
+- `agent_startup` (the Agent never got to act): `INVALID_SPEC`, `PI_NOT_FOUND`.
+- `agent_behavior` (the Agent's or model's own outcome): `PROVIDER_STEP_LIMIT`,
+  `PROVIDER_UNSUPPORTED_TOOL`, `PROVIDER_SUBMIT_REQUIRED`,
+  `PROVIDER_SUBMIT_INVALID`, `PI_STOP_LENGTH`, `PI_SUBMIT_REQUIRED`,
+  `PI_EXIT_NONZERO`, `PI_ABORTED`, `AGENT_FAILED`, `AGENT_TIMEOUT`,
+  `AGENT_CANCELLED`.
+
+This category is distinct from the legacy `ProviderFailureKind` and
+`TerminalFailureKind` taxonomy, which counted `STEP_LIMIT` and `UNSUPPORTED_TOOL`
+as provider failures for the legacy in-process provider path; that path is
+unchanged.
+
+The failure analyzer reads the code for a failed Run only. `provider` becomes
+`provider_error`; `environment_connection` and `agent_startup` become execution
+evidence; `agent_behavior` adds no evidence, so assertion and budget evidence
+stand. Only the first three categories stop a zero-step Run from being blamed on
+planning, so a model that picks a disallowed tool at step 0 still gets
+`tool_selection_error`. `failure-analyzer.v3` output is unchanged for
+trajectories without `agent_error`; the new key only adds input, so the revision
+stays v3.
 
 ## Consequences
 

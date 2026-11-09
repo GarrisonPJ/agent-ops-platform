@@ -6,7 +6,7 @@ use std::process::ExitStatus;
 use std::process::Stdio;
 use std::sync::{
     atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
-    Arc,
+    Arc, Mutex,
 };
 use std::time::Duration;
 
@@ -15,6 +15,7 @@ use std::os::fd::AsRawFd;
 #[cfg(unix)]
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt};
 
+use agent_error::AgentStderrTail;
 use agentops_protocol::{
     ChildEvent, ClaimRequest, ClaimResponse, CompleteRequest, CompletionResponse,
     EnvironmentReadyMessage, EvaluationSpec, EventBatchRequest, EventBatchResponse, EventEnvelope,
@@ -35,6 +36,7 @@ use tokio::process::{Child, Command};
 use tokio::time::Interval;
 use tokio::time::{interval, sleep, timeout, timeout_at, Instant};
 
+mod agent_error;
 mod registry;
 pub use registry::{AgentMetadata, AgentRegistry, RegistryError};
 
@@ -480,6 +482,9 @@ pub struct ExecutionFacts {
     pub check_succeeded: bool,
     pub planned_environment_teardown: bool,
     pub agent_launched: bool,
+    /// Allowlisted code from the Agent's final stderr line. Diagnostics only:
+    /// it never feeds `failure`, `eligible` or any terminal decision.
+    pub agent_error_code: Option<&'static str>,
 }
 
 impl ExecutionFacts {
@@ -494,6 +499,7 @@ impl ExecutionFacts {
             check_succeeded: false,
             planned_environment_teardown: false,
             agent_launched: false,
+            agent_error_code: None,
         }
     }
 
@@ -512,6 +518,7 @@ impl ExecutionFacts {
             check_succeeded: self.check_succeeded,
             planned_environment_teardown: self.planned_environment_teardown,
             failure: self.failure.map(ExecutionFailure::protocol),
+            agent_error_code: self.agent_error_code,
         }
     }
 
@@ -977,6 +984,7 @@ impl Worker {
                 output_total.clone(),
                 output_overflow.clone(),
                 claim.run.evaluation_spec.limits.max_output_bytes,
+                None,
             ));
         }
         let mut environment_reader = BufReader::new(CountingReader::new(
@@ -1240,14 +1248,19 @@ impl Worker {
                 output_total.clone(),
                 output_overflow.clone(),
                 claim.run.evaluation_spec.limits.max_output_bytes,
+                None,
             ));
         }
+        // Only the Agent's stderr keeps a (64-byte) candidate line; stdout and
+        // the Environment's streams are counted and discarded (ADR-0009).
+        let agent_stderr_tail = Arc::new(Mutex::new(AgentStderrTail::default()));
         if let Some(stderr) = _agent_stderr {
             output_drains.push(spawn_output_drain(
                 stderr,
                 output_total.clone(),
                 output_overflow.clone(),
                 claim.run.evaluation_spec.limits.max_output_bytes,
+                Some(agent_stderr_tail.clone()),
             ));
         }
 
@@ -1650,6 +1663,10 @@ impl Worker {
         }
         drain_environment_stdout(&mut environment_reader).await;
         finish_output_drains(&mut output_drains).await;
+        facts.agent_error_code = agent_stderr_tail
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .reported_code();
         if output_overflow.load(Ordering::Relaxed) {
             // Drains can observe bytes after the supervision decision. Their
             // shared total is authoritative and cannot be hidden by planned
@@ -2402,6 +2419,7 @@ fn spawn_output_drain<R: AsyncRead + Unpin + Send + 'static>(
     total: Arc<AtomicUsize>,
     overflow: Arc<AtomicBool>,
     max_output_bytes: usize,
+    tail: Option<Arc<Mutex<AgentStderrTail>>>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
         let mut buffer = [0_u8; 8 * 1024];
@@ -2410,6 +2428,11 @@ fn spawn_output_drain<R: AsyncRead + Unpin + Send + 'static>(
                 Ok(0) | Err(_) => break,
                 Ok(bytes) => {
                     record_output_bytes(&total, &overflow, bytes, max_output_bytes);
+                    if let Some(tail) = &tail {
+                        tail.lock()
+                            .unwrap_or_else(|poisoned| poisoned.into_inner())
+                            .observe(&buffer[..bytes]);
+                    }
                 }
             }
         }
