@@ -1618,11 +1618,23 @@ async def _create_candidate(db: AsyncSession, run: Run) -> None:
             parent_policy_id=active.id if active else None,
             status=PolicyStatus.CANDIDATE.value,
             patch=patch.model_dump(mode="json"),
-            rationale=(
-                "The baseline repeated the same log query until its step budget was "
-                "exhausted. The candidate enforces an evidence-first tool order."
-            ),
+            rationale=_candidate_rationale(run.status, patch),
         )
+    )
+
+
+def _candidate_rationale(baseline_status: str, patch: PolicyPatch) -> str:
+    """Describe the candidate from the patch actually produced, for any Environment."""
+    parts = [f"limits the Agent to {patch.max_steps} steps"]
+    if patch.tool_priority:
+        ranked = sorted(patch.tool_priority, key=lambda name: (-patch.tool_priority[name], name))
+        parts.append(f"prioritises tools: {', '.join(ranked)}")
+    if patch.instruction_patch:
+        count = len(patch.instruction_patch)
+        parts.append(f"adds {count} instruction{'s' if count != 1 else ''}")
+    return (
+        f"The baseline Run ended {baseline_status.replace('_', ' ')}. "
+        f"The candidate {'; '.join(parts)}."
     )
 
 

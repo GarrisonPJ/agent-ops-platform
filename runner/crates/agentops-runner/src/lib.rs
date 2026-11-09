@@ -47,6 +47,19 @@ pub const DEFAULT_AGENT_REGISTRY_PATH: &str =
     concat!(env!("CARGO_MANIFEST_DIR"), "/../../../config/agents.toml");
 const NETWORK_RETRY_WINDOW: Duration = Duration::from_secs(10);
 const MAX_COMPLETION_RESPONSE_BYTES: usize = 65_536;
+const MAX_CLAIM_RESPONSE_BYTES: usize = 1_048_576;
+
+/// Best-effort identity of a claim body that failed strict parsing.
+fn loose_claim_identity(body: &[u8]) -> Option<(String, String, u32)> {
+    let value: Value = serde_json::from_slice(body).ok()?;
+    let lease_id = value.get("lease_id")?.as_str()?.to_string();
+    let run_id = value.get("run")?.get("run_id")?.as_str()?.to_string();
+    let attempt = u32::try_from(value.get("attempt")?.as_u64()?).ok()?;
+    if lease_id.trim().is_empty() || run_id.trim().is_empty() || !(1..=100).contains(&attempt) {
+        return None;
+    }
+    Some((lease_id, run_id, attempt))
+}
 const MAX_CACHED_ENVIRONMENT_TOKENS: usize = 1024;
 const ENV_TOKEN_HANDOFF_ENV: &str = "AGENTOPS_ENV_TOKEN_HANDOFF_DIR";
 const ENV_TOKEN_RECORD_SUFFIX: &str = ".token";
@@ -72,15 +85,36 @@ pub struct RunnerConfig {
     pub environment_token_handoff_dir: Option<PathBuf>,
 }
 
+/// The backend strips RUNNER_TOKEN (phase1_main.py); do the same so a trailing
+/// newline from a secrets file cannot make every claim fail with 401.
+fn normalize_runner_token(raw: &str) -> Result<String> {
+    let token = raw.trim();
+    if token.is_empty() {
+        bail!("RUNNER_TOKEN must not be empty");
+    }
+    Ok(token.to_string())
+}
+
+/// Same bound as the backend's `ClaimRequest.runner_id` (1..=100 characters).
+fn validate_runner_id(runner_id: &str) -> Result<()> {
+    if !(1..=100).contains(&runner_id.chars().count()) {
+        bail!("AGENTOPS_RUNNER_ID must contain 1 to 100 characters");
+    }
+    Ok(())
+}
+
 impl RunnerConfig {
     pub fn from_env() -> Result<Self> {
         let server_url = std::env::var("AGENTOPS_SERVER_URL")
             .unwrap_or_else(|_| "http://localhost:8000".into())
             .trim_end_matches('/')
             .to_string();
-        let runner_token = std::env::var("RUNNER_TOKEN").context("RUNNER_TOKEN must be set")?;
+        let runner_token = normalize_runner_token(
+            &std::env::var("RUNNER_TOKEN").context("RUNNER_TOKEN must be set")?,
+        )?;
         let runner_id = std::env::var("AGENTOPS_RUNNER_ID")
             .unwrap_or_else(|_| format!("local-{}", std::process::id()));
+        validate_runner_id(&runner_id)?;
         let agent_program =
             std::env::var("AGENTOPS_AGENT_PROGRAM").unwrap_or_else(|_| "python".into());
         let agent_args = match std::env::var("AGENTOPS_AGENT_ARGS") {
@@ -646,7 +680,42 @@ impl Worker {
             return Ok(None);
         }
         let response = response.error_for_status()?;
-        Ok(Some(response.json().await?))
+        let body = response.bytes().await?;
+        if body.len() <= MAX_CLAIM_RESPONSE_BYTES {
+            if let Ok(claim) = serde_json::from_slice::<ClaimResponse>(&body) {
+                return Ok(Some(claim));
+            }
+        }
+        // The server has already leased this Run to us. Returning an error
+        // here would leak the lease and burn Attempts until it expires, so
+        // release it through the normal completion path when the identity
+        // is recoverable. Never log the body: it is untrusted content.
+        let Some((lease_id, run_id, attempt)) = loose_claim_identity(&body) else {
+            eprintln!("claim failed: category=claim_unparseable_unidentifiable");
+            bail!("claim response is malformed and carries no usable lease identity");
+        };
+        eprintln!("run {run_id} failed: category=claim_unparseable");
+        let facts = ProtocolExecutionFacts {
+            run_id: &run_id,
+            attempt,
+            eligible: false,
+            submitted: false,
+            check_succeeded: false,
+            planned_environment_teardown: false,
+            failure: Some(agentops_protocol::ExecutionFailure::Internal),
+            agent_error_code: None,
+        };
+        self.complete_request_for(
+            &lease_id,
+            &run_id,
+            attempt,
+            "failed",
+            Some(TerminalFailureKind::InternalFailure),
+            json!({ "event_retries": 0 }),
+            facts,
+        )
+        .await?;
+        Ok(None)
     }
 
     async fn execute_claim(&self, claim: ClaimResponse) -> Result<()> {
@@ -666,6 +735,10 @@ impl Worker {
         let registry = match AgentRegistry::from_env() {
             Ok(registry) => registry,
             Err(_) => {
+                eprintln!(
+                    "run {} failed: category=agent_registry_unavailable",
+                    claim.run.run_id
+                );
                 let facts = ExecutionFacts::internal(&claim);
                 return self.complete_facts(&claim, facts).await;
             }
@@ -678,6 +751,10 @@ impl Worker {
                 command
             }
             Err(_) => {
+                eprintln!(
+                    "run {} failed: category=agent_command_unresolved",
+                    claim.run.run_id
+                );
                 let facts = ExecutionFacts::internal(&claim);
                 return self.complete_facts(&claim, facts).await;
             }
@@ -692,7 +769,13 @@ impl Worker {
 
         let facts = match self.supervise_attempt(&claim, environment, agent).await {
             Ok(facts) => facts,
-            Err(_) => ExecutionFacts::internal(&claim),
+            Err(_) => {
+                eprintln!(
+                    "run {} failed: category=attempt_supervision_error",
+                    claim.run.run_id
+                );
+                ExecutionFacts::internal(&claim)
+            }
         };
         self.complete_facts(&claim, facts).await
     }
@@ -2121,6 +2204,31 @@ impl Worker {
         metrics: Value,
         execution: ProtocolExecutionFacts<'_>,
     ) -> Result<()> {
+        self.complete_request_for(
+            &claim.lease_id,
+            &claim.run.run_id,
+            claim.attempt,
+            status,
+            failure_kind,
+            metrics,
+            execution,
+        )
+        .await
+    }
+
+    /// Completion needs only the lease and Run identity, so a claim whose body
+    /// failed strict parsing can still be closed out.
+    #[allow(clippy::too_many_arguments)]
+    async fn complete_request_for(
+        &self,
+        lease_id: &str,
+        run_id: &str,
+        attempt: u32,
+        status: &str,
+        failure_kind: Option<TerminalFailureKind>,
+        metrics: Value,
+        execution: ProtocolExecutionFacts<'_>,
+    ) -> Result<()> {
         let request = CompleteRequest {
             runner_id: &self.config.runner_id,
             status,
@@ -2134,7 +2242,7 @@ impl Worker {
                 .client
                 .post(format!(
                     "{}/api/internal/runner/jobs/{}/complete",
-                    self.config.server_url, claim.lease_id
+                    self.config.server_url, lease_id
                 ))
                 .bearer_auth(&self.config.runner_token)
                 .json(&request)
@@ -2165,9 +2273,9 @@ impl Worker {
                     }
                     let ack: CompletionResponse = serde_json::from_slice(&body)
                         .context("completion response is not an authoritative wrapper")?;
-                    ack.validate_for(&claim.run.run_id, claim.attempt)
+                    ack.validate_for(run_id, attempt)
                         .map_err(anyhow::Error::msg)?;
-                    self.cleanup_environment_token_after_terminal_ack(&claim.run.run_id)?;
+                    self.cleanup_environment_token_after_terminal_ack(run_id)?;
                     return Ok(());
                 }
                 Ok(response) if response.status().is_client_error() => {
@@ -2673,6 +2781,21 @@ mod tests {
         let config = RunnerConfig::from_env().unwrap();
         assert_eq!(config.agent_program, "python");
         assert_eq!(config.agent_args, ["-m", "app.fixture_agent"]);
+    }
+
+    #[test]
+    fn runner_token_is_trimmed_and_must_not_be_blank() {
+        assert_eq!(normalize_runner_token("  tok\n").unwrap(), "tok");
+        assert!(normalize_runner_token(" \n").is_err());
+    }
+
+    #[test]
+    fn runner_id_must_contain_1_to_100_characters() {
+        assert!(validate_runner_id("").is_err());
+        assert!(validate_runner_id("r").is_ok());
+        assert!(validate_runner_id(&"r".repeat(100)).is_ok());
+        assert!(validate_runner_id(&"r".repeat(101)).is_err());
+        assert!(validate_runner_id(&"é".repeat(100)).is_ok());
     }
 
     #[test]

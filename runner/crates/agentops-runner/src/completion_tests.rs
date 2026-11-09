@@ -160,3 +160,72 @@ async fn completion_carries_agent_error_code_only_when_present() {
         }
     }
 }
+
+#[tokio::test]
+async fn unparseable_claim_is_completed_as_internal_failure_not_leaked() {
+    // The server already leased the Run; a strict-parse failure must close the
+    // lease out (ADR-0002 fencing) instead of leaving it to expire.
+    let server = TestServer::start("continue", 0).await;
+    // Unknown field makes the strict ClaimResponse parse fail.
+    *server.state.claim_body.lock().await = Some(
+        json!({
+            "lease_id": "lease-1",
+            "lease_expires_at": "2026-07-16T00:00:15Z",
+            "attempt": 1,
+            "next_sequence": 1,
+            "recovery_reason": null,
+            "surprise_field": true,
+            "run": {"run_id": "run-1", "evaluation_spec": {"UNIQUE_UNTRUSTED": "x"}}
+        })
+        .to_string(),
+    );
+    *server.state.completion_body.lock().await = Some(completion_ack("failed", 1).to_string());
+    let runner = worker(&server, "pass".into());
+    assert!(runner.claim().await.unwrap().is_none());
+    let completion = server.completion().await;
+    assert_eq!(completion["status"], "failed");
+    assert_eq!(completion["failure_kind"], "internal_failure");
+    assert_eq!(completion["execution"]["run_id"], "run-1");
+    assert_eq!(completion["execution"]["attempt"], 1);
+    assert_eq!(completion["execution"]["failure"], "internal");
+    assert_eq!(completion["execution"]["eligible"], false);
+    assert!(!completion.to_string().contains("UNIQUE_UNTRUSTED"));
+}
+
+#[tokio::test]
+async fn claim_without_recoverable_identity_errors_and_completes_nothing() {
+    for body in [
+        "not-json".to_string(),
+        json!({"lease_id": "l", "attempt": 0, "run": {"run_id": "run-1"}}).to_string(),
+        json!({"attempt": 1, "run": {"run_id": "run-1"}}).to_string(),
+    ] {
+        let server = TestServer::start("continue", 0).await;
+        *server.state.claim_body.lock().await = Some(body);
+        let runner = worker(&server, "pass".into());
+        assert!(runner.claim().await.is_err());
+        assert!(server.state.completed.lock().await.is_empty());
+    }
+}
+
+#[tokio::test]
+async fn valid_claim_still_parses_after_loose_fallback_was_added() {
+    let server = TestServer::start("continue", 0).await;
+    *server.state.claim_body.lock().await =
+        Some(serde_json::to_string(&serde_json::to_value(claim_json()).unwrap()).unwrap());
+    let runner = worker(&server, "pass".into());
+    let claimed = runner.claim().await.unwrap().expect("claim");
+    assert_eq!(claimed.run.run_id, "run-1");
+    assert!(server.state.completed.lock().await.is_empty());
+}
+
+fn claim_json() -> Value {
+    let claimed = claim(10_000);
+    json!({
+        "lease_id": claimed.lease_id,
+        "lease_expires_at": claimed.lease_expires_at,
+        "attempt": claimed.attempt,
+        "next_sequence": claimed.next_sequence,
+        "recovery_reason": null,
+        "run": {"run_id": claimed.run.run_id, "evaluation_spec": claimed.run.evaluation_spec},
+    })
+}

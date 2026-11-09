@@ -19,6 +19,7 @@ use super::{ExecutionFailure, RunnerConfig, TrustedCommand, Worker, MAX_LINE_BYT
 struct ServerState {
     completed: Mutex<Vec<Value>>,
     completion_body: Mutex<Option<String>>,
+    claim_body: Mutex<Option<String>>,
     chunked_completion: AtomicBool,
     events: Mutex<Vec<Value>>,
     accepted_events: Mutex<Vec<Value>>,
@@ -48,6 +49,7 @@ impl TestServer {
         let state = Arc::new(ServerState {
             completed: Mutex::new(Vec::new()),
             completion_body: Mutex::new(None),
+            claim_body: Mutex::new(None),
             chunked_completion: AtomicBool::new(false),
             events: Mutex::new(Vec::new()),
             accepted_events: Mutex::new(Vec::new()),
@@ -174,7 +176,12 @@ async fn handle_request(mut stream: TcpStream, state: Arc<ServerState>) -> std::
 
     let mut accepted_event = None;
     let mut accepted_delayed_step = false;
-    let (status, response) = if path.ends_with("/events") {
+    let (status, response) = if path.ends_with("/jobs/claim") {
+        match state.claim_body.lock().await.clone() {
+            Some(body) => ("200 OK", body),
+            None => ("204 No Content", String::new()),
+        }
+    } else if path.ends_with("/events") {
         let parsed = serde_json::from_slice(body).unwrap_or(Value::Null);
         let attempt = state.event_attempts.fetch_add(1, Ordering::SeqCst);
         if attempt < state.fail_event_responses {

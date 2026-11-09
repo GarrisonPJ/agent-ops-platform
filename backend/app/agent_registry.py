@@ -117,7 +117,7 @@ def _parse_entry(raw: object, index: int) -> RegisteredAgent:
     )
     kind = _bounded_string(raw["kind"], field="agent kind", maximum=32)
     if kind not in _ALLOWED_KINDS:
-        raise AgentRegistryError("agent kind must be fixture or reference")
+        raise AgentRegistryError("agent kind must be fixture, reference, or external")
     command = raw["command"]
     if not isinstance(command, list) or not 1 <= len(command) <= MAX_COMMAND_ENTRIES:
         raise AgentRegistryError(f"agent command must contain 1 to {MAX_COMMAND_ENTRIES} entries")

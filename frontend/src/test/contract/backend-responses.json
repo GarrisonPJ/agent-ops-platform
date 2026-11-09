@@ -1,0 +1,3781 @@
+{
+  "agents": [
+    {
+      "description": "Deterministic MCP agent for local Golden validation.",
+      "id": "fixture-agent.v1",
+      "kind": "fixture",
+      "name": "Deterministic fixture agent"
+    },
+    {
+      "description": "MCP reference loop using Runner-side provider configuration.",
+      "id": "reference-openai-compatible.v1",
+      "kind": "reference",
+      "name": "OpenAI-compatible reference agent"
+    },
+    {
+      "description": "pi with only the Environment's MCP tools, using the Runner-side provider configuration.",
+      "id": "pi-coding-agent.v1",
+      "kind": "external",
+      "name": "pi coding agent"
+    }
+  ],
+  "analysis_failed": {
+    "dimensions": {
+      "budget": 0.16666666666666666,
+      "planning": 0.6666666666666666
+    },
+    "dominant_type": "loop_no_progress",
+    "evidence": [
+      {
+        "details": {
+          "repetitions": 3,
+          "tool": "fetch_service_logs"
+        },
+        "dimension": "planning",
+        "failure_type": "loop_no_progress",
+        "reason": "Circular reasoning detected: tool 'fetch_service_logs' called 3 times with identical arguments",
+        "severity": 1.0,
+        "step_index": 2
+      },
+      {
+        "details": {
+          "repetitions": 4,
+          "tool": "fetch_service_logs"
+        },
+        "dimension": "planning",
+        "failure_type": "loop_no_progress",
+        "reason": "Circular reasoning detected: tool 'fetch_service_logs' called 4 times with identical arguments",
+        "severity": 1.0,
+        "step_index": 3
+      },
+      {
+        "details": {
+          "repetitions": 5,
+          "tool": "fetch_service_logs"
+        },
+        "dimension": "planning",
+        "failure_type": "loop_no_progress",
+        "reason": "Circular reasoning detected: tool 'fetch_service_logs' called 5 times with identical arguments",
+        "severity": 1.0,
+        "step_index": 4
+      },
+      {
+        "details": {
+          "repetitions": 6,
+          "tool": "fetch_service_logs"
+        },
+        "dimension": "planning",
+        "failure_type": "loop_no_progress",
+        "reason": "Circular reasoning detected: tool 'fetch_service_logs' called 6 times with identical arguments",
+        "severity": 1.0,
+        "step_index": 5
+      },
+      {
+        "details": {
+          "max_steps": 6,
+          "step_count": 6
+        },
+        "dimension": "budget",
+        "reason": "Budget exhausted: 6 steps reached the maximum of 6 without success",
+        "severity": 1.0,
+        "step_index": 5
+      },
+      {
+        "details": {
+          "assertion_type": "tool-used"
+        },
+        "dimension": "planning",
+        "failure_type": "tool_selection_error",
+        "reason": "Scenario assertion failed: tool-used",
+        "severity": 1.0,
+        "step_index": 5
+      },
+      {
+        "details": {
+          "assertion_type": "tool-used"
+        },
+        "dimension": "planning",
+        "failure_type": "tool_selection_error",
+        "reason": "Scenario assertion failed: tool-used",
+        "severity": 1.0,
+        "step_index": 5
+      },
+      {
+        "details": {
+          "assertion_type": "tool-sequence"
+        },
+        "dimension": "planning",
+        "failure_type": "loop_no_progress",
+        "reason": "Scenario assertion failed: tool-sequence",
+        "severity": 1.0,
+        "step_index": 5
+      },
+      {
+        "details": {
+          "assertion_type": "step-count"
+        },
+        "dimension": "planning",
+        "failure_type": "loop_no_progress",
+        "reason": "Scenario assertion failed: step-count",
+        "severity": 0.33333333333333337,
+        "step_index": 5
+      }
+    ],
+    "failure_rate": 0.6666666666666666,
+    "failure_types": {
+      "loop_no_progress": 0.6666666666666666,
+      "tool_selection_error": 0.2222222222222222
+    },
+    "metric_directions": {
+      "budget": "minimize",
+      "context": "minimize",
+      "execution": "minimize",
+      "failure_rate": "minimize",
+      "latency_ms": "minimize",
+      "planning": "minimize",
+      "score": "maximize",
+      "total_tokens": "minimize"
+    },
+    "run_id": "<id-2>"
+  },
+  "analysis_succeeded": {
+    "dimensions": {},
+    "dominant_type": null,
+    "evidence": [],
+    "failure_rate": 0.0,
+    "failure_types": {},
+    "metric_directions": {
+      "budget": "minimize",
+      "context": "minimize",
+      "execution": "minimize",
+      "failure_rate": "minimize",
+      "latency_ms": "minimize",
+      "planning": "minimize",
+      "score": "maximize",
+      "total_tokens": "minimize"
+    },
+    "run_id": "<id-4>"
+  },
+  "analysis_timed_out": {
+    "dimensions": {
+      "execution": 1.0,
+      "planning": 1.0
+    },
+    "dominant_type": "tool_selection_error",
+    "evidence": [
+      {
+        "details": {
+          "assertion_type": "tool-used"
+        },
+        "dimension": "planning",
+        "failure_type": "tool_selection_error",
+        "reason": "Scenario assertion failed: tool-used",
+        "severity": 1.0,
+        "step_index": 0
+      },
+      {
+        "details": {
+          "assertion_type": "tool-used"
+        },
+        "dimension": "planning",
+        "failure_type": "tool_selection_error",
+        "reason": "Scenario assertion failed: tool-used",
+        "severity": 1.0,
+        "step_index": 0
+      },
+      {
+        "details": {
+          "assertion_type": "tool-sequence"
+        },
+        "dimension": "planning",
+        "failure_type": "loop_no_progress",
+        "reason": "Scenario assertion failed: tool-sequence",
+        "severity": 1.0,
+        "step_index": 0
+      },
+      {
+        "details": null,
+        "dimension": "execution",
+        "failure_type": "timeout",
+        "reason": "Run reached its configured timeout",
+        "severity": 1.0,
+        "step_index": 0
+      }
+    ],
+    "failure_rate": 1.0,
+    "failure_types": {
+      "loop_no_progress": 0.25,
+      "timeout": 0.25,
+      "tool_selection_error": 0.5
+    },
+    "metric_directions": {
+      "budget": "minimize",
+      "context": "minimize",
+      "execution": "minimize",
+      "failure_rate": "minimize",
+      "latency_ms": "minimize",
+      "planning": "minimize",
+      "score": "maximize",
+      "total_tokens": "minimize"
+    },
+    "run_id": "<id-13>"
+  },
+  "events_failed": [
+    {
+      "occurred_at": "<timestamp>",
+      "payload": {
+        "attempt": 1,
+        "source": "environment"
+      },
+      "run_id": "<id-2>",
+      "schema_version": 1,
+      "sequence": 1,
+      "type": "run_started"
+    },
+    {
+      "occurred_at": "<timestamp>",
+      "payload": {
+        "attempt": 1,
+        "context_window": {
+          "limit": 8192,
+          "used": 1000
+        },
+        "decision_summary": "Collect the next diagnostic signal.",
+        "environment": {
+          "check_called": false,
+          "finalized": false,
+          "kind": "world",
+          "result": "ok"
+        },
+        "index": 0,
+        "latency_ms": 25,
+        "observation": "The same noisy samples are returned.",
+        "token_completion": 20,
+        "token_prompt": 50,
+        "tool_call": {
+          "arguments": {
+            "service": "checkout-api"
+          },
+          "name": "fetch_service_logs"
+        }
+      },
+      "run_id": "<id-2>",
+      "schema_version": 1,
+      "sequence": 2,
+      "type": "step_completed"
+    },
+    {
+      "occurred_at": "<timestamp>",
+      "payload": {
+        "attempt": 1,
+        "context_window": {
+          "limit": 8192,
+          "used": 1000
+        },
+        "decision_summary": "Collect the next diagnostic signal.",
+        "environment": {
+          "check_called": false,
+          "finalized": false,
+          "kind": "world",
+          "result": "ok"
+        },
+        "index": 1,
+        "latency_ms": 25,
+        "observation": "The same noisy samples are returned.",
+        "token_completion": 20,
+        "token_prompt": 50,
+        "tool_call": {
+          "arguments": {
+            "service": "checkout-api"
+          },
+          "name": "fetch_service_logs"
+        }
+      },
+      "run_id": "<id-2>",
+      "schema_version": 1,
+      "sequence": 3,
+      "type": "step_completed"
+    },
+    {
+      "occurred_at": "<timestamp>",
+      "payload": {
+        "attempt": 1,
+        "context_window": {
+          "limit": 8192,
+          "used": 1000
+        },
+        "decision_summary": "Collect the next diagnostic signal.",
+        "environment": {
+          "check_called": false,
+          "finalized": false,
+          "kind": "world",
+          "result": "ok"
+        },
+        "index": 2,
+        "latency_ms": 25,
+        "observation": "The same noisy samples are returned.",
+        "token_completion": 20,
+        "token_prompt": 50,
+        "tool_call": {
+          "arguments": {
+            "service": "checkout-api"
+          },
+          "name": "fetch_service_logs"
+        }
+      },
+      "run_id": "<id-2>",
+      "schema_version": 1,
+      "sequence": 4,
+      "type": "step_completed"
+    },
+    {
+      "occurred_at": "<timestamp>",
+      "payload": {
+        "attempt": 1,
+        "context_window": {
+          "limit": 8192,
+          "used": 1000
+        },
+        "decision_summary": "Collect the next diagnostic signal.",
+        "environment": {
+          "check_called": false,
+          "finalized": false,
+          "kind": "world",
+          "result": "ok"
+        },
+        "index": 3,
+        "latency_ms": 25,
+        "observation": "The same noisy samples are returned.",
+        "token_completion": 20,
+        "token_prompt": 50,
+        "tool_call": {
+          "arguments": {
+            "service": "checkout-api"
+          },
+          "name": "fetch_service_logs"
+        }
+      },
+      "run_id": "<id-2>",
+      "schema_version": 1,
+      "sequence": 5,
+      "type": "step_completed"
+    },
+    {
+      "occurred_at": "<timestamp>",
+      "payload": {
+        "attempt": 1,
+        "context_window": {
+          "limit": 8192,
+          "used": 1000
+        },
+        "decision_summary": "Collect the next diagnostic signal.",
+        "environment": {
+          "check_called": false,
+          "finalized": false,
+          "kind": "world",
+          "result": "ok"
+        },
+        "index": 4,
+        "latency_ms": 25,
+        "observation": "The same noisy samples are returned.",
+        "token_completion": 20,
+        "token_prompt": 50,
+        "tool_call": {
+          "arguments": {
+            "service": "checkout-api"
+          },
+          "name": "fetch_service_logs"
+        }
+      },
+      "run_id": "<id-2>",
+      "schema_version": 1,
+      "sequence": 6,
+      "type": "step_completed"
+    },
+    {
+      "occurred_at": "<timestamp>",
+      "payload": {
+        "attempt": 1,
+        "context_window": {
+          "limit": 8192,
+          "used": 1000
+        },
+        "decision_summary": "Collect the next diagnostic signal.",
+        "environment": {
+          "check_called": false,
+          "finalized": false,
+          "kind": "world",
+          "result": "ok"
+        },
+        "index": 5,
+        "latency_ms": 25,
+        "observation": "The same noisy samples are returned.",
+        "token_completion": 20,
+        "token_prompt": 50,
+        "tool_call": {
+          "arguments": {
+            "service": "checkout-api"
+          },
+          "name": "fetch_service_logs"
+        }
+      },
+      "run_id": "<id-2>",
+      "schema_version": 1,
+      "sequence": 7,
+      "type": "step_completed"
+    },
+    {
+      "occurred_at": "<timestamp>",
+      "payload": {
+        "attempt": 1,
+        "failure_kind": "internal_failure",
+        "status": "failed"
+      },
+      "run_id": "<id-2>",
+      "schema_version": 1,
+      "sequence": 8,
+      "type": "run_failed"
+    }
+  ],
+  "events_succeeded": [
+    {
+      "occurred_at": "<timestamp>",
+      "payload": {
+        "attempt": 1,
+        "source": "environment"
+      },
+      "run_id": "<id-4>",
+      "schema_version": 1,
+      "sequence": 1,
+      "type": "run_started"
+    },
+    {
+      "occurred_at": "<timestamp>",
+      "payload": {
+        "attempt": 1,
+        "context_window": {
+          "limit": 8192,
+          "used": 1000
+        },
+        "decision_summary": "Collect the next diagnostic signal.",
+        "environment": {
+          "check_called": false,
+          "finalized": false,
+          "kind": "world",
+          "result": "ok"
+        },
+        "index": 0,
+        "latency_ms": 25,
+        "observation": "Service is healthy; latency is elevated.",
+        "token_completion": 20,
+        "token_prompt": 50,
+        "tool_call": {
+          "arguments": {
+            "service": "checkout-api"
+          },
+          "name": "check_service_health"
+        }
+      },
+      "run_id": "<id-4>",
+      "schema_version": 1,
+      "sequence": 2,
+      "type": "step_completed"
+    },
+    {
+      "occurred_at": "<timestamp>",
+      "payload": {
+        "attempt": 1,
+        "context_window": {
+          "limit": 8192,
+          "used": 1000
+        },
+        "decision_summary": "Collect the next diagnostic signal.",
+        "environment": {
+          "check_called": false,
+          "finalized": false,
+          "kind": "world",
+          "result": "ok"
+        },
+        "index": 1,
+        "latency_ms": 25,
+        "observation": "Payment dependency p95 is 1.8s.",
+        "token_completion": 20,
+        "token_prompt": 50,
+        "tool_call": {
+          "arguments": {
+            "service": "checkout-api"
+          },
+          "name": "query_service_metrics"
+        }
+      },
+      "run_id": "<id-4>",
+      "schema_version": 1,
+      "sequence": 3,
+      "type": "step_completed"
+    },
+    {
+      "occurred_at": "<timestamp>",
+      "payload": {
+        "attempt": 1,
+        "context_window": {
+          "limit": 8192,
+          "used": 1000
+        },
+        "decision_summary": "Collect the next diagnostic signal.",
+        "environment": {
+          "check_called": false,
+          "finalized": false,
+          "kind": "world",
+          "result": "ok"
+        },
+        "index": 2,
+        "latency_ms": 25,
+        "observation": "Payment connection pool is saturated.",
+        "token_completion": 20,
+        "token_prompt": 50,
+        "tool_call": {
+          "arguments": {
+            "service": "checkout-api"
+          },
+          "name": "fetch_service_logs"
+        }
+      },
+      "run_id": "<id-4>",
+      "schema_version": 1,
+      "sequence": 4,
+      "type": "step_completed"
+    },
+    {
+      "occurred_at": "<timestamp>",
+      "payload": {
+        "attempt": 1,
+        "environment": {
+          "check_called": true,
+          "control": "submit_result",
+          "final_check": {
+            "final_observation": null,
+            "scenario_id": "checkout-api-latency.v2"
+          },
+          "finalized": true,
+          "kind": "control",
+          "result": "ok"
+        }
+      },
+      "run_id": "<id-4>",
+      "schema_version": 1,
+      "sequence": 5,
+      "type": "step_completed"
+    },
+    {
+      "occurred_at": "<timestamp>",
+      "payload": {
+        "attempt": 1,
+        "status": "succeeded"
+      },
+      "run_id": "<id-4>",
+      "schema_version": 1,
+      "sequence": 6,
+      "type": "run_completed"
+    }
+  ],
+  "events_timed_out": [
+    {
+      "occurred_at": "<timestamp>",
+      "payload": {
+        "attempt": 1,
+        "source": "environment"
+      },
+      "run_id": "<id-13>",
+      "schema_version": 1,
+      "sequence": 1,
+      "type": "run_started"
+    },
+    {
+      "occurred_at": "<timestamp>",
+      "payload": {
+        "attempt": 1,
+        "context_window": {
+          "limit": 8192,
+          "used": 1000
+        },
+        "decision_summary": "Collect the next diagnostic signal.",
+        "environment": {
+          "check_called": false,
+          "finalized": false,
+          "kind": "world",
+          "result": "ok"
+        },
+        "index": 0,
+        "latency_ms": 25,
+        "observation": "Same samples again.",
+        "token_completion": 20,
+        "token_prompt": 50,
+        "tool_call": {
+          "arguments": {
+            "service": "checkout-api"
+          },
+          "name": "fetch_service_logs"
+        }
+      },
+      "run_id": "<id-13>",
+      "schema_version": 1,
+      "sequence": 2,
+      "type": "step_completed"
+    },
+    {
+      "occurred_at": "<timestamp>",
+      "payload": {
+        "attempt": 1,
+        "content": "agent log",
+        "stream": "stderr"
+      },
+      "run_id": "<id-13>",
+      "schema_version": 1,
+      "sequence": 3,
+      "type": "process_output"
+    },
+    {
+      "occurred_at": "<timestamp>",
+      "payload": {
+        "attempt": 1,
+        "content": "x",
+        "kind": "agent",
+        "stream": "stdout"
+      },
+      "run_id": "<id-13>",
+      "schema_version": 1,
+      "sequence": 4,
+      "type": "process_output"
+    },
+    {
+      "occurred_at": "<timestamp>",
+      "payload": {
+        "attempt": 1,
+        "failure_kind": "timed_out",
+        "status": "timed_out"
+      },
+      "run_id": "<id-13>",
+      "schema_version": 1,
+      "sequence": 5,
+      "type": "run_failed"
+    }
+  ],
+  "experiment_replay_group": {
+    "active_policy": null,
+    "agent_id": null,
+    "candidate_policy": {
+      "created_at": "<timestamp>",
+      "experiment_id": "<id-1>",
+      "id": "<id-6>",
+      "parent_policy_id": null,
+      "patch": {
+        "instruction_patch": [
+          "Do not repeat a tool call with identical arguments.",
+          "Check service health, then metrics, then fetch logs supported by evidence."
+        ],
+        "max_steps": 6,
+        "tool_priority": {
+          "check_service_health": 1.0,
+          "fetch_service_logs": 0.3,
+          "query_service_metrics": 0.9
+        }
+      },
+      "rationale": "The baseline Run ended failed. The candidate limits the Agent to 6 steps; prioritises tools: check_service_health, query_service_metrics, fetch_service_logs; adds 2 instructions.",
+      "reject_reason": null,
+      "replay_run_id": "<id-21>",
+      "score_delta": null,
+      "source_run_id": "<id-2>",
+      "status": "replaying"
+    },
+    "created_at": "<timestamp>",
+    "execution_mode": "fixture",
+    "id": "<id-1>",
+    "name": "Trials",
+    "regression_cases": [
+      {
+        "created_at": "<timestamp>",
+        "eligible_for_replay": true,
+        "execution_mode": "fixture",
+        "experiment_id": "<id-1>",
+        "id": "<id-7>",
+        "replay_policy_id": null,
+        "replay_run_id": null,
+        "reproducibility": "deterministic",
+        "reproducibility_note": "Fixture execution is deterministic for the stored scenario, seed, and parameters.",
+        "scenario_id": "checkout-api-latency.v2",
+        "scenario_params": {},
+        "seed": 7,
+        "source_run_id": "<id-2>"
+      }
+    ],
+    "runs": [
+      {
+        "completed_at": "<timestamp>",
+        "error": "Agent execution failed",
+        "evaluation_spec": {
+          "agent_id": "fixture-agent.v1",
+          "execution_mode": "fixture",
+          "experiment_id": "<id-1>",
+          "limits": {
+            "max_output_bytes": 1048576,
+            "timeout_ms": 60000
+          },
+          "policy": null,
+          "run_id": "<id-2>",
+          "scenario_id": "checkout-api-latency.v2",
+          "scenario_params": {},
+          "schema_version": 1,
+          "seed": 7,
+          "task": "Investigate checkout API latency"
+        },
+        "experiment_id": "<id-1>",
+        "id": "<id-2>",
+        "kind": "baseline",
+        "metrics": {
+          "agent_usage": {
+            "context_window": null,
+            "source": "agent_reported",
+            "token_completion": null,
+            "token_prompt": null
+          },
+          "assertions": {
+            "aggregate": 0.13333333333333333,
+            "assertions": [
+              {
+                "detail": "tools=['fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs']",
+                "passed": false,
+                "score": 0.0,
+                "threshold": 1.0,
+                "type": "tool-used",
+                "weight": 1.0
+              },
+              {
+                "detail": "tools=['fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs']",
+                "passed": false,
+                "score": 0.0,
+                "threshold": 1.0,
+                "type": "tool-used",
+                "weight": 1.0
+              },
+              {
+                "detail": "expected=['check_service_health', 'query_service_metrics', 'fetch_service_logs'] actual=['fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs']",
+                "passed": false,
+                "score": 0.0,
+                "threshold": 1.0,
+                "type": "tool-sequence",
+                "weight": 2.0
+              },
+              {
+                "detail": "steps=6 min=None max=4",
+                "passed": false,
+                "score": 0.6666666666666666,
+                "threshold": 1.0,
+                "type": "step-count",
+                "weight": 1.0
+              }
+            ],
+            "combination": "weighted"
+          },
+          "environment": {
+            "check_called": false,
+            "finalized": false
+          },
+          "latency_ms": 150,
+          "score_breakdown": {
+            "cost_penalty": -0.0,
+            "latency_penalty": -0.0015,
+            "success_reward": 0.13333333333333333,
+            "tool_failure_penalty": -0.0
+          },
+          "steps": 6,
+          "token_completion": null,
+          "token_prompt": null,
+          "total_tokens": null
+        },
+        "policy_id": null,
+        "queued_at": "<timestamp>",
+        "regression_case_id": "<id-7>",
+        "score": 0.13183333333333333,
+        "source_run_id": null,
+        "started_at": "<timestamp>",
+        "status": "failed",
+        "trial_group_id": "<id-3>",
+        "trial_index": 1
+      },
+      {
+        "completed_at": "<timestamp>",
+        "error": null,
+        "evaluation_spec": {
+          "agent_id": "fixture-agent.v1",
+          "execution_mode": "fixture",
+          "experiment_id": "<id-1>",
+          "limits": {
+            "max_output_bytes": 1048576,
+            "timeout_ms": 60000
+          },
+          "policy": null,
+          "run_id": "<id-4>",
+          "scenario_id": "checkout-api-latency.v2",
+          "scenario_params": {},
+          "schema_version": 1,
+          "seed": 7,
+          "task": "Investigate checkout API latency"
+        },
+        "experiment_id": "<id-1>",
+        "id": "<id-4>",
+        "kind": "baseline",
+        "metrics": {
+          "agent_usage": {
+            "context_window": null,
+            "source": "agent_reported",
+            "token_completion": null,
+            "token_prompt": null
+          },
+          "assertions": {
+            "aggregate": 1.0,
+            "assertions": [
+              {
+                "detail": "tools=['check_service_health', 'query_service_metrics', 'fetch_service_logs']",
+                "passed": true,
+                "score": 1.0,
+                "threshold": 1.0,
+                "type": "tool-used",
+                "weight": 1.0
+              },
+              {
+                "detail": "tools=['check_service_health', 'query_service_metrics', 'fetch_service_logs']",
+                "passed": true,
+                "score": 1.0,
+                "threshold": 1.0,
+                "type": "tool-used",
+                "weight": 1.0
+              },
+              {
+                "detail": "expected=['check_service_health', 'query_service_metrics', 'fetch_service_logs'] actual=['check_service_health', 'query_service_metrics', 'fetch_service_logs']",
+                "passed": true,
+                "score": 1.0,
+                "threshold": 1.0,
+                "type": "tool-sequence",
+                "weight": 2.0
+              },
+              {
+                "detail": "steps=3 min=None max=4",
+                "passed": true,
+                "score": 1.0,
+                "threshold": 1.0,
+                "type": "step-count",
+                "weight": 1.0
+              }
+            ],
+            "combination": "weighted"
+          },
+          "environment": {
+            "check_called": true,
+            "finalized": true
+          },
+          "latency_ms": 75,
+          "score_breakdown": {
+            "cost_penalty": -0.0,
+            "latency_penalty": -0.00075,
+            "success_reward": 1.0,
+            "tool_failure_penalty": -0.0
+          },
+          "steps": 3,
+          "token_completion": null,
+          "token_prompt": null,
+          "total_tokens": null
+        },
+        "policy_id": null,
+        "queued_at": "<timestamp>",
+        "regression_case_id": null,
+        "score": 0.99925,
+        "source_run_id": null,
+        "started_at": "<timestamp>",
+        "status": "succeeded",
+        "trial_group_id": "<id-3>",
+        "trial_index": 2
+      },
+      {
+        "completed_at": "<timestamp>",
+        "error": "Agent execution failed",
+        "evaluation_spec": {
+          "agent_id": "fixture-agent.v1",
+          "execution_mode": "fixture",
+          "experiment_id": "<id-1>",
+          "limits": {
+            "max_output_bytes": 1048576,
+            "timeout_ms": 60000
+          },
+          "policy": null,
+          "run_id": "<id-5>",
+          "scenario_id": "checkout-api-latency.v2",
+          "scenario_params": {},
+          "schema_version": 1,
+          "seed": 7,
+          "task": "Investigate checkout API latency"
+        },
+        "experiment_id": "<id-1>",
+        "id": "<id-5>",
+        "kind": "baseline",
+        "metrics": {
+          "agent_usage": {
+            "context_window": null,
+            "source": "agent_reported",
+            "token_completion": null,
+            "token_prompt": null
+          },
+          "assertions": {
+            "aggregate": 0.13333333333333333,
+            "assertions": [
+              {
+                "detail": "tools=['fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs']",
+                "passed": false,
+                "score": 0.0,
+                "threshold": 1.0,
+                "type": "tool-used",
+                "weight": 1.0
+              },
+              {
+                "detail": "tools=['fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs']",
+                "passed": false,
+                "score": 0.0,
+                "threshold": 1.0,
+                "type": "tool-used",
+                "weight": 1.0
+              },
+              {
+                "detail": "expected=['check_service_health', 'query_service_metrics', 'fetch_service_logs'] actual=['fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs']",
+                "passed": false,
+                "score": 0.0,
+                "threshold": 1.0,
+                "type": "tool-sequence",
+                "weight": 2.0
+              },
+              {
+                "detail": "steps=6 min=None max=4",
+                "passed": false,
+                "score": 0.6666666666666666,
+                "threshold": 1.0,
+                "type": "step-count",
+                "weight": 1.0
+              }
+            ],
+            "combination": "weighted"
+          },
+          "environment": {
+            "check_called": false,
+            "finalized": false
+          },
+          "latency_ms": 150,
+          "score_breakdown": {
+            "cost_penalty": -0.0,
+            "latency_penalty": -0.0015,
+            "success_reward": 0.13333333333333333,
+            "tool_failure_penalty": -0.0
+          },
+          "steps": 6,
+          "token_completion": null,
+          "token_prompt": null,
+          "total_tokens": null
+        },
+        "policy_id": null,
+        "queued_at": "<timestamp>",
+        "regression_case_id": null,
+        "score": 0.13183333333333333,
+        "source_run_id": null,
+        "started_at": "<timestamp>",
+        "status": "failed",
+        "trial_group_id": "<id-3>",
+        "trial_index": 3
+      },
+      {
+        "completed_at": null,
+        "error": null,
+        "evaluation_spec": {
+          "agent_id": "fixture-agent.v1",
+          "execution_mode": "fixture",
+          "experiment_id": "<id-1>",
+          "limits": {
+            "max_output_bytes": 1048576,
+            "timeout_ms": 60000
+          },
+          "policy": {
+            "instruction_patch": [
+              "Do not repeat a tool call with identical arguments.",
+              "Check service health, then metrics, then fetch logs supported by evidence."
+            ],
+            "max_steps": 6,
+            "tool_priority": {
+              "check_service_health": 1.0,
+              "fetch_service_logs": 0.3,
+              "query_service_metrics": 0.9
+            }
+          },
+          "run_id": "<id-21>",
+          "scenario_id": "checkout-api-latency.v2",
+          "scenario_params": {},
+          "schema_version": 1,
+          "seed": 7,
+          "task": "Investigate checkout API latency"
+        },
+        "experiment_id": "<id-1>",
+        "id": "<id-21>",
+        "kind": "replay",
+        "metrics": {},
+        "policy_id": "<id-6>",
+        "queued_at": "<timestamp>",
+        "regression_case_id": null,
+        "score": null,
+        "source_run_id": "<id-2>",
+        "started_at": null,
+        "status": "queued",
+        "trial_group_id": "<id-22>",
+        "trial_index": 1
+      },
+      {
+        "completed_at": null,
+        "error": null,
+        "evaluation_spec": {
+          "agent_id": "fixture-agent.v1",
+          "execution_mode": "fixture",
+          "experiment_id": "<id-1>",
+          "limits": {
+            "max_output_bytes": 1048576,
+            "timeout_ms": 60000
+          },
+          "policy": {
+            "instruction_patch": [
+              "Do not repeat a tool call with identical arguments.",
+              "Check service health, then metrics, then fetch logs supported by evidence."
+            ],
+            "max_steps": 6,
+            "tool_priority": {
+              "check_service_health": 1.0,
+              "fetch_service_logs": 0.3,
+              "query_service_metrics": 0.9
+            }
+          },
+          "run_id": "<id-23>",
+          "scenario_id": "checkout-api-latency.v2",
+          "scenario_params": {},
+          "schema_version": 1,
+          "seed": 7,
+          "task": "Investigate checkout API latency"
+        },
+        "experiment_id": "<id-1>",
+        "id": "<id-23>",
+        "kind": "replay",
+        "metrics": {},
+        "policy_id": "<id-6>",
+        "queued_at": "<timestamp>",
+        "regression_case_id": null,
+        "score": null,
+        "source_run_id": "<id-4>",
+        "started_at": null,
+        "status": "queued",
+        "trial_group_id": "<id-22>",
+        "trial_index": 2
+      },
+      {
+        "completed_at": null,
+        "error": null,
+        "evaluation_spec": {
+          "agent_id": "fixture-agent.v1",
+          "execution_mode": "fixture",
+          "experiment_id": "<id-1>",
+          "limits": {
+            "max_output_bytes": 1048576,
+            "timeout_ms": 60000
+          },
+          "policy": {
+            "instruction_patch": [
+              "Do not repeat a tool call with identical arguments.",
+              "Check service health, then metrics, then fetch logs supported by evidence."
+            ],
+            "max_steps": 6,
+            "tool_priority": {
+              "check_service_health": 1.0,
+              "fetch_service_logs": 0.3,
+              "query_service_metrics": 0.9
+            }
+          },
+          "run_id": "<id-24>",
+          "scenario_id": "checkout-api-latency.v2",
+          "scenario_params": {},
+          "schema_version": 1,
+          "seed": 7,
+          "task": "Investigate checkout API latency"
+        },
+        "experiment_id": "<id-1>",
+        "id": "<id-24>",
+        "kind": "replay",
+        "metrics": {},
+        "policy_id": "<id-6>",
+        "queued_at": "<timestamp>",
+        "regression_case_id": null,
+        "score": null,
+        "source_run_id": "<id-5>",
+        "started_at": null,
+        "status": "queued",
+        "trial_group_id": "<id-22>",
+        "trial_index": 3
+      }
+    ],
+    "scenario_id": "checkout-api-latency.v2",
+    "scenario_params": {},
+    "task": "Investigate checkout API latency",
+    "trial_groups": [
+      {
+        "created_at": "<timestamp>",
+        "experiment_id": "<id-1>",
+        "id": "<id-22>",
+        "k": 2,
+        "mean_score": null,
+        "mean_steps": null,
+        "n": 3,
+        "pass_at_1": null,
+        "pass_at_k": null,
+        "policy_id": "<id-6>",
+        "run_ids": [
+          "<id-21>",
+          "<id-23>",
+          "<id-24>"
+        ],
+        "seed": 7,
+        "state": "running",
+        "successes": null,
+        "terminal": 0
+      },
+      {
+        "created_at": "<timestamp>",
+        "experiment_id": "<id-1>",
+        "id": "<id-3>",
+        "k": 2,
+        "mean_score": 0.33308333333333334,
+        "mean_steps": 5.0,
+        "n": 3,
+        "pass_at_1": 0.3333333333333333,
+        "pass_at_k": 0.0,
+        "policy_id": null,
+        "run_ids": [
+          "<id-2>",
+          "<id-4>",
+          "<id-5>"
+        ],
+        "seed": 7,
+        "state": "complete",
+        "successes": 1,
+        "terminal": 3
+      }
+    ]
+  },
+  "experiment_trials_cancelled": {
+    "active_policy": null,
+    "agent_id": null,
+    "candidate_policy": {
+      "created_at": "<timestamp>",
+      "experiment_id": "<id-8>",
+      "id": "<id-12>",
+      "parent_policy_id": null,
+      "patch": {
+        "instruction_patch": [
+          "Do not repeat a tool call with identical arguments.",
+          "Check service health, then metrics, then fetch logs supported by evidence."
+        ],
+        "max_steps": 6,
+        "tool_priority": {
+          "check_service_health": 1.0,
+          "fetch_service_logs": 0.3,
+          "query_service_metrics": 0.9
+        }
+      },
+      "rationale": "The baseline Run ended failed. The candidate limits the Agent to 6 steps; prioritises tools: check_service_health, query_service_metrics, fetch_service_logs; adds 2 instructions.",
+      "reject_reason": null,
+      "replay_run_id": null,
+      "score_delta": null,
+      "source_run_id": "<id-9>",
+      "status": "candidate"
+    },
+    "created_at": "<timestamp>",
+    "execution_mode": "fixture",
+    "id": "<id-8>",
+    "name": "Trials",
+    "regression_cases": [],
+    "runs": [
+      {
+        "completed_at": "<timestamp>",
+        "error": "Agent execution failed",
+        "evaluation_spec": {
+          "agent_id": "fixture-agent.v1",
+          "execution_mode": "fixture",
+          "experiment_id": "<id-8>",
+          "limits": {
+            "max_output_bytes": 1048576,
+            "timeout_ms": 60000
+          },
+          "policy": null,
+          "run_id": "<id-9>",
+          "scenario_id": "checkout-api-latency.v2",
+          "scenario_params": {},
+          "schema_version": 1,
+          "seed": 42,
+          "task": "Investigate checkout API latency"
+        },
+        "experiment_id": "<id-8>",
+        "id": "<id-9>",
+        "kind": "baseline",
+        "metrics": {
+          "agent_usage": {
+            "context_window": null,
+            "source": "agent_reported",
+            "token_completion": null,
+            "token_prompt": null
+          },
+          "assertions": {
+            "aggregate": 0.13333333333333333,
+            "assertions": [
+              {
+                "detail": "tools=['fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs']",
+                "passed": false,
+                "score": 0.0,
+                "threshold": 1.0,
+                "type": "tool-used",
+                "weight": 1.0
+              },
+              {
+                "detail": "tools=['fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs']",
+                "passed": false,
+                "score": 0.0,
+                "threshold": 1.0,
+                "type": "tool-used",
+                "weight": 1.0
+              },
+              {
+                "detail": "expected=['check_service_health', 'query_service_metrics', 'fetch_service_logs'] actual=['fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs']",
+                "passed": false,
+                "score": 0.0,
+                "threshold": 1.0,
+                "type": "tool-sequence",
+                "weight": 2.0
+              },
+              {
+                "detail": "steps=6 min=None max=4",
+                "passed": false,
+                "score": 0.6666666666666666,
+                "threshold": 1.0,
+                "type": "step-count",
+                "weight": 1.0
+              }
+            ],
+            "combination": "weighted"
+          },
+          "environment": {
+            "check_called": false,
+            "finalized": false
+          },
+          "latency_ms": 150,
+          "score_breakdown": {
+            "cost_penalty": -0.0,
+            "latency_penalty": -0.0015,
+            "success_reward": 0.13333333333333333,
+            "tool_failure_penalty": -0.0
+          },
+          "steps": 6,
+          "token_completion": null,
+          "token_prompt": null,
+          "total_tokens": null
+        },
+        "policy_id": null,
+        "queued_at": "<timestamp>",
+        "regression_case_id": null,
+        "score": 0.13183333333333333,
+        "source_run_id": null,
+        "started_at": "<timestamp>",
+        "status": "failed",
+        "trial_group_id": "<id-10>",
+        "trial_index": 1
+      },
+      {
+        "completed_at": "<timestamp>",
+        "error": "Run cancelled",
+        "evaluation_spec": {
+          "agent_id": "fixture-agent.v1",
+          "execution_mode": "fixture",
+          "experiment_id": "<id-8>",
+          "limits": {
+            "max_output_bytes": 1048576,
+            "timeout_ms": 60000
+          },
+          "policy": null,
+          "run_id": "<id-11>",
+          "scenario_id": "checkout-api-latency.v2",
+          "scenario_params": {},
+          "schema_version": 1,
+          "seed": 42,
+          "task": "Investigate checkout API latency"
+        },
+        "experiment_id": "<id-8>",
+        "id": "<id-11>",
+        "kind": "baseline",
+        "metrics": {
+          "agent_usage": {
+            "context_window": null,
+            "source": "agent_reported",
+            "token_completion": null,
+            "token_prompt": null
+          },
+          "assertions": {
+            "aggregate": 0.2,
+            "assertions": [
+              {
+                "detail": "tools=[]",
+                "passed": false,
+                "score": 0.0,
+                "threshold": 1.0,
+                "type": "tool-used",
+                "weight": 1.0
+              },
+              {
+                "detail": "tools=[]",
+                "passed": false,
+                "score": 0.0,
+                "threshold": 1.0,
+                "type": "tool-used",
+                "weight": 1.0
+              },
+              {
+                "detail": "expected=['check_service_health', 'query_service_metrics', 'fetch_service_logs'] actual=[]",
+                "passed": false,
+                "score": 0.0,
+                "threshold": 1.0,
+                "type": "tool-sequence",
+                "weight": 2.0
+              },
+              {
+                "detail": "steps=0 min=None max=4",
+                "passed": true,
+                "score": 1.0,
+                "threshold": 1.0,
+                "type": "step-count",
+                "weight": 1.0
+              }
+            ],
+            "combination": "weighted"
+          },
+          "environment": {
+            "check_called": false,
+            "finalized": false
+          },
+          "latency_ms": 0,
+          "score_breakdown": {
+            "cost_penalty": -0.0,
+            "latency_penalty": -0.0,
+            "success_reward": 0.2,
+            "tool_failure_penalty": -0.0
+          },
+          "steps": 0,
+          "token_completion": null,
+          "token_prompt": null,
+          "total_tokens": null
+        },
+        "policy_id": null,
+        "queued_at": "<timestamp>",
+        "regression_case_id": null,
+        "score": 0.2,
+        "source_run_id": null,
+        "started_at": "<timestamp>",
+        "status": "cancelled",
+        "trial_group_id": "<id-10>",
+        "trial_index": 2
+      }
+    ],
+    "scenario_id": "checkout-api-latency.v2",
+    "scenario_params": {},
+    "task": "Investigate checkout API latency",
+    "trial_groups": [
+      {
+        "created_at": "<timestamp>",
+        "experiment_id": "<id-8>",
+        "id": "<id-10>",
+        "k": 1,
+        "mean_score": null,
+        "mean_steps": null,
+        "n": 2,
+        "pass_at_1": null,
+        "pass_at_k": null,
+        "policy_id": null,
+        "run_ids": [
+          "<id-9>",
+          "<id-11>"
+        ],
+        "seed": 42,
+        "state": "cancelled",
+        "successes": null,
+        "terminal": 2
+      }
+    ]
+  },
+  "experiment_trials_complete": {
+    "active_policy": null,
+    "agent_id": null,
+    "candidate_policy": {
+      "created_at": "<timestamp>",
+      "experiment_id": "<id-1>",
+      "id": "<id-6>",
+      "parent_policy_id": null,
+      "patch": {
+        "instruction_patch": [
+          "Do not repeat a tool call with identical arguments.",
+          "Check service health, then metrics, then fetch logs supported by evidence."
+        ],
+        "max_steps": 6,
+        "tool_priority": {
+          "check_service_health": 1.0,
+          "fetch_service_logs": 0.3,
+          "query_service_metrics": 0.9
+        }
+      },
+      "rationale": "The baseline Run ended failed. The candidate limits the Agent to 6 steps; prioritises tools: check_service_health, query_service_metrics, fetch_service_logs; adds 2 instructions.",
+      "reject_reason": null,
+      "replay_run_id": null,
+      "score_delta": null,
+      "source_run_id": "<id-2>",
+      "status": "candidate"
+    },
+    "created_at": "<timestamp>",
+    "execution_mode": "fixture",
+    "id": "<id-1>",
+    "name": "Trials",
+    "regression_cases": [],
+    "runs": [
+      {
+        "completed_at": "<timestamp>",
+        "error": "Agent execution failed",
+        "evaluation_spec": {
+          "agent_id": "fixture-agent.v1",
+          "execution_mode": "fixture",
+          "experiment_id": "<id-1>",
+          "limits": {
+            "max_output_bytes": 1048576,
+            "timeout_ms": 60000
+          },
+          "policy": null,
+          "run_id": "<id-2>",
+          "scenario_id": "checkout-api-latency.v2",
+          "scenario_params": {},
+          "schema_version": 1,
+          "seed": 7,
+          "task": "Investigate checkout API latency"
+        },
+        "experiment_id": "<id-1>",
+        "id": "<id-2>",
+        "kind": "baseline",
+        "metrics": {
+          "agent_usage": {
+            "context_window": null,
+            "source": "agent_reported",
+            "token_completion": null,
+            "token_prompt": null
+          },
+          "assertions": {
+            "aggregate": 0.13333333333333333,
+            "assertions": [
+              {
+                "detail": "tools=['fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs']",
+                "passed": false,
+                "score": 0.0,
+                "threshold": 1.0,
+                "type": "tool-used",
+                "weight": 1.0
+              },
+              {
+                "detail": "tools=['fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs']",
+                "passed": false,
+                "score": 0.0,
+                "threshold": 1.0,
+                "type": "tool-used",
+                "weight": 1.0
+              },
+              {
+                "detail": "expected=['check_service_health', 'query_service_metrics', 'fetch_service_logs'] actual=['fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs']",
+                "passed": false,
+                "score": 0.0,
+                "threshold": 1.0,
+                "type": "tool-sequence",
+                "weight": 2.0
+              },
+              {
+                "detail": "steps=6 min=None max=4",
+                "passed": false,
+                "score": 0.6666666666666666,
+                "threshold": 1.0,
+                "type": "step-count",
+                "weight": 1.0
+              }
+            ],
+            "combination": "weighted"
+          },
+          "environment": {
+            "check_called": false,
+            "finalized": false
+          },
+          "latency_ms": 150,
+          "score_breakdown": {
+            "cost_penalty": -0.0,
+            "latency_penalty": -0.0015,
+            "success_reward": 0.13333333333333333,
+            "tool_failure_penalty": -0.0
+          },
+          "steps": 6,
+          "token_completion": null,
+          "token_prompt": null,
+          "total_tokens": null
+        },
+        "policy_id": null,
+        "queued_at": "<timestamp>",
+        "regression_case_id": null,
+        "score": 0.13183333333333333,
+        "source_run_id": null,
+        "started_at": "<timestamp>",
+        "status": "failed",
+        "trial_group_id": "<id-3>",
+        "trial_index": 1
+      },
+      {
+        "completed_at": "<timestamp>",
+        "error": null,
+        "evaluation_spec": {
+          "agent_id": "fixture-agent.v1",
+          "execution_mode": "fixture",
+          "experiment_id": "<id-1>",
+          "limits": {
+            "max_output_bytes": 1048576,
+            "timeout_ms": 60000
+          },
+          "policy": null,
+          "run_id": "<id-4>",
+          "scenario_id": "checkout-api-latency.v2",
+          "scenario_params": {},
+          "schema_version": 1,
+          "seed": 7,
+          "task": "Investigate checkout API latency"
+        },
+        "experiment_id": "<id-1>",
+        "id": "<id-4>",
+        "kind": "baseline",
+        "metrics": {
+          "agent_usage": {
+            "context_window": null,
+            "source": "agent_reported",
+            "token_completion": null,
+            "token_prompt": null
+          },
+          "assertions": {
+            "aggregate": 1.0,
+            "assertions": [
+              {
+                "detail": "tools=['check_service_health', 'query_service_metrics', 'fetch_service_logs']",
+                "passed": true,
+                "score": 1.0,
+                "threshold": 1.0,
+                "type": "tool-used",
+                "weight": 1.0
+              },
+              {
+                "detail": "tools=['check_service_health', 'query_service_metrics', 'fetch_service_logs']",
+                "passed": true,
+                "score": 1.0,
+                "threshold": 1.0,
+                "type": "tool-used",
+                "weight": 1.0
+              },
+              {
+                "detail": "expected=['check_service_health', 'query_service_metrics', 'fetch_service_logs'] actual=['check_service_health', 'query_service_metrics', 'fetch_service_logs']",
+                "passed": true,
+                "score": 1.0,
+                "threshold": 1.0,
+                "type": "tool-sequence",
+                "weight": 2.0
+              },
+              {
+                "detail": "steps=3 min=None max=4",
+                "passed": true,
+                "score": 1.0,
+                "threshold": 1.0,
+                "type": "step-count",
+                "weight": 1.0
+              }
+            ],
+            "combination": "weighted"
+          },
+          "environment": {
+            "check_called": true,
+            "finalized": true
+          },
+          "latency_ms": 75,
+          "score_breakdown": {
+            "cost_penalty": -0.0,
+            "latency_penalty": -0.00075,
+            "success_reward": 1.0,
+            "tool_failure_penalty": -0.0
+          },
+          "steps": 3,
+          "token_completion": null,
+          "token_prompt": null,
+          "total_tokens": null
+        },
+        "policy_id": null,
+        "queued_at": "<timestamp>",
+        "regression_case_id": null,
+        "score": 0.99925,
+        "source_run_id": null,
+        "started_at": "<timestamp>",
+        "status": "succeeded",
+        "trial_group_id": "<id-3>",
+        "trial_index": 2
+      },
+      {
+        "completed_at": "<timestamp>",
+        "error": "Agent execution failed",
+        "evaluation_spec": {
+          "agent_id": "fixture-agent.v1",
+          "execution_mode": "fixture",
+          "experiment_id": "<id-1>",
+          "limits": {
+            "max_output_bytes": 1048576,
+            "timeout_ms": 60000
+          },
+          "policy": null,
+          "run_id": "<id-5>",
+          "scenario_id": "checkout-api-latency.v2",
+          "scenario_params": {},
+          "schema_version": 1,
+          "seed": 7,
+          "task": "Investigate checkout API latency"
+        },
+        "experiment_id": "<id-1>",
+        "id": "<id-5>",
+        "kind": "baseline",
+        "metrics": {
+          "agent_usage": {
+            "context_window": null,
+            "source": "agent_reported",
+            "token_completion": null,
+            "token_prompt": null
+          },
+          "assertions": {
+            "aggregate": 0.13333333333333333,
+            "assertions": [
+              {
+                "detail": "tools=['fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs']",
+                "passed": false,
+                "score": 0.0,
+                "threshold": 1.0,
+                "type": "tool-used",
+                "weight": 1.0
+              },
+              {
+                "detail": "tools=['fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs']",
+                "passed": false,
+                "score": 0.0,
+                "threshold": 1.0,
+                "type": "tool-used",
+                "weight": 1.0
+              },
+              {
+                "detail": "expected=['check_service_health', 'query_service_metrics', 'fetch_service_logs'] actual=['fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs']",
+                "passed": false,
+                "score": 0.0,
+                "threshold": 1.0,
+                "type": "tool-sequence",
+                "weight": 2.0
+              },
+              {
+                "detail": "steps=6 min=None max=4",
+                "passed": false,
+                "score": 0.6666666666666666,
+                "threshold": 1.0,
+                "type": "step-count",
+                "weight": 1.0
+              }
+            ],
+            "combination": "weighted"
+          },
+          "environment": {
+            "check_called": false,
+            "finalized": false
+          },
+          "latency_ms": 150,
+          "score_breakdown": {
+            "cost_penalty": -0.0,
+            "latency_penalty": -0.0015,
+            "success_reward": 0.13333333333333333,
+            "tool_failure_penalty": -0.0
+          },
+          "steps": 6,
+          "token_completion": null,
+          "token_prompt": null,
+          "total_tokens": null
+        },
+        "policy_id": null,
+        "queued_at": "<timestamp>",
+        "regression_case_id": null,
+        "score": 0.13183333333333333,
+        "source_run_id": null,
+        "started_at": "<timestamp>",
+        "status": "failed",
+        "trial_group_id": "<id-3>",
+        "trial_index": 3
+      }
+    ],
+    "scenario_id": "checkout-api-latency.v2",
+    "scenario_params": {},
+    "task": "Investigate checkout API latency",
+    "trial_groups": [
+      {
+        "created_at": "<timestamp>",
+        "experiment_id": "<id-1>",
+        "id": "<id-3>",
+        "k": 2,
+        "mean_score": 0.33308333333333334,
+        "mean_steps": 5.0,
+        "n": 3,
+        "pass_at_1": 0.3333333333333333,
+        "pass_at_k": 0.0,
+        "policy_id": null,
+        "run_ids": [
+          "<id-2>",
+          "<id-4>",
+          "<id-5>"
+        ],
+        "seed": 7,
+        "state": "complete",
+        "successes": 1,
+        "terminal": 3
+      }
+    ]
+  },
+  "experiment_trials_running": {
+    "active_policy": null,
+    "agent_id": "pi-coding-agent.v1",
+    "candidate_policy": {
+      "created_at": "<timestamp>",
+      "experiment_id": "<id-16>",
+      "id": "<id-20>",
+      "parent_policy_id": null,
+      "patch": {
+        "instruction_patch": [
+          "Do not repeat a tool call with identical arguments.",
+          "Check service health, then metrics, then fetch logs supported by evidence."
+        ],
+        "max_steps": 6,
+        "tool_priority": {
+          "check_service_health": 1.0,
+          "fetch_service_logs": 0.3,
+          "query_service_metrics": 0.9
+        }
+      },
+      "rationale": "The baseline Run ended failed. The candidate limits the Agent to 6 steps; prioritises tools: check_service_health, query_service_metrics, fetch_service_logs; adds 2 instructions.",
+      "reject_reason": null,
+      "replay_run_id": null,
+      "score_delta": null,
+      "source_run_id": "<id-17>",
+      "status": "candidate"
+    },
+    "created_at": "<timestamp>",
+    "execution_mode": "provider",
+    "id": "<id-16>",
+    "name": "Trials",
+    "regression_cases": [],
+    "runs": [
+      {
+        "completed_at": "<timestamp>",
+        "error": "Agent execution failed",
+        "evaluation_spec": {
+          "agent_id": "pi-coding-agent.v1",
+          "execution_mode": "provider",
+          "experiment_id": "<id-16>",
+          "limits": {
+            "max_output_bytes": 1048576,
+            "timeout_ms": 60000
+          },
+          "policy": null,
+          "run_id": "<id-17>",
+          "scenario_id": "checkout-api-latency.v2",
+          "scenario_params": {},
+          "schema_version": 1,
+          "seed": 42,
+          "task": "Investigate checkout API latency"
+        },
+        "experiment_id": "<id-16>",
+        "id": "<id-17>",
+        "kind": "baseline",
+        "metrics": {
+          "agent_usage": {
+            "context_window": null,
+            "source": "agent_reported",
+            "token_completion": null,
+            "token_prompt": null
+          },
+          "assertions": {
+            "aggregate": 0.13333333333333333,
+            "assertions": [
+              {
+                "detail": "tools=['fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs']",
+                "passed": false,
+                "score": 0.0,
+                "threshold": 1.0,
+                "type": "tool-used",
+                "weight": 1.0
+              },
+              {
+                "detail": "tools=['fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs']",
+                "passed": false,
+                "score": 0.0,
+                "threshold": 1.0,
+                "type": "tool-used",
+                "weight": 1.0
+              },
+              {
+                "detail": "expected=['check_service_health', 'query_service_metrics', 'fetch_service_logs'] actual=['fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs']",
+                "passed": false,
+                "score": 0.0,
+                "threshold": 1.0,
+                "type": "tool-sequence",
+                "weight": 2.0
+              },
+              {
+                "detail": "steps=6 min=None max=4",
+                "passed": false,
+                "score": 0.6666666666666666,
+                "threshold": 1.0,
+                "type": "step-count",
+                "weight": 1.0
+              }
+            ],
+            "combination": "weighted"
+          },
+          "environment": {
+            "check_called": false,
+            "finalized": false
+          },
+          "latency_ms": 150,
+          "score_breakdown": {
+            "cost_penalty": -0.0,
+            "latency_penalty": -0.0015,
+            "success_reward": 0.13333333333333333,
+            "tool_failure_penalty": -0.0
+          },
+          "steps": 6,
+          "token_completion": null,
+          "token_prompt": null,
+          "total_tokens": null
+        },
+        "policy_id": null,
+        "queued_at": "<timestamp>",
+        "regression_case_id": null,
+        "score": 0.13183333333333333,
+        "source_run_id": null,
+        "started_at": "<timestamp>",
+        "status": "failed",
+        "trial_group_id": "<id-18>",
+        "trial_index": 1
+      },
+      {
+        "completed_at": null,
+        "error": null,
+        "evaluation_spec": {
+          "agent_id": "pi-coding-agent.v1",
+          "execution_mode": "provider",
+          "experiment_id": "<id-16>",
+          "limits": {
+            "max_output_bytes": 1048576,
+            "timeout_ms": 60000
+          },
+          "policy": null,
+          "run_id": "<id-19>",
+          "scenario_id": "checkout-api-latency.v2",
+          "scenario_params": {},
+          "schema_version": 1,
+          "seed": 42,
+          "task": "Investigate checkout API latency"
+        },
+        "experiment_id": "<id-16>",
+        "id": "<id-19>",
+        "kind": "baseline",
+        "metrics": {},
+        "policy_id": null,
+        "queued_at": "<timestamp>",
+        "regression_case_id": null,
+        "score": null,
+        "source_run_id": null,
+        "started_at": null,
+        "status": "queued",
+        "trial_group_id": "<id-18>",
+        "trial_index": 2
+      }
+    ],
+    "scenario_id": "checkout-api-latency.v2",
+    "scenario_params": {},
+    "task": "Investigate checkout API latency",
+    "trial_groups": [
+      {
+        "created_at": "<timestamp>",
+        "experiment_id": "<id-16>",
+        "id": "<id-18>",
+        "k": 1,
+        "mean_score": null,
+        "mean_steps": null,
+        "n": 2,
+        "pass_at_1": null,
+        "pass_at_k": null,
+        "policy_id": null,
+        "run_ids": [
+          "<id-17>",
+          "<id-19>"
+        ],
+        "seed": 42,
+        "state": "running",
+        "successes": null,
+        "terminal": 1
+      }
+    ]
+  },
+  "experiment_with_regression": {
+    "active_policy": null,
+    "agent_id": null,
+    "candidate_policy": {
+      "created_at": "<timestamp>",
+      "experiment_id": "<id-1>",
+      "id": "<id-6>",
+      "parent_policy_id": null,
+      "patch": {
+        "instruction_patch": [
+          "Do not repeat a tool call with identical arguments.",
+          "Check service health, then metrics, then fetch logs supported by evidence."
+        ],
+        "max_steps": 6,
+        "tool_priority": {
+          "check_service_health": 1.0,
+          "fetch_service_logs": 0.3,
+          "query_service_metrics": 0.9
+        }
+      },
+      "rationale": "The baseline Run ended failed. The candidate limits the Agent to 6 steps; prioritises tools: check_service_health, query_service_metrics, fetch_service_logs; adds 2 instructions.",
+      "reject_reason": null,
+      "replay_run_id": null,
+      "score_delta": null,
+      "source_run_id": "<id-2>",
+      "status": "candidate"
+    },
+    "created_at": "<timestamp>",
+    "execution_mode": "fixture",
+    "id": "<id-1>",
+    "name": "Trials",
+    "regression_cases": [
+      {
+        "created_at": "<timestamp>",
+        "eligible_for_replay": true,
+        "execution_mode": "fixture",
+        "experiment_id": "<id-1>",
+        "id": "<id-7>",
+        "replay_policy_id": null,
+        "replay_run_id": null,
+        "reproducibility": "deterministic",
+        "reproducibility_note": "Fixture execution is deterministic for the stored scenario, seed, and parameters.",
+        "scenario_id": "checkout-api-latency.v2",
+        "scenario_params": {},
+        "seed": 7,
+        "source_run_id": "<id-2>"
+      }
+    ],
+    "runs": [
+      {
+        "completed_at": "<timestamp>",
+        "error": "Agent execution failed",
+        "evaluation_spec": {
+          "agent_id": "fixture-agent.v1",
+          "execution_mode": "fixture",
+          "experiment_id": "<id-1>",
+          "limits": {
+            "max_output_bytes": 1048576,
+            "timeout_ms": 60000
+          },
+          "policy": null,
+          "run_id": "<id-2>",
+          "scenario_id": "checkout-api-latency.v2",
+          "scenario_params": {},
+          "schema_version": 1,
+          "seed": 7,
+          "task": "Investigate checkout API latency"
+        },
+        "experiment_id": "<id-1>",
+        "id": "<id-2>",
+        "kind": "baseline",
+        "metrics": {
+          "agent_usage": {
+            "context_window": null,
+            "source": "agent_reported",
+            "token_completion": null,
+            "token_prompt": null
+          },
+          "assertions": {
+            "aggregate": 0.13333333333333333,
+            "assertions": [
+              {
+                "detail": "tools=['fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs']",
+                "passed": false,
+                "score": 0.0,
+                "threshold": 1.0,
+                "type": "tool-used",
+                "weight": 1.0
+              },
+              {
+                "detail": "tools=['fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs']",
+                "passed": false,
+                "score": 0.0,
+                "threshold": 1.0,
+                "type": "tool-used",
+                "weight": 1.0
+              },
+              {
+                "detail": "expected=['check_service_health', 'query_service_metrics', 'fetch_service_logs'] actual=['fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs']",
+                "passed": false,
+                "score": 0.0,
+                "threshold": 1.0,
+                "type": "tool-sequence",
+                "weight": 2.0
+              },
+              {
+                "detail": "steps=6 min=None max=4",
+                "passed": false,
+                "score": 0.6666666666666666,
+                "threshold": 1.0,
+                "type": "step-count",
+                "weight": 1.0
+              }
+            ],
+            "combination": "weighted"
+          },
+          "environment": {
+            "check_called": false,
+            "finalized": false
+          },
+          "latency_ms": 150,
+          "score_breakdown": {
+            "cost_penalty": -0.0,
+            "latency_penalty": -0.0015,
+            "success_reward": 0.13333333333333333,
+            "tool_failure_penalty": -0.0
+          },
+          "steps": 6,
+          "token_completion": null,
+          "token_prompt": null,
+          "total_tokens": null
+        },
+        "policy_id": null,
+        "queued_at": "<timestamp>",
+        "regression_case_id": "<id-7>",
+        "score": 0.13183333333333333,
+        "source_run_id": null,
+        "started_at": "<timestamp>",
+        "status": "failed",
+        "trial_group_id": "<id-3>",
+        "trial_index": 1
+      },
+      {
+        "completed_at": "<timestamp>",
+        "error": null,
+        "evaluation_spec": {
+          "agent_id": "fixture-agent.v1",
+          "execution_mode": "fixture",
+          "experiment_id": "<id-1>",
+          "limits": {
+            "max_output_bytes": 1048576,
+            "timeout_ms": 60000
+          },
+          "policy": null,
+          "run_id": "<id-4>",
+          "scenario_id": "checkout-api-latency.v2",
+          "scenario_params": {},
+          "schema_version": 1,
+          "seed": 7,
+          "task": "Investigate checkout API latency"
+        },
+        "experiment_id": "<id-1>",
+        "id": "<id-4>",
+        "kind": "baseline",
+        "metrics": {
+          "agent_usage": {
+            "context_window": null,
+            "source": "agent_reported",
+            "token_completion": null,
+            "token_prompt": null
+          },
+          "assertions": {
+            "aggregate": 1.0,
+            "assertions": [
+              {
+                "detail": "tools=['check_service_health', 'query_service_metrics', 'fetch_service_logs']",
+                "passed": true,
+                "score": 1.0,
+                "threshold": 1.0,
+                "type": "tool-used",
+                "weight": 1.0
+              },
+              {
+                "detail": "tools=['check_service_health', 'query_service_metrics', 'fetch_service_logs']",
+                "passed": true,
+                "score": 1.0,
+                "threshold": 1.0,
+                "type": "tool-used",
+                "weight": 1.0
+              },
+              {
+                "detail": "expected=['check_service_health', 'query_service_metrics', 'fetch_service_logs'] actual=['check_service_health', 'query_service_metrics', 'fetch_service_logs']",
+                "passed": true,
+                "score": 1.0,
+                "threshold": 1.0,
+                "type": "tool-sequence",
+                "weight": 2.0
+              },
+              {
+                "detail": "steps=3 min=None max=4",
+                "passed": true,
+                "score": 1.0,
+                "threshold": 1.0,
+                "type": "step-count",
+                "weight": 1.0
+              }
+            ],
+            "combination": "weighted"
+          },
+          "environment": {
+            "check_called": true,
+            "finalized": true
+          },
+          "latency_ms": 75,
+          "score_breakdown": {
+            "cost_penalty": -0.0,
+            "latency_penalty": -0.00075,
+            "success_reward": 1.0,
+            "tool_failure_penalty": -0.0
+          },
+          "steps": 3,
+          "token_completion": null,
+          "token_prompt": null,
+          "total_tokens": null
+        },
+        "policy_id": null,
+        "queued_at": "<timestamp>",
+        "regression_case_id": null,
+        "score": 0.99925,
+        "source_run_id": null,
+        "started_at": "<timestamp>",
+        "status": "succeeded",
+        "trial_group_id": "<id-3>",
+        "trial_index": 2
+      },
+      {
+        "completed_at": "<timestamp>",
+        "error": "Agent execution failed",
+        "evaluation_spec": {
+          "agent_id": "fixture-agent.v1",
+          "execution_mode": "fixture",
+          "experiment_id": "<id-1>",
+          "limits": {
+            "max_output_bytes": 1048576,
+            "timeout_ms": 60000
+          },
+          "policy": null,
+          "run_id": "<id-5>",
+          "scenario_id": "checkout-api-latency.v2",
+          "scenario_params": {},
+          "schema_version": 1,
+          "seed": 7,
+          "task": "Investigate checkout API latency"
+        },
+        "experiment_id": "<id-1>",
+        "id": "<id-5>",
+        "kind": "baseline",
+        "metrics": {
+          "agent_usage": {
+            "context_window": null,
+            "source": "agent_reported",
+            "token_completion": null,
+            "token_prompt": null
+          },
+          "assertions": {
+            "aggregate": 0.13333333333333333,
+            "assertions": [
+              {
+                "detail": "tools=['fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs']",
+                "passed": false,
+                "score": 0.0,
+                "threshold": 1.0,
+                "type": "tool-used",
+                "weight": 1.0
+              },
+              {
+                "detail": "tools=['fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs']",
+                "passed": false,
+                "score": 0.0,
+                "threshold": 1.0,
+                "type": "tool-used",
+                "weight": 1.0
+              },
+              {
+                "detail": "expected=['check_service_health', 'query_service_metrics', 'fetch_service_logs'] actual=['fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs']",
+                "passed": false,
+                "score": 0.0,
+                "threshold": 1.0,
+                "type": "tool-sequence",
+                "weight": 2.0
+              },
+              {
+                "detail": "steps=6 min=None max=4",
+                "passed": false,
+                "score": 0.6666666666666666,
+                "threshold": 1.0,
+                "type": "step-count",
+                "weight": 1.0
+              }
+            ],
+            "combination": "weighted"
+          },
+          "environment": {
+            "check_called": false,
+            "finalized": false
+          },
+          "latency_ms": 150,
+          "score_breakdown": {
+            "cost_penalty": -0.0,
+            "latency_penalty": -0.0015,
+            "success_reward": 0.13333333333333333,
+            "tool_failure_penalty": -0.0
+          },
+          "steps": 6,
+          "token_completion": null,
+          "token_prompt": null,
+          "total_tokens": null
+        },
+        "policy_id": null,
+        "queued_at": "<timestamp>",
+        "regression_case_id": null,
+        "score": 0.13183333333333333,
+        "source_run_id": null,
+        "started_at": "<timestamp>",
+        "status": "failed",
+        "trial_group_id": "<id-3>",
+        "trial_index": 3
+      }
+    ],
+    "scenario_id": "checkout-api-latency.v2",
+    "scenario_params": {},
+    "task": "Investigate checkout API latency",
+    "trial_groups": [
+      {
+        "created_at": "<timestamp>",
+        "experiment_id": "<id-1>",
+        "id": "<id-3>",
+        "k": 2,
+        "mean_score": 0.33308333333333334,
+        "mean_steps": 5.0,
+        "n": 3,
+        "pass_at_1": 0.3333333333333333,
+        "pass_at_k": 0.0,
+        "policy_id": null,
+        "run_ids": [
+          "<id-2>",
+          "<id-4>",
+          "<id-5>"
+        ],
+        "seed": 7,
+        "state": "complete",
+        "successes": 1,
+        "terminal": 3
+      }
+    ]
+  },
+  "experiments_list": [
+    {
+      "active_policy": null,
+      "agent_id": "pi-coding-agent.v1",
+      "candidate_policy": {
+        "created_at": "<timestamp>",
+        "experiment_id": "<id-16>",
+        "id": "<id-20>",
+        "parent_policy_id": null,
+        "patch": {
+          "instruction_patch": [
+            "Do not repeat a tool call with identical arguments.",
+            "Check service health, then metrics, then fetch logs supported by evidence."
+          ],
+          "max_steps": 6,
+          "tool_priority": {
+            "check_service_health": 1.0,
+            "fetch_service_logs": 0.3,
+            "query_service_metrics": 0.9
+          }
+        },
+        "rationale": "The baseline Run ended failed. The candidate limits the Agent to 6 steps; prioritises tools: check_service_health, query_service_metrics, fetch_service_logs; adds 2 instructions.",
+        "reject_reason": null,
+        "replay_run_id": null,
+        "score_delta": null,
+        "source_run_id": "<id-17>",
+        "status": "candidate"
+      },
+      "created_at": "<timestamp>",
+      "execution_mode": "provider",
+      "id": "<id-16>",
+      "name": "Trials",
+      "regression_cases": [],
+      "runs": [
+        {
+          "completed_at": "<timestamp>",
+          "error": "Agent execution failed",
+          "evaluation_spec": {
+            "agent_id": "pi-coding-agent.v1",
+            "execution_mode": "provider",
+            "experiment_id": "<id-16>",
+            "limits": {
+              "max_output_bytes": 1048576,
+              "timeout_ms": 60000
+            },
+            "policy": null,
+            "run_id": "<id-17>",
+            "scenario_id": "checkout-api-latency.v2",
+            "scenario_params": {},
+            "schema_version": 1,
+            "seed": 42,
+            "task": "Investigate checkout API latency"
+          },
+          "experiment_id": "<id-16>",
+          "id": "<id-17>",
+          "kind": "baseline",
+          "metrics": {
+            "agent_usage": {
+              "context_window": null,
+              "source": "agent_reported",
+              "token_completion": null,
+              "token_prompt": null
+            },
+            "assertions": {
+              "aggregate": 0.13333333333333333,
+              "assertions": [
+                {
+                  "detail": "tools=['fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs']",
+                  "passed": false,
+                  "score": 0.0,
+                  "threshold": 1.0,
+                  "type": "tool-used",
+                  "weight": 1.0
+                },
+                {
+                  "detail": "tools=['fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs']",
+                  "passed": false,
+                  "score": 0.0,
+                  "threshold": 1.0,
+                  "type": "tool-used",
+                  "weight": 1.0
+                },
+                {
+                  "detail": "expected=['check_service_health', 'query_service_metrics', 'fetch_service_logs'] actual=['fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs']",
+                  "passed": false,
+                  "score": 0.0,
+                  "threshold": 1.0,
+                  "type": "tool-sequence",
+                  "weight": 2.0
+                },
+                {
+                  "detail": "steps=6 min=None max=4",
+                  "passed": false,
+                  "score": 0.6666666666666666,
+                  "threshold": 1.0,
+                  "type": "step-count",
+                  "weight": 1.0
+                }
+              ],
+              "combination": "weighted"
+            },
+            "environment": {
+              "check_called": false,
+              "finalized": false
+            },
+            "latency_ms": 150,
+            "score_breakdown": {
+              "cost_penalty": -0.0,
+              "latency_penalty": -0.0015,
+              "success_reward": 0.13333333333333333,
+              "tool_failure_penalty": -0.0
+            },
+            "steps": 6,
+            "token_completion": null,
+            "token_prompt": null,
+            "total_tokens": null
+          },
+          "policy_id": null,
+          "queued_at": "<timestamp>",
+          "regression_case_id": null,
+          "score": 0.13183333333333333,
+          "source_run_id": null,
+          "started_at": "<timestamp>",
+          "status": "failed",
+          "trial_group_id": "<id-18>",
+          "trial_index": 1
+        },
+        {
+          "completed_at": null,
+          "error": null,
+          "evaluation_spec": {
+            "agent_id": "pi-coding-agent.v1",
+            "execution_mode": "provider",
+            "experiment_id": "<id-16>",
+            "limits": {
+              "max_output_bytes": 1048576,
+              "timeout_ms": 60000
+            },
+            "policy": null,
+            "run_id": "<id-19>",
+            "scenario_id": "checkout-api-latency.v2",
+            "scenario_params": {},
+            "schema_version": 1,
+            "seed": 42,
+            "task": "Investigate checkout API latency"
+          },
+          "experiment_id": "<id-16>",
+          "id": "<id-19>",
+          "kind": "baseline",
+          "metrics": {},
+          "policy_id": null,
+          "queued_at": "<timestamp>",
+          "regression_case_id": null,
+          "score": null,
+          "source_run_id": null,
+          "started_at": null,
+          "status": "queued",
+          "trial_group_id": "<id-18>",
+          "trial_index": 2
+        }
+      ],
+      "scenario_id": "checkout-api-latency.v2",
+      "scenario_params": {},
+      "task": "Investigate checkout API latency",
+      "trial_groups": [
+        {
+          "created_at": "<timestamp>",
+          "experiment_id": "<id-16>",
+          "id": "<id-18>",
+          "k": 1,
+          "mean_score": null,
+          "mean_steps": null,
+          "n": 2,
+          "pass_at_1": null,
+          "pass_at_k": null,
+          "policy_id": null,
+          "run_ids": [
+            "<id-17>",
+            "<id-19>"
+          ],
+          "seed": 42,
+          "state": "running",
+          "successes": null,
+          "terminal": 1
+        }
+      ]
+    },
+    {
+      "active_policy": null,
+      "agent_id": null,
+      "candidate_policy": null,
+      "created_at": "<timestamp>",
+      "execution_mode": "fixture",
+      "id": "<id-14>",
+      "name": "Trials",
+      "regression_cases": [],
+      "runs": [
+        {
+          "completed_at": "<timestamp>",
+          "error": "Execution timed out",
+          "evaluation_spec": {
+            "agent_id": "fixture-agent.v1",
+            "execution_mode": "fixture",
+            "experiment_id": "<id-14>",
+            "limits": {
+              "max_output_bytes": 1048576,
+              "timeout_ms": 60000
+            },
+            "policy": null,
+            "run_id": "<id-13>",
+            "scenario_id": "checkout-api-latency.v2",
+            "scenario_params": {},
+            "schema_version": 1,
+            "seed": 42,
+            "task": "Investigate checkout API latency"
+          },
+          "experiment_id": "<id-14>",
+          "id": "<id-13>",
+          "kind": "baseline",
+          "metrics": {
+            "agent_usage": {
+              "context_window": null,
+              "source": "agent_reported",
+              "token_completion": null,
+              "token_prompt": null
+            },
+            "assertions": {
+              "aggregate": 0.2,
+              "assertions": [
+                {
+                  "detail": "tools=['fetch_service_logs']",
+                  "passed": false,
+                  "score": 0.0,
+                  "threshold": 1.0,
+                  "type": "tool-used",
+                  "weight": 1.0
+                },
+                {
+                  "detail": "tools=['fetch_service_logs']",
+                  "passed": false,
+                  "score": 0.0,
+                  "threshold": 1.0,
+                  "type": "tool-used",
+                  "weight": 1.0
+                },
+                {
+                  "detail": "expected=['check_service_health', 'query_service_metrics', 'fetch_service_logs'] actual=['fetch_service_logs']",
+                  "passed": false,
+                  "score": 0.0,
+                  "threshold": 1.0,
+                  "type": "tool-sequence",
+                  "weight": 2.0
+                },
+                {
+                  "detail": "steps=1 min=None max=4",
+                  "passed": true,
+                  "score": 1.0,
+                  "threshold": 1.0,
+                  "type": "step-count",
+                  "weight": 1.0
+                }
+              ],
+              "combination": "weighted"
+            },
+            "environment": {
+              "check_called": false,
+              "finalized": false
+            },
+            "latency_ms": 25,
+            "score_breakdown": {
+              "cost_penalty": -0.0,
+              "latency_penalty": -0.00025,
+              "success_reward": 0.2,
+              "tool_failure_penalty": -0.0
+            },
+            "steps": 1,
+            "token_completion": null,
+            "token_prompt": null,
+            "total_tokens": null
+          },
+          "policy_id": null,
+          "queued_at": "<timestamp>",
+          "regression_case_id": null,
+          "score": 0.19975,
+          "source_run_id": null,
+          "started_at": "<timestamp>",
+          "status": "timed_out",
+          "trial_group_id": null,
+          "trial_index": null
+        }
+      ],
+      "scenario_id": "checkout-api-latency.v2",
+      "scenario_params": {},
+      "task": "Investigate checkout API latency",
+      "trial_groups": []
+    },
+    {
+      "active_policy": null,
+      "agent_id": null,
+      "candidate_policy": {
+        "created_at": "<timestamp>",
+        "experiment_id": "<id-8>",
+        "id": "<id-12>",
+        "parent_policy_id": null,
+        "patch": {
+          "instruction_patch": [
+            "Do not repeat a tool call with identical arguments.",
+            "Check service health, then metrics, then fetch logs supported by evidence."
+          ],
+          "max_steps": 6,
+          "tool_priority": {
+            "check_service_health": 1.0,
+            "fetch_service_logs": 0.3,
+            "query_service_metrics": 0.9
+          }
+        },
+        "rationale": "The baseline Run ended failed. The candidate limits the Agent to 6 steps; prioritises tools: check_service_health, query_service_metrics, fetch_service_logs; adds 2 instructions.",
+        "reject_reason": null,
+        "replay_run_id": null,
+        "score_delta": null,
+        "source_run_id": "<id-9>",
+        "status": "candidate"
+      },
+      "created_at": "<timestamp>",
+      "execution_mode": "fixture",
+      "id": "<id-8>",
+      "name": "Trials",
+      "regression_cases": [],
+      "runs": [
+        {
+          "completed_at": "<timestamp>",
+          "error": "Agent execution failed",
+          "evaluation_spec": {
+            "agent_id": "fixture-agent.v1",
+            "execution_mode": "fixture",
+            "experiment_id": "<id-8>",
+            "limits": {
+              "max_output_bytes": 1048576,
+              "timeout_ms": 60000
+            },
+            "policy": null,
+            "run_id": "<id-9>",
+            "scenario_id": "checkout-api-latency.v2",
+            "scenario_params": {},
+            "schema_version": 1,
+            "seed": 42,
+            "task": "Investigate checkout API latency"
+          },
+          "experiment_id": "<id-8>",
+          "id": "<id-9>",
+          "kind": "baseline",
+          "metrics": {
+            "agent_usage": {
+              "context_window": null,
+              "source": "agent_reported",
+              "token_completion": null,
+              "token_prompt": null
+            },
+            "assertions": {
+              "aggregate": 0.13333333333333333,
+              "assertions": [
+                {
+                  "detail": "tools=['fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs']",
+                  "passed": false,
+                  "score": 0.0,
+                  "threshold": 1.0,
+                  "type": "tool-used",
+                  "weight": 1.0
+                },
+                {
+                  "detail": "tools=['fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs']",
+                  "passed": false,
+                  "score": 0.0,
+                  "threshold": 1.0,
+                  "type": "tool-used",
+                  "weight": 1.0
+                },
+                {
+                  "detail": "expected=['check_service_health', 'query_service_metrics', 'fetch_service_logs'] actual=['fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs']",
+                  "passed": false,
+                  "score": 0.0,
+                  "threshold": 1.0,
+                  "type": "tool-sequence",
+                  "weight": 2.0
+                },
+                {
+                  "detail": "steps=6 min=None max=4",
+                  "passed": false,
+                  "score": 0.6666666666666666,
+                  "threshold": 1.0,
+                  "type": "step-count",
+                  "weight": 1.0
+                }
+              ],
+              "combination": "weighted"
+            },
+            "environment": {
+              "check_called": false,
+              "finalized": false
+            },
+            "latency_ms": 150,
+            "score_breakdown": {
+              "cost_penalty": -0.0,
+              "latency_penalty": -0.0015,
+              "success_reward": 0.13333333333333333,
+              "tool_failure_penalty": -0.0
+            },
+            "steps": 6,
+            "token_completion": null,
+            "token_prompt": null,
+            "total_tokens": null
+          },
+          "policy_id": null,
+          "queued_at": "<timestamp>",
+          "regression_case_id": null,
+          "score": 0.13183333333333333,
+          "source_run_id": null,
+          "started_at": "<timestamp>",
+          "status": "failed",
+          "trial_group_id": "<id-10>",
+          "trial_index": 1
+        },
+        {
+          "completed_at": "<timestamp>",
+          "error": "Run cancelled",
+          "evaluation_spec": {
+            "agent_id": "fixture-agent.v1",
+            "execution_mode": "fixture",
+            "experiment_id": "<id-8>",
+            "limits": {
+              "max_output_bytes": 1048576,
+              "timeout_ms": 60000
+            },
+            "policy": null,
+            "run_id": "<id-11>",
+            "scenario_id": "checkout-api-latency.v2",
+            "scenario_params": {},
+            "schema_version": 1,
+            "seed": 42,
+            "task": "Investigate checkout API latency"
+          },
+          "experiment_id": "<id-8>",
+          "id": "<id-11>",
+          "kind": "baseline",
+          "metrics": {
+            "agent_usage": {
+              "context_window": null,
+              "source": "agent_reported",
+              "token_completion": null,
+              "token_prompt": null
+            },
+            "assertions": {
+              "aggregate": 0.2,
+              "assertions": [
+                {
+                  "detail": "tools=[]",
+                  "passed": false,
+                  "score": 0.0,
+                  "threshold": 1.0,
+                  "type": "tool-used",
+                  "weight": 1.0
+                },
+                {
+                  "detail": "tools=[]",
+                  "passed": false,
+                  "score": 0.0,
+                  "threshold": 1.0,
+                  "type": "tool-used",
+                  "weight": 1.0
+                },
+                {
+                  "detail": "expected=['check_service_health', 'query_service_metrics', 'fetch_service_logs'] actual=[]",
+                  "passed": false,
+                  "score": 0.0,
+                  "threshold": 1.0,
+                  "type": "tool-sequence",
+                  "weight": 2.0
+                },
+                {
+                  "detail": "steps=0 min=None max=4",
+                  "passed": true,
+                  "score": 1.0,
+                  "threshold": 1.0,
+                  "type": "step-count",
+                  "weight": 1.0
+                }
+              ],
+              "combination": "weighted"
+            },
+            "environment": {
+              "check_called": false,
+              "finalized": false
+            },
+            "latency_ms": 0,
+            "score_breakdown": {
+              "cost_penalty": -0.0,
+              "latency_penalty": -0.0,
+              "success_reward": 0.2,
+              "tool_failure_penalty": -0.0
+            },
+            "steps": 0,
+            "token_completion": null,
+            "token_prompt": null,
+            "total_tokens": null
+          },
+          "policy_id": null,
+          "queued_at": "<timestamp>",
+          "regression_case_id": null,
+          "score": 0.2,
+          "source_run_id": null,
+          "started_at": "<timestamp>",
+          "status": "cancelled",
+          "trial_group_id": "<id-10>",
+          "trial_index": 2
+        }
+      ],
+      "scenario_id": "checkout-api-latency.v2",
+      "scenario_params": {},
+      "task": "Investigate checkout API latency",
+      "trial_groups": [
+        {
+          "created_at": "<timestamp>",
+          "experiment_id": "<id-8>",
+          "id": "<id-10>",
+          "k": 1,
+          "mean_score": null,
+          "mean_steps": null,
+          "n": 2,
+          "pass_at_1": null,
+          "pass_at_k": null,
+          "policy_id": null,
+          "run_ids": [
+            "<id-9>",
+            "<id-11>"
+          ],
+          "seed": 42,
+          "state": "cancelled",
+          "successes": null,
+          "terminal": 2
+        }
+      ]
+    },
+    {
+      "active_policy": null,
+      "agent_id": null,
+      "candidate_policy": {
+        "created_at": "<timestamp>",
+        "experiment_id": "<id-1>",
+        "id": "<id-6>",
+        "parent_policy_id": null,
+        "patch": {
+          "instruction_patch": [
+            "Do not repeat a tool call with identical arguments.",
+            "Check service health, then metrics, then fetch logs supported by evidence."
+          ],
+          "max_steps": 6,
+          "tool_priority": {
+            "check_service_health": 1.0,
+            "fetch_service_logs": 0.3,
+            "query_service_metrics": 0.9
+          }
+        },
+        "rationale": "The baseline Run ended failed. The candidate limits the Agent to 6 steps; prioritises tools: check_service_health, query_service_metrics, fetch_service_logs; adds 2 instructions.",
+        "reject_reason": null,
+        "replay_run_id": "<id-21>",
+        "score_delta": null,
+        "source_run_id": "<id-2>",
+        "status": "replaying"
+      },
+      "created_at": "<timestamp>",
+      "execution_mode": "fixture",
+      "id": "<id-1>",
+      "name": "Trials",
+      "regression_cases": [
+        {
+          "created_at": "<timestamp>",
+          "eligible_for_replay": true,
+          "execution_mode": "fixture",
+          "experiment_id": "<id-1>",
+          "id": "<id-7>",
+          "replay_policy_id": null,
+          "replay_run_id": null,
+          "reproducibility": "deterministic",
+          "reproducibility_note": "Fixture execution is deterministic for the stored scenario, seed, and parameters.",
+          "scenario_id": "checkout-api-latency.v2",
+          "scenario_params": {},
+          "seed": 7,
+          "source_run_id": "<id-2>"
+        }
+      ],
+      "runs": [
+        {
+          "completed_at": "<timestamp>",
+          "error": "Agent execution failed",
+          "evaluation_spec": {
+            "agent_id": "fixture-agent.v1",
+            "execution_mode": "fixture",
+            "experiment_id": "<id-1>",
+            "limits": {
+              "max_output_bytes": 1048576,
+              "timeout_ms": 60000
+            },
+            "policy": null,
+            "run_id": "<id-2>",
+            "scenario_id": "checkout-api-latency.v2",
+            "scenario_params": {},
+            "schema_version": 1,
+            "seed": 7,
+            "task": "Investigate checkout API latency"
+          },
+          "experiment_id": "<id-1>",
+          "id": "<id-2>",
+          "kind": "baseline",
+          "metrics": {
+            "agent_usage": {
+              "context_window": null,
+              "source": "agent_reported",
+              "token_completion": null,
+              "token_prompt": null
+            },
+            "assertions": {
+              "aggregate": 0.13333333333333333,
+              "assertions": [
+                {
+                  "detail": "tools=['fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs']",
+                  "passed": false,
+                  "score": 0.0,
+                  "threshold": 1.0,
+                  "type": "tool-used",
+                  "weight": 1.0
+                },
+                {
+                  "detail": "tools=['fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs']",
+                  "passed": false,
+                  "score": 0.0,
+                  "threshold": 1.0,
+                  "type": "tool-used",
+                  "weight": 1.0
+                },
+                {
+                  "detail": "expected=['check_service_health', 'query_service_metrics', 'fetch_service_logs'] actual=['fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs']",
+                  "passed": false,
+                  "score": 0.0,
+                  "threshold": 1.0,
+                  "type": "tool-sequence",
+                  "weight": 2.0
+                },
+                {
+                  "detail": "steps=6 min=None max=4",
+                  "passed": false,
+                  "score": 0.6666666666666666,
+                  "threshold": 1.0,
+                  "type": "step-count",
+                  "weight": 1.0
+                }
+              ],
+              "combination": "weighted"
+            },
+            "environment": {
+              "check_called": false,
+              "finalized": false
+            },
+            "latency_ms": 150,
+            "score_breakdown": {
+              "cost_penalty": -0.0,
+              "latency_penalty": -0.0015,
+              "success_reward": 0.13333333333333333,
+              "tool_failure_penalty": -0.0
+            },
+            "steps": 6,
+            "token_completion": null,
+            "token_prompt": null,
+            "total_tokens": null
+          },
+          "policy_id": null,
+          "queued_at": "<timestamp>",
+          "regression_case_id": "<id-7>",
+          "score": 0.13183333333333333,
+          "source_run_id": null,
+          "started_at": "<timestamp>",
+          "status": "failed",
+          "trial_group_id": "<id-3>",
+          "trial_index": 1
+        },
+        {
+          "completed_at": "<timestamp>",
+          "error": null,
+          "evaluation_spec": {
+            "agent_id": "fixture-agent.v1",
+            "execution_mode": "fixture",
+            "experiment_id": "<id-1>",
+            "limits": {
+              "max_output_bytes": 1048576,
+              "timeout_ms": 60000
+            },
+            "policy": null,
+            "run_id": "<id-4>",
+            "scenario_id": "checkout-api-latency.v2",
+            "scenario_params": {},
+            "schema_version": 1,
+            "seed": 7,
+            "task": "Investigate checkout API latency"
+          },
+          "experiment_id": "<id-1>",
+          "id": "<id-4>",
+          "kind": "baseline",
+          "metrics": {
+            "agent_usage": {
+              "context_window": null,
+              "source": "agent_reported",
+              "token_completion": null,
+              "token_prompt": null
+            },
+            "assertions": {
+              "aggregate": 1.0,
+              "assertions": [
+                {
+                  "detail": "tools=['check_service_health', 'query_service_metrics', 'fetch_service_logs']",
+                  "passed": true,
+                  "score": 1.0,
+                  "threshold": 1.0,
+                  "type": "tool-used",
+                  "weight": 1.0
+                },
+                {
+                  "detail": "tools=['check_service_health', 'query_service_metrics', 'fetch_service_logs']",
+                  "passed": true,
+                  "score": 1.0,
+                  "threshold": 1.0,
+                  "type": "tool-used",
+                  "weight": 1.0
+                },
+                {
+                  "detail": "expected=['check_service_health', 'query_service_metrics', 'fetch_service_logs'] actual=['check_service_health', 'query_service_metrics', 'fetch_service_logs']",
+                  "passed": true,
+                  "score": 1.0,
+                  "threshold": 1.0,
+                  "type": "tool-sequence",
+                  "weight": 2.0
+                },
+                {
+                  "detail": "steps=3 min=None max=4",
+                  "passed": true,
+                  "score": 1.0,
+                  "threshold": 1.0,
+                  "type": "step-count",
+                  "weight": 1.0
+                }
+              ],
+              "combination": "weighted"
+            },
+            "environment": {
+              "check_called": true,
+              "finalized": true
+            },
+            "latency_ms": 75,
+            "score_breakdown": {
+              "cost_penalty": -0.0,
+              "latency_penalty": -0.00075,
+              "success_reward": 1.0,
+              "tool_failure_penalty": -0.0
+            },
+            "steps": 3,
+            "token_completion": null,
+            "token_prompt": null,
+            "total_tokens": null
+          },
+          "policy_id": null,
+          "queued_at": "<timestamp>",
+          "regression_case_id": null,
+          "score": 0.99925,
+          "source_run_id": null,
+          "started_at": "<timestamp>",
+          "status": "succeeded",
+          "trial_group_id": "<id-3>",
+          "trial_index": 2
+        },
+        {
+          "completed_at": "<timestamp>",
+          "error": "Agent execution failed",
+          "evaluation_spec": {
+            "agent_id": "fixture-agent.v1",
+            "execution_mode": "fixture",
+            "experiment_id": "<id-1>",
+            "limits": {
+              "max_output_bytes": 1048576,
+              "timeout_ms": 60000
+            },
+            "policy": null,
+            "run_id": "<id-5>",
+            "scenario_id": "checkout-api-latency.v2",
+            "scenario_params": {},
+            "schema_version": 1,
+            "seed": 7,
+            "task": "Investigate checkout API latency"
+          },
+          "experiment_id": "<id-1>",
+          "id": "<id-5>",
+          "kind": "baseline",
+          "metrics": {
+            "agent_usage": {
+              "context_window": null,
+              "source": "agent_reported",
+              "token_completion": null,
+              "token_prompt": null
+            },
+            "assertions": {
+              "aggregate": 0.13333333333333333,
+              "assertions": [
+                {
+                  "detail": "tools=['fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs']",
+                  "passed": false,
+                  "score": 0.0,
+                  "threshold": 1.0,
+                  "type": "tool-used",
+                  "weight": 1.0
+                },
+                {
+                  "detail": "tools=['fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs']",
+                  "passed": false,
+                  "score": 0.0,
+                  "threshold": 1.0,
+                  "type": "tool-used",
+                  "weight": 1.0
+                },
+                {
+                  "detail": "expected=['check_service_health', 'query_service_metrics', 'fetch_service_logs'] actual=['fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs']",
+                  "passed": false,
+                  "score": 0.0,
+                  "threshold": 1.0,
+                  "type": "tool-sequence",
+                  "weight": 2.0
+                },
+                {
+                  "detail": "steps=6 min=None max=4",
+                  "passed": false,
+                  "score": 0.6666666666666666,
+                  "threshold": 1.0,
+                  "type": "step-count",
+                  "weight": 1.0
+                }
+              ],
+              "combination": "weighted"
+            },
+            "environment": {
+              "check_called": false,
+              "finalized": false
+            },
+            "latency_ms": 150,
+            "score_breakdown": {
+              "cost_penalty": -0.0,
+              "latency_penalty": -0.0015,
+              "success_reward": 0.13333333333333333,
+              "tool_failure_penalty": -0.0
+            },
+            "steps": 6,
+            "token_completion": null,
+            "token_prompt": null,
+            "total_tokens": null
+          },
+          "policy_id": null,
+          "queued_at": "<timestamp>",
+          "regression_case_id": null,
+          "score": 0.13183333333333333,
+          "source_run_id": null,
+          "started_at": "<timestamp>",
+          "status": "failed",
+          "trial_group_id": "<id-3>",
+          "trial_index": 3
+        },
+        {
+          "completed_at": null,
+          "error": null,
+          "evaluation_spec": {
+            "agent_id": "fixture-agent.v1",
+            "execution_mode": "fixture",
+            "experiment_id": "<id-1>",
+            "limits": {
+              "max_output_bytes": 1048576,
+              "timeout_ms": 60000
+            },
+            "policy": {
+              "instruction_patch": [
+                "Do not repeat a tool call with identical arguments.",
+                "Check service health, then metrics, then fetch logs supported by evidence."
+              ],
+              "max_steps": 6,
+              "tool_priority": {
+                "check_service_health": 1.0,
+                "fetch_service_logs": 0.3,
+                "query_service_metrics": 0.9
+              }
+            },
+            "run_id": "<id-21>",
+            "scenario_id": "checkout-api-latency.v2",
+            "scenario_params": {},
+            "schema_version": 1,
+            "seed": 7,
+            "task": "Investigate checkout API latency"
+          },
+          "experiment_id": "<id-1>",
+          "id": "<id-21>",
+          "kind": "replay",
+          "metrics": {},
+          "policy_id": "<id-6>",
+          "queued_at": "<timestamp>",
+          "regression_case_id": null,
+          "score": null,
+          "source_run_id": "<id-2>",
+          "started_at": null,
+          "status": "queued",
+          "trial_group_id": "<id-22>",
+          "trial_index": 1
+        },
+        {
+          "completed_at": null,
+          "error": null,
+          "evaluation_spec": {
+            "agent_id": "fixture-agent.v1",
+            "execution_mode": "fixture",
+            "experiment_id": "<id-1>",
+            "limits": {
+              "max_output_bytes": 1048576,
+              "timeout_ms": 60000
+            },
+            "policy": {
+              "instruction_patch": [
+                "Do not repeat a tool call with identical arguments.",
+                "Check service health, then metrics, then fetch logs supported by evidence."
+              ],
+              "max_steps": 6,
+              "tool_priority": {
+                "check_service_health": 1.0,
+                "fetch_service_logs": 0.3,
+                "query_service_metrics": 0.9
+              }
+            },
+            "run_id": "<id-23>",
+            "scenario_id": "checkout-api-latency.v2",
+            "scenario_params": {},
+            "schema_version": 1,
+            "seed": 7,
+            "task": "Investigate checkout API latency"
+          },
+          "experiment_id": "<id-1>",
+          "id": "<id-23>",
+          "kind": "replay",
+          "metrics": {},
+          "policy_id": "<id-6>",
+          "queued_at": "<timestamp>",
+          "regression_case_id": null,
+          "score": null,
+          "source_run_id": "<id-4>",
+          "started_at": null,
+          "status": "queued",
+          "trial_group_id": "<id-22>",
+          "trial_index": 2
+        },
+        {
+          "completed_at": null,
+          "error": null,
+          "evaluation_spec": {
+            "agent_id": "fixture-agent.v1",
+            "execution_mode": "fixture",
+            "experiment_id": "<id-1>",
+            "limits": {
+              "max_output_bytes": 1048576,
+              "timeout_ms": 60000
+            },
+            "policy": {
+              "instruction_patch": [
+                "Do not repeat a tool call with identical arguments.",
+                "Check service health, then metrics, then fetch logs supported by evidence."
+              ],
+              "max_steps": 6,
+              "tool_priority": {
+                "check_service_health": 1.0,
+                "fetch_service_logs": 0.3,
+                "query_service_metrics": 0.9
+              }
+            },
+            "run_id": "<id-24>",
+            "scenario_id": "checkout-api-latency.v2",
+            "scenario_params": {},
+            "schema_version": 1,
+            "seed": 7,
+            "task": "Investigate checkout API latency"
+          },
+          "experiment_id": "<id-1>",
+          "id": "<id-24>",
+          "kind": "replay",
+          "metrics": {},
+          "policy_id": "<id-6>",
+          "queued_at": "<timestamp>",
+          "regression_case_id": null,
+          "score": null,
+          "source_run_id": "<id-5>",
+          "started_at": null,
+          "status": "queued",
+          "trial_group_id": "<id-22>",
+          "trial_index": 3
+        }
+      ],
+      "scenario_id": "checkout-api-latency.v2",
+      "scenario_params": {},
+      "task": "Investigate checkout API latency",
+      "trial_groups": [
+        {
+          "created_at": "<timestamp>",
+          "experiment_id": "<id-1>",
+          "id": "<id-22>",
+          "k": 2,
+          "mean_score": null,
+          "mean_steps": null,
+          "n": 3,
+          "pass_at_1": null,
+          "pass_at_k": null,
+          "policy_id": "<id-6>",
+          "run_ids": [
+            "<id-21>",
+            "<id-23>",
+            "<id-24>"
+          ],
+          "seed": 7,
+          "state": "running",
+          "successes": null,
+          "terminal": 0
+        },
+        {
+          "created_at": "<timestamp>",
+          "experiment_id": "<id-1>",
+          "id": "<id-3>",
+          "k": 2,
+          "mean_score": 0.33308333333333334,
+          "mean_steps": 5.0,
+          "n": 3,
+          "pass_at_1": 0.3333333333333333,
+          "pass_at_k": 0.0,
+          "policy_id": null,
+          "run_ids": [
+            "<id-2>",
+            "<id-4>",
+            "<id-5>"
+          ],
+          "seed": 7,
+          "state": "complete",
+          "successes": 1,
+          "terminal": 3
+        }
+      ]
+    }
+  ],
+  "policy_candidate": {
+    "created_at": "<timestamp>",
+    "experiment_id": "<id-1>",
+    "id": "<id-6>",
+    "parent_policy_id": null,
+    "patch": {
+      "instruction_patch": [
+        "Do not repeat a tool call with identical arguments.",
+        "Check service health, then metrics, then fetch logs supported by evidence."
+      ],
+      "max_steps": 6,
+      "tool_priority": {
+        "check_service_health": 1.0,
+        "fetch_service_logs": 0.3,
+        "query_service_metrics": 0.9
+      }
+    },
+    "rationale": "The baseline Run ended failed. The candidate limits the Agent to 6 steps; prioritises tools: check_service_health, query_service_metrics, fetch_service_logs; adds 2 instructions.",
+    "reject_reason": null,
+    "replay_run_id": null,
+    "score_delta": null,
+    "source_run_id": "<id-2>",
+    "status": "candidate"
+  },
+  "policy_rejected": {
+    "created_at": "<timestamp>",
+    "experiment_id": "<id-14>",
+    "id": "<id-15>",
+    "parent_policy_id": null,
+    "patch": {
+      "instruction_patch": [
+        "Do not repeat a tool call with identical arguments.",
+        "Check service health, then metrics, then fetch logs supported by evidence."
+      ],
+      "max_steps": 6,
+      "tool_priority": {
+        "check_service_health": 1.0,
+        "fetch_service_logs": 0.3,
+        "query_service_metrics": 0.9
+      }
+    },
+    "rationale": "The baseline Run ended timed out. The candidate limits the Agent to 6 steps; prioritises tools: check_service_health, query_service_metrics, fetch_service_logs; adds 2 instructions.",
+    "reject_reason": "no",
+    "replay_run_id": null,
+    "score_delta": null,
+    "source_run_id": "<id-13>",
+    "status": "rejected"
+  },
+  "policy_replaying": {
+    "created_at": "<timestamp>",
+    "experiment_id": "<id-1>",
+    "id": "<id-6>",
+    "parent_policy_id": null,
+    "patch": {
+      "instruction_patch": [
+        "Do not repeat a tool call with identical arguments.",
+        "Check service health, then metrics, then fetch logs supported by evidence."
+      ],
+      "max_steps": 6,
+      "tool_priority": {
+        "check_service_health": 1.0,
+        "fetch_service_logs": 0.3,
+        "query_service_metrics": 0.9
+      }
+    },
+    "rationale": "The baseline Run ended failed. The candidate limits the Agent to 6 steps; prioritises tools: check_service_health, query_service_metrics, fetch_service_logs; adds 2 instructions.",
+    "reject_reason": null,
+    "replay_run_id": "<id-21>",
+    "score_delta": null,
+    "source_run_id": "<id-2>",
+    "status": "replaying"
+  },
+  "regression_case": {
+    "created_at": "<timestamp>",
+    "eligible_for_replay": true,
+    "execution_mode": "fixture",
+    "experiment_id": "<id-1>",
+    "id": "<id-7>",
+    "replay_policy_id": null,
+    "replay_run_id": null,
+    "reproducibility": "deterministic",
+    "reproducibility_note": "Fixture execution is deterministic for the stored scenario, seed, and parameters.",
+    "scenario_id": "checkout-api-latency.v2",
+    "scenario_params": {},
+    "seed": 7,
+    "source_run_id": "<id-2>"
+  },
+  "run_failed": {
+    "completed_at": "<timestamp>",
+    "error": "Agent execution failed",
+    "evaluation_spec": {
+      "agent_id": "fixture-agent.v1",
+      "execution_mode": "fixture",
+      "experiment_id": "<id-1>",
+      "limits": {
+        "max_output_bytes": 1048576,
+        "timeout_ms": 60000
+      },
+      "policy": null,
+      "run_id": "<id-2>",
+      "scenario_id": "checkout-api-latency.v2",
+      "scenario_params": {},
+      "schema_version": 1,
+      "seed": 7,
+      "task": "Investigate checkout API latency"
+    },
+    "experiment_id": "<id-1>",
+    "id": "<id-2>",
+    "kind": "baseline",
+    "metrics": {
+      "agent_usage": {
+        "context_window": null,
+        "source": "agent_reported",
+        "token_completion": null,
+        "token_prompt": null
+      },
+      "assertions": {
+        "aggregate": 0.13333333333333333,
+        "assertions": [
+          {
+            "detail": "tools=['fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs']",
+            "passed": false,
+            "score": 0.0,
+            "threshold": 1.0,
+            "type": "tool-used",
+            "weight": 1.0
+          },
+          {
+            "detail": "tools=['fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs']",
+            "passed": false,
+            "score": 0.0,
+            "threshold": 1.0,
+            "type": "tool-used",
+            "weight": 1.0
+          },
+          {
+            "detail": "expected=['check_service_health', 'query_service_metrics', 'fetch_service_logs'] actual=['fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs', 'fetch_service_logs']",
+            "passed": false,
+            "score": 0.0,
+            "threshold": 1.0,
+            "type": "tool-sequence",
+            "weight": 2.0
+          },
+          {
+            "detail": "steps=6 min=None max=4",
+            "passed": false,
+            "score": 0.6666666666666666,
+            "threshold": 1.0,
+            "type": "step-count",
+            "weight": 1.0
+          }
+        ],
+        "combination": "weighted"
+      },
+      "environment": {
+        "check_called": false,
+        "finalized": false
+      },
+      "latency_ms": 150,
+      "score_breakdown": {
+        "cost_penalty": -0.0,
+        "latency_penalty": -0.0015,
+        "success_reward": 0.13333333333333333,
+        "tool_failure_penalty": -0.0
+      },
+      "steps": 6,
+      "token_completion": null,
+      "token_prompt": null,
+      "total_tokens": null
+    },
+    "policy_id": null,
+    "queued_at": "<timestamp>",
+    "regression_case_id": null,
+    "score": 0.13183333333333333,
+    "source_run_id": null,
+    "started_at": "<timestamp>",
+    "status": "failed",
+    "trial_group_id": "<id-3>",
+    "trial_index": 1
+  },
+  "run_succeeded": {
+    "completed_at": "<timestamp>",
+    "error": null,
+    "evaluation_spec": {
+      "agent_id": "fixture-agent.v1",
+      "execution_mode": "fixture",
+      "experiment_id": "<id-1>",
+      "limits": {
+        "max_output_bytes": 1048576,
+        "timeout_ms": 60000
+      },
+      "policy": null,
+      "run_id": "<id-4>",
+      "scenario_id": "checkout-api-latency.v2",
+      "scenario_params": {},
+      "schema_version": 1,
+      "seed": 7,
+      "task": "Investigate checkout API latency"
+    },
+    "experiment_id": "<id-1>",
+    "id": "<id-4>",
+    "kind": "baseline",
+    "metrics": {
+      "agent_usage": {
+        "context_window": null,
+        "source": "agent_reported",
+        "token_completion": null,
+        "token_prompt": null
+      },
+      "assertions": {
+        "aggregate": 1.0,
+        "assertions": [
+          {
+            "detail": "tools=['check_service_health', 'query_service_metrics', 'fetch_service_logs']",
+            "passed": true,
+            "score": 1.0,
+            "threshold": 1.0,
+            "type": "tool-used",
+            "weight": 1.0
+          },
+          {
+            "detail": "tools=['check_service_health', 'query_service_metrics', 'fetch_service_logs']",
+            "passed": true,
+            "score": 1.0,
+            "threshold": 1.0,
+            "type": "tool-used",
+            "weight": 1.0
+          },
+          {
+            "detail": "expected=['check_service_health', 'query_service_metrics', 'fetch_service_logs'] actual=['check_service_health', 'query_service_metrics', 'fetch_service_logs']",
+            "passed": true,
+            "score": 1.0,
+            "threshold": 1.0,
+            "type": "tool-sequence",
+            "weight": 2.0
+          },
+          {
+            "detail": "steps=3 min=None max=4",
+            "passed": true,
+            "score": 1.0,
+            "threshold": 1.0,
+            "type": "step-count",
+            "weight": 1.0
+          }
+        ],
+        "combination": "weighted"
+      },
+      "environment": {
+        "check_called": true,
+        "finalized": true
+      },
+      "latency_ms": 75,
+      "score_breakdown": {
+        "cost_penalty": -0.0,
+        "latency_penalty": -0.00075,
+        "success_reward": 1.0,
+        "tool_failure_penalty": -0.0
+      },
+      "steps": 3,
+      "token_completion": null,
+      "token_prompt": null,
+      "total_tokens": null
+    },
+    "policy_id": null,
+    "queued_at": "<timestamp>",
+    "regression_case_id": null,
+    "score": 0.99925,
+    "source_run_id": null,
+    "started_at": "<timestamp>",
+    "status": "succeeded",
+    "trial_group_id": "<id-3>",
+    "trial_index": 2
+  },
+  "run_timed_out": {
+    "completed_at": "<timestamp>",
+    "error": "Execution timed out",
+    "evaluation_spec": {
+      "agent_id": "fixture-agent.v1",
+      "execution_mode": "fixture",
+      "experiment_id": "<id-14>",
+      "limits": {
+        "max_output_bytes": 1048576,
+        "timeout_ms": 60000
+      },
+      "policy": null,
+      "run_id": "<id-13>",
+      "scenario_id": "checkout-api-latency.v2",
+      "scenario_params": {},
+      "schema_version": 1,
+      "seed": 42,
+      "task": "Investigate checkout API latency"
+    },
+    "experiment_id": "<id-14>",
+    "id": "<id-13>",
+    "kind": "baseline",
+    "metrics": {
+      "agent_usage": {
+        "context_window": null,
+        "source": "agent_reported",
+        "token_completion": null,
+        "token_prompt": null
+      },
+      "assertions": {
+        "aggregate": 0.2,
+        "assertions": [
+          {
+            "detail": "tools=['fetch_service_logs']",
+            "passed": false,
+            "score": 0.0,
+            "threshold": 1.0,
+            "type": "tool-used",
+            "weight": 1.0
+          },
+          {
+            "detail": "tools=['fetch_service_logs']",
+            "passed": false,
+            "score": 0.0,
+            "threshold": 1.0,
+            "type": "tool-used",
+            "weight": 1.0
+          },
+          {
+            "detail": "expected=['check_service_health', 'query_service_metrics', 'fetch_service_logs'] actual=['fetch_service_logs']",
+            "passed": false,
+            "score": 0.0,
+            "threshold": 1.0,
+            "type": "tool-sequence",
+            "weight": 2.0
+          },
+          {
+            "detail": "steps=1 min=None max=4",
+            "passed": true,
+            "score": 1.0,
+            "threshold": 1.0,
+            "type": "step-count",
+            "weight": 1.0
+          }
+        ],
+        "combination": "weighted"
+      },
+      "environment": {
+        "check_called": false,
+        "finalized": false
+      },
+      "latency_ms": 25,
+      "score_breakdown": {
+        "cost_penalty": -0.0,
+        "latency_penalty": -0.00025,
+        "success_reward": 0.2,
+        "tool_failure_penalty": -0.0
+      },
+      "steps": 1,
+      "token_completion": null,
+      "token_prompt": null,
+      "total_tokens": null
+    },
+    "policy_id": null,
+    "queued_at": "<timestamp>",
+    "regression_case_id": null,
+    "score": 0.19975,
+    "source_run_id": null,
+    "started_at": "<timestamp>",
+    "status": "timed_out",
+    "trial_group_id": null,
+    "trial_index": null
+  },
+  "scenarios": [
+    {
+      "allowed_tools": [
+        "invoke_service",
+        "retry_call",
+        "degrade_route"
+      ],
+      "default_task": "Stabilize a failing API dependency without exhausting the step budget",
+      "description": "Recover from injected upstream failures using bounded retries and a degraded fallback route.",
+      "id": "api-fault-orchestration.v2",
+      "name": "API Fault Orchestration",
+      "params": [
+        {
+          "description": "Service name that receives deterministic fault injection.",
+          "name": "service",
+          "required": false
+        }
+      ]
+    },
+    {
+      "allowed_tools": [
+        "check_service_health",
+        "query_service_metrics",
+        "fetch_service_logs"
+      ],
+      "default_task": "Investigate checkout API latency",
+      "description": "Investigate elevated checkout latency using health checks, dependency metrics, and evidence-backed logs.",
+      "id": "checkout-api-latency.v2",
+      "name": "Checkout API Latency",
+      "params": []
+    },
+    {
+      "allowed_tools": [
+        "search_documents",
+        "fetch_document",
+        "submit_answer"
+      ],
+      "default_task": "Answer a research question using search and fetch tools",
+      "description": "Answer a research question by searching documents, fetching evidence, and submitting a final answer.",
+      "id": "multi-step-research.v2",
+      "name": "Multi-step Research",
+      "params": [
+        {
+          "description": "Research topic used by search tools.",
+          "name": "topic",
+          "required": true
+        }
+      ]
+    },
+    {
+      "allowed_tools": [
+        "inspect_order",
+        "authorize_payment",
+        "ship_order",
+        "request_refund"
+      ],
+      "default_task": "Resolve order-1001: inspect it, authorize payment, attempt shipment, then refund the failed shipment exactly once and verify the final ledger.",
+      "description": "Resolve a deterministic shipping failure with an exactly-once refund in an instance-local order ledger. Fixture compatibility only; provider is unavailable.",
+      "id": "order-support.v1",
+      "name": "Order Support",
+      "params": []
+    }
+  ]
+}

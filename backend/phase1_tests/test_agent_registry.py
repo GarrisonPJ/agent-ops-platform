@@ -441,3 +441,30 @@ def test_migration_preserves_populated_pre_0009_experiment(tmp_path: Path) -> No
         parsed = EvaluationSpec.model_validate(stored_spec)
         assert parsed.agent_id is None
         assert load_registry().resolve(parsed.agent_id, parsed.execution_mode.value) == "fixture-agent.v1"
+
+
+def test_invalid_kind_message_lists_every_allowed_kind(tmp_path) -> None:
+    path = tmp_path / "agents.toml"
+    path.write_text(
+        '[[agents]]\nid = "bad-kind.v1"\nname = "Bad"\nkind = "nope"\n'
+        'description = "d"\ncommand = ["x"]\n'
+    )
+    with pytest.raises(AgentRegistryError) as caught:
+        load_registry(path)
+    for kind in ("fixture", "reference", "external"):
+        assert kind in str(caught.value)
+
+
+def test_candidate_rationale_is_generic_and_derived_from_the_patch() -> None:
+    from app.phase1_schemas import PolicyPatch
+    from app.phase1_service import _candidate_rationale
+
+    patch = PolicyPatch(
+        instruction_patch=["a"],
+        tool_priority={"search_documents": 0.9, "fetch_document": 1.0},
+        max_steps=6,
+    )
+    text = _candidate_rationale("timed_out", patch)
+    assert "timed out" in text and "6 steps" in text and "1 instruction" in text
+    assert text.index("fetch_document") < text.index("search_documents")
+    assert "log query" not in text and "checkout" not in text.lower()
