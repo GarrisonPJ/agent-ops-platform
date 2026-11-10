@@ -2,12 +2,14 @@
 
 - Status: Accepted
 - Date: 2026-10-17
-- Implementation: H1 registry integrated; H2 external adapters remain future.
-  This was absent from historical `8bd2ef0`.
+- Implementation: H1 registry and the H2 `pi-coding-agent.v1` adapter are
+  integrated (see the H2 amendment). This was absent from historical `8bd2ef0`.
 - Amended: 2026-10-24 by [ADR-0012](0012-h1-canonical-cutover-and-control-plane-success.md)
   (canonical defaults and Control Plane-only task success).
 - Amended: 2026-11-02 for H2 — the required external adapter is
   `pi-coding-agent.v1`; `claude-code.v1` becomes optional.
+- Amended: 2026-11-09 — Agent-reported `agent_error_code` (last allowlisted
+  stderr line, diagnostics only); Agent stdout is discarded.
 - Depends on: [ADR-0006](0006-scenario-registry-boundary.md),
   [ADR-0007](0007-environment-agent-split.md)
 

@@ -4,6 +4,8 @@
 - Approval: Explicit operator approval of the narrow H1 integration repair.
 - Amends: [ADR-0008](0008-environment-mcp-server-and-env-side-capture.md),
   [ADR-0012](0012-h1-canonical-cutover-and-control-plane-success.md).
+- Amended: 2026-11-08 — review status `author_self_labeled` (single-author
+  calibration reaches at most `provisional_mechanics`).
 - Scope: H1 integration only; not H2, H5 research, or historical rescoring.
 
 ## Context

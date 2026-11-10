@@ -7,7 +7,7 @@ Experiment → Baseline → Trace → Analysis → Candidate Policy
            → Replay → Comparison → Human Activate or Reject
 ```
 
-This file defines the vocabulary and invariants of the current Phase 1 + H1 integration. Environment/Agent separation is implemented; terms explicitly marked future belong to H2–H5 and are not current capabilities. ADR acceptance records a decision, not release acceptance. Milestones: [ROADMAP.md](ROADMAP.md); the single executable task list: [phase2-tasks.md](docs/agents/phase2-tasks.md).
+This file defines the vocabulary and invariants of the current Phase 1 + Phase 2 (H1–H4) implementation. Environment/Agent separation, trial groups with pass^k and optional OTel export are implemented; terms explicitly marked future (the H5 agreement study) are not current capabilities. ADR acceptance records a decision, not release acceptance. Milestones: [ROADMAP.md](ROADMAP.md); the single executable task list: [phase2-tasks.md](docs/agents/phase2-tasks.md).
 
 ## Domain vocabulary
 
@@ -33,10 +33,10 @@ This file defines the vocabulary and invariants of the current Phase 1 + H1 inte
 | Agent-under-test | Registered executable receiving task prompt + Environment endpoint; H1 ships `fixture` and `reference`. H2 adds the `external` kind; `pi-coding-agent.v1` is in the opt-in `config/agents.external.toml`. |
 | Agent Registry | (H1 implemented) Operator-side TOML; `GET /api/agents` returns metadata only; the Runner refuses unknown ids. |
 | Environment Server | (H1 implemented) `app.env_server`: MCP Streamable HTTP on loopback, per-Run token, env-side `step_completed` capture; reserved tools `submit_result` and `report_usage`. |
-| Trial Group | (Future H3) `k` Runs sharing one spec except `run_id` / `trial_index`; Environment seed fixed across trials. |
-| pass^k | (Future H3) Unbiased estimator `C(c,k) / C(n,k)` over completed trials in a group; published metrics state `k`. |
+| Trial Group | (H3 implemented) `n` Runs sharing one spec except `run_id` / `trial_index`; Environment seed fixed across trials. |
+| pass^k | (H3 implemented, computed on read) Unbiased estimator `C(c,k) / C(n,k)` over completed trials in a group; published metrics state `k`. |
 | Calibration gate | (Implemented) Six controlled contracts regression-testing the analyzer in CI; mechanics, not accuracy. |
-| Agreement study | (Future H5) Author-labeled sample of real Runs vs analyzer output; published confusion matrix and stated biases. |
+| Agreement study | (Future H5-2, needs the author's own labeling; review status `author_self_labeled`, result capped at `provisional_mechanics`) Author-labeled sample of real Runs vs analyzer output; published confusion matrix and stated biases. |
 | Scenario Registry | Control-plane allowlist of Scenarios exposed through `GET /api/scenarios`. Only registered Scenarios may appear on Experiments or Runs. |
 | ScenarioAssertion | Controlled terminal scoring primitive (`tool-used`, `tool-args-match`, `tool-sequence`, `step-count`, `equals`, `contains`, `json-match`) declared on a Scenario. Assertions carry `weight`, `threshold`, and combine via `all`, `weighted`, or `any`. |
 | Recorded Preview | Offline-development and regression adapter that replays Golden E2E fixtures and never implements backend business rules. |
@@ -95,22 +95,19 @@ claimed/running/cancelling -- exhausted attempts --> failed or cancelled
 21. Heartbeat, event persistence, and completion fence the RunnerJob lease with a row lock; an expired or recovered lease cannot write a later Attempt's state. A terminal RegressionCase replay is never reused as another Policy's replay gate.
 22. Activation serializes Policies for one Experiment while preserving the one-active-Policy invariant; startup and authentication resolve one Runner token snapshot, and Compose requires an explicit token.
 
-## Implemented H1 invariants
+## Implemented Phase 2 invariants
 
 23. Clients select a registered `agent_id`; commands exist only in the operator registry. The Runner refuses unregistered ids and never receives a command from the API.
 24. For any agent, `step_completed` is emitted by the Environment Server from observed tool calls, never accepted from the agent.
 25. Agent-internal signals that are not reported are recorded as unknown dimensions, never inferred.
+26. H3 (implemented): trials in a group share the EvaluationSpec except `run_id` and `trial_index`, with a fixed Environment seed.
+27. H3 (implemented): group metrics use the unbiased pass^k estimator; published numbers state `k`. Validation for groups of `n > 1` requires a positive mean score delta and a strictly higher pass^k than the baseline group, or pass^k = 1 when the baseline is already 1 (ADR-0010 H3-2; extends invariant 7).
+28. H4 (implemented): OTel export is a lossy projection; RunEvent remains authoritative and export is never read back.
 29. H1 makes the one-time incompatible canonical cutover in ADR-0012: the three legacy worlds become v2 defaults, including omitted-ID API/UI/quickstart paths; their v1 execution registrations and coupled loops retire. `order-support.v1` and the generic semantic-version identity rule remain unchanged. No aliases, migration, rescoring, historical replay preservation, cross-version comparison, or automatic data cleanup are included.
 30. Control Plane alone determines task success: valid submission, successful check, sufficient valid required trusted evidence, registered suite aggregate >= version-fixed 1.0, and no abnormal execution failure. Missing/invalid required evidence, failed check, no valid submit, Agent abnormal/nonzero exit, or unexpected Environment failure before terminal completion cannot succeed. Runner-requested teardown of a healthy Environment after valid submission, successful check, and necessary evidence capture is planned lifecycle, not abnormal execution failure, including SIGTERM then SIGKILL after the shared two-second grace; H1-3 distinguishes it from unexpected failure. Neither child must exit naturally with zero. This exception cannot override those failure gates, cancellation, timeout, output-limit failure, or lease fencing; terminal events and completion agree. Exit zero, EOF, readiness, and submission/check markers alone never establish success. Preserve ALL=min, ANY=max, WEIGHTED=weighted mean and per-assertion thresholds; neither universal `all(item.passed)` nor penalized quality score is the success gate. Agent/check-reported scores or status are not authoritative; Rust only supervises/relays.
 31. Control Plane scores latest-Attempt persisted world attempts including refusals, excluding reserved controls. Rejections project as `rejected_tool`/`failed` and cannot satisfy named used/args/sequence assertions; valid-only Environment history is not the scoring trajectory. Final outcomes use bounded trusted Environment-owned final-check facts, validated against registered expectations, never Agent-supplied expectations or scores. Exactly-once order proof comes from the final ledger; missing usage stays unknown and reports remain Agent-reported. The accepted final-check tuple contains only Environment-owned `scenario_id` and `final_observation`; integration acceptance remains separate.
-
-## Future stage invariants (not implemented)
-
-The original numbering is retained for ADR references. These do not describe current functionality.
-
-26. H3: trials in a group share the EvaluationSpec except `run_id` and `trial_index`, with a fixed Environment seed.
-27. H3: group metrics use the unbiased pass^k estimator; published numbers state `k`. Validation for groups of `n > 1` requires a positive mean score delta and a strictly higher pass^k than the baseline group, or pass^k = 1 when the baseline is already 1 (ADR-0010 H3-2; extends invariant 7).
-28. H4: OTel export is a lossy projection; RunEvent remains authoritative and export is never read back.
+32. A Runner-reported `agent_error_code` (the Agent's last stderr line, only if on the allowlist kept in Python and Rust; ADR-0009 amendment 2026-11-09) is untrusted diagnostics in four categories (provider, environment_connection, agent_startup, agent_behavior). It never affects Run status or score.
+33. Every Runner wire struct and enum has a cross-language contract guard (`backend/phase1_tests/test_runner_protocol_contract.py`, `test_agent_spec_parity.py`, and the zod-validated backend snapshot under `frontend/src/test/contract/`). A field added on one side without the other must fail a test, not a completion ack. A claim response the Runner cannot parse completes the Run as `internal_failure`; it never leaks the lease.
 
 ## Built-in scenarios
 

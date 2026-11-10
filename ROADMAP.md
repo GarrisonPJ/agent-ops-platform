@@ -12,15 +12,19 @@ This file is the source of truth for engineering milestones. `CONTEXT.md` owns d
 
 Trace UI, dataset versioning, trajectory assertions, replay diffs, and failed-run-to-regression workflows are commodity in Langfuse, Phoenix, Braintrust, and similar products; the industry is consolidating rather than expanding generic eval platforms. What remains scarce for self-hosted users is a reproducible harness that runs **external** agents against resettable environments, reports pass^k, exports OTel GenAI spans, and keeps a deterministic failure taxonomy with a calibration story. Phase 1 delivered a solid closed loop but coupled environment and agent in one class, so only the built-in Python agent could be evaluated. **The project no longer presents itself as a general evaluation platform.**
 
-## Current state (2026-11-01 local / 2026-10-31 UTC)
+## Current state (2026-11-10)
 
 Phase 1 hosted CI passed on `8bd2ef0`; its counts belong to that snapshot, not current H1. H1 integration now has separate Environment/MCP and registered fixture/reference Agent processes, production Rust dispatch/completion, trusted final checks, CP-owned scoring, canonical checkout/research/fault v2 plus `order-support.v1`, analyzer-v3 mechanics, and genuine Recorded Preview.
 
 Local host/PostgreSQL, standard Runner network build, actual named-volume replacement, affected regressions, exact-payload checks and independent scoped reviews have parent evidence. The lock-path and exit-boundary P2s are repaired/reviewed. H1 local engineering and direct real-model integration acceptance are complete, and hosted CI passed on `b32da25` including `golden-e2e`; release, cold-cache and cross-platform claims remain outside this boundary. See [acceptance boundaries](docs/operations/system-acceptance.md).
 
-H1-5 now includes direct reference-Agent Runs against the already installed Windows llama.cpp service, fresh PostgreSQL and a standard Runner image: research/order success and checkout/fault failures are preserved. Bounded optional Runner-only generation settings replace the temporary proxy. See the [dated acceptance](docs/history/h1-live-model-acceptance-2026-11-01.md); no Ollama/vLLM pass, stable pass rate or analyzer accuracy is inferred. No model download, Windows/network/firewall change, public deployment or H2 work is included.
+H1-5 now includes direct reference-Agent Runs against the already installed Windows llama.cpp service, fresh PostgreSQL and a standard Runner image: research/order success and checkout/fault failures are preserved. Bounded optional Runner-only generation settings replace the temporary proxy. See the [dated acceptance](docs/history/h1-live-model-acceptance-2026-11-01.md); no Ollama/vLLM pass, stable pass rate or analyzer accuracy is inferred. No model download, Windows/network/firewall change or public deployment is included.
 
-H2-1 is complete: `submit_result` is discoverable (ADR-0008 H2 amendment), `pi-coding-agent.v1` runs from the opt-in external registry, and the same local model was run with the reference Agent and pi on all four Environments ([record](docs/history/h2-pi-live-acceptance-2026-11-03.md)). H3 is complete: trial groups, pass^k computed on read and strict group validation; at temperature 0 every real group repeated one trajectory, so pass^5 equalled pass^1 ([record](docs/history/h3-pass-k-live-2026-11-04.md)). Temperature 1 did not fix this: the endpoint pins a default sampler seed, so the reference Agent's trials were still copies ([record](docs/history/h3-pass-k-temp1-2026-11-05.md)). The opt-in `AGENTOPS_PROVIDER_SEED=per-run` gives each Run its own sampler seed; with it the reference Agent's fault group diverged into 3 trajectories (2/5, pass^5 0.0) while the other groups stayed at one ([record](docs/history/h3-pass-k-seed-2026-11-07.md)). H4 is complete: OTel GenAI export, checked against a local Phoenix ([chapter](docs/learn/07-otel-mapping.md)). Not implemented: optional external adapters (H2-2/H2-3/H2-5) and the real-distribution agreement study (H5). Calibration remains `provisional_mechanics`, `publishable_accuracy=false`; self-labeling limits must be stated in any later study.
+H2-1 is complete: `submit_result` is discoverable (ADR-0008 H2 amendment), `pi-coding-agent.v1` runs from the opt-in external registry, and the same local model was run with the reference Agent and pi on all four Environments ([record](docs/history/h2-pi-live-acceptance-2026-11-03.md)). H3 is complete: trial groups, pass^k computed on read and strict group validation; at temperature 0 every real group repeated one trajectory, so pass^5 equalled pass^1 ([record](docs/history/h3-pass-k-live-2026-11-04.md)). Temperature 1 did not fix this: the endpoint pins a default sampler seed, so the reference Agent's trials were still copies ([record](docs/history/h3-pass-k-temp1-2026-11-05.md)). The opt-in `AGENTOPS_PROVIDER_SEED=per-run` gives each Run its own sampler seed; with it the reference Agent's fault group diverged into 3 trajectories (2/5, pass^5 0.0) while the other groups stayed at one ([record](docs/history/h3-pass-k-seed-2026-11-07.md)). H4 is complete: OTel GenAI export, checked against a local Phoenix ([chapter](docs/learn/07-otel-mapping.md)). pi was re-run with the per-Run seed on 2026-11-08 (checkout 0/5, order 5/5, small divergence; [record](docs/history/h3-pi-per-run-seed-2026-11-08.md)). H6 is complete, including a Recorded E2E for the trial-group section.
+
+2026-11-08..10 hardening: a Rust Runner `RunResponse` bug (missing `trial_group_id`/`trial_index` under `deny_unknown_fields`) had made every completion ack fail to parse since H3; it is fixed and now guarded by cross-language contract tests (Runner wire structs/enums/error-code allowlist, Agent spec parity, a zod-validated backend response snapshot). The Runner also completes a Run as `internal_failure` when a claim response cannot be parsed, instead of leaking the lease. ADR-0009 gained an amendment: an allowlisted `agent_error_code` is reported as diagnostics only and never affects status or score.
+
+Not implemented: optional external adapters (H2-2/H2-3/H2-5). H5-2 (the self-labeled agreement study) waits on the author labeling runs by hand; calibration remains `provisional_mechanics`, `publishable_accuracy=false`, and the review status `author_self_labeled` records who labeled. Remaining human items: GitHub About (H0-1) and the public name (H0-2). Known gaps: [phase2-tasks](docs/agents/phase2-tasks.md).
 
 ## Milestones
 
@@ -32,13 +36,13 @@ H2-1 is complete: `submit_result` is discoverable (ADR-0008 H2 amendment), `pi-c
 | P1 | Phase 1.4 — Scenario onboarding | Complete | Operators choose from registered built-in Scenarios; the platform is no longer limited to one hard-coded demo. |
 | P1 | Closed-loop depth follow-up | Complete | Failed Runs become classified, comparison-ready regression assets that gate policy activation. |
 | P1 | Reliability and calibration hardening (2026-09 to 2026-10) | Complete | CAS/lock-order fixes, analyzer v2, six-contract calibration gate in CI; calibration redefined in Phase 2 H5. |
-| P0 | Phase 2 — Harness H0 (facade and decisions) | In progress | ADRs, LICENSE, standards, learn map, and [task list](docs/agents/phase2-tasks.md) are in-repo. Still open: GitHub About, public name (H0-2). |
+| P0 | Phase 2 — Harness H0 (facade and decisions) | Engineering complete; two human items open | ADRs, LICENSE, standards, learn map, and [task list](docs/agents/phase2-tasks.md) are in-repo. `ready-for-human`: GitHub About (H0-1), public name (H0-2). |
 | P0 | Phase 2 — Harness H1 (Environment/Agent split) | Complete (local engineering + real-model integration) | Split production path, P2 repairs, deterministic checks, standard image/volume and direct reference-Agent trace/analysis are accepted locally. Actual model failures remain failures; hosted CI passed on `b32da25`; release remains unestablished. |
 | P1 | Phase 2 — Harness H2 (external agents) | Required scope complete (H2-1, H2-4) | pi adapter plus same-model reference vs pi comparison on four Environments ([record](docs/history/h2-pi-live-acceptance-2026-11-03.md)); Agents SDK / Codex / Claude Code optional and not done. |
 | P1 | Phase 2 — Harness H3 (trials and pass^k) | Complete | Trial groups, pass^k computed on read, strict group policy validation, Experiment page summary; real n = 5, k = 5 temperature-0 groups recorded ([record](docs/history/h3-pass-k-live-2026-11-04.md)); a temperature-1 run on 2026-11-05 showed the endpoint pins a default sampler seed, so identical requests still give identical trials ([record](docs/history/h3-pass-k-temp1-2026-11-05.md)); the opt-in per-Run sampler seed (`AGENTOPS_PROVIDER_SEED=per-run`) gives independent sampling, run on 2026-11-07 ([record](docs/history/h3-pass-k-seed-2026-11-07.md)). |
 | P2 | Phase 2 — Harness H4 (OTel export) | Complete (export and Phoenix check) | OTLP GenAI projection, default off ([operations](docs/operations/otel-export.md)); one Run's trace received by a local Phoenix ([chapter](docs/learn/07-otel-mapping.md)). |
-| P2 | Phase 2 — Harness H5 (calibration study) | Planned | Analyzer regression gate unchanged; self-labeled agreement study on ~40 real runs. |
-| P1 | Phase 2 — Harness H6 (packaging) | In progress (README and write-up done; H6-3 recorded demo refresh open) | README, write-up, recorded demo. |
+| P2 | Phase 2 — Harness H5 (calibration study) | H5-1 done; H5-2 `ready-for-human` | Analyzer regression gate unchanged; docs aligned with code. The self-labeled agreement study (~40 real runs, review status `author_self_labeled`, result capped at `provisional_mechanics`) needs the author to label; the H5 learn chapter follows it. |
+| P1 | Phase 2 — Harness H6 (packaging) | Complete | README, write-up, Recorded E2E (including the trial-group section). |
 | Gate | Safety gate | Trigger-based | Required before side-effecting tools, untrusted users, or shared/public operation. |
 
 Schedule: Phase 2 runs 2026-10-17 through approximately 2027-01-09 (12 weeks).
@@ -84,13 +88,13 @@ flowchart LR
   Otel --> Langfuse[Langfuse / Phoenix]
 ```
 
-This is the full Phase 2 target, not a current-capability diagram: H1 implements the Environment/registered-Agent pair; external adapters remain a later stage; Trials, pass^k and OTel export are implemented. Environments are MCP servers and capture world facts; Agents do not emit trusted JSONL.
+This is the full Phase 2 target, not a current-capability diagram: H1 implements the Environment/registered-Agent pair; pi is the one implemented external adapter (the others are optional and not built); Trials, pass^k and OTel export are implemented. Environments are MCP servers and capture world facts; Agents do not emit trusted JSONL.
 
 ### Decisions
 
 - [ADR-0007](docs/adr/0007-environment-agent-split.md) — Split **Environment** (task, tools, state, assertions) from **agent-under-test** (`fixture`, `reference`, `external` kinds); protocol v1 keeps `scenario_id`.
 - [ADR-0008](docs/adr/0008-environment-mcp-server-and-env-side-capture.md) — `app.env_server` as MCP Streamable HTTP with middleware capture, `submit_result`, Runner two-process supervision.
-- [ADR-0009](docs/adr/0009-agent-registry-trust-boundary.md) — Operator TOML agent registry, `GET /api/agents`, `EvaluationSpec.agent_id`; Runner executes only registered argv commands.
+- [ADR-0009](docs/adr/0009-agent-registry-trust-boundary.md) — Operator TOML agent registry, `GET /api/agents`, `EvaluationSpec.agent_id`; Runner executes only registered argv commands. A 2026-11-09 amendment lets the Runner report an allowlisted Agent stderr line as `agent_error_code`, diagnostics only.
 - [ADR-0010](docs/adr/0010-trial-groups-and-pass-k.md) — Trial groups, fixed environment seed per group, pass^k via tau-bench estimator, group-aware policy validation.
 - [ADR-0011](docs/adr/0011-otel-genai-export.md) — Post-terminal OTel GenAI span export (`AGENTOPS_OTEL_EXPORT=1`), `RunEvent` store remains source of truth.
 - [ADR-0012](docs/adr/0012-h1-canonical-cutover-and-control-plane-success.md) (2026-10-24) — Approved one-time incompatible H1 cutover to the three canonical v2 defaults, retiring their v1 registrations/loops; Control Plane-only trusted-evidence success with registered aggregate >= version-fixed 1.0. `order-support.v1`, semantic identity, and human Policy gates remain unchanged. No migration, compatibility path, or data reset/deletion is authorized; validation uses fresh isolated data. H1-3 owns supervision; H1-5/integration wires evidence and completion. This records the contract; current local H1 Golden/PostgreSQL evidence is described in system acceptance, with direct live-model acceptance recorded separately in H1-5.
@@ -104,16 +108,16 @@ Executable tasks and acceptance criteria: [docs/agents/phase2-tasks.md](docs/age
 
 #### H0 — Facade and decisions (week 1)
 
-- **Scope:** H0-1 LICENSE (MIT) and GitHub About/topics; H0-2 naming candidates (decision only); H0-3 ADR-0007–0011, ROADMAP/CONTEXT/README positioning; H0-4 calibration doc redefinition (text); H0-5 task list plus `docs/learn/00-map.md` and `glossary.md`.
+- **Scope:** H0-1 LICENSE (MIT) and GitHub About/topics; H0-2 naming candidates (decision only); H0-3 ADR-0007–0011 (H1 follow-ups: ADR-0012–0014), ROADMAP/CONTEXT/README positioning; H0-4 calibration doc redefinition (text); H0-5 task list plus `docs/learn/00-map.md` and `glossary.md`.
 - **Acceptance:** Accepted ADRs linked from living docs; Phase 1 marked complete; Phase 2 visible; no new product code required in H0. Remaining human steps: set the GitHub About text in H0-1, and choose a public name (H0-2). Neither blocks H1.
 - **Learning deliverable:** `docs/learn/00-map.md`, `docs/learn/glossary.md`.
 
 #### H1 — Environment/Agent split (weeks 2–4)
 
-- **Scope:** H1-1 Environment protocol from built-in Scenarios; H1-2 `app.env_server` (MCP, env-side capture); H1-3 Runner dual subprocess supervision and `env_ready`; H1-4 `agent_id`, registry, `GET /api/agents`, New Experiment agent dropdown; H1-5 reference agent process (Ollama `qwen3:8b` default, vLLM documented); H1-6 stateful `order-support.v1`.
+- **Scope:** H1-1 Environment protocol from built-in Scenarios; H1-2 `app.env_server` (MCP, env-side capture); H1-3 Runner dual subprocess supervision and `env_ready`; H1-4 `agent_id`, registry, `GET /api/agents`, New Experiment agent dropdown; H1-5 reference agent process (OpenAI-compatible endpoint; the acceptance runs used llama.cpp, Ollama/vLLM untested); H1-6 stateful `order-support.v1`.
 - **Diagnostic integration repair:** Implement ADR-0013's two analyzer-v3 rules and real `report_usage` calibration capture; retain all six fixed contracts and strict binding. This is not H5 research or new calibration mechanics.
 - **Engineering closeout:** fixture Golden, fake-Provider reference Agent, trusted CP completion, recovery, standard-image/volume, affected regressions, documentation and final exact-payload review passed locally. The unchanged contract gate passes on the committed canonical-v2 baseline; the earlier dirty-index result is historical.
-- **H1-5 live-model closeout (2026-11-01):** the operator reopened acceptance against an already installed Windows llama.cpp endpoint. ADR-0003's amendment admits four bounded, optional Runner-only generation settings to replace the temporary request-options proxy; world rules, scoring and CI determinism stay unchanged. Direct-provider trace/analysis, reproducible instructions and delivery-gate reconciliation complete this task; no H2 work is included.
+- **H1-5 live-model closeout (2026-11-01):** the operator reopened acceptance against an already installed Windows llama.cpp endpoint. ADR-0003's amendment admits four bounded, optional Runner-only generation settings to replace the temporary request-options proxy; world rules, scoring and CI determinism stay unchanged. Direct-provider trace/analysis, reproducible instructions and delivery-gate reconciliation complete this task.
 - **P2 amendment (ADR-0008):** no-follow/nonregular lock validation without target mutation; deterministic reader/Agent-exit barriers, incomplete-tail failure and direct-child reaping assertions. Both scoped reviews passed; affected image/runtime regression and five-repeat boundary validation are parent evidence.
 - **Learning deliverable:** `docs/learn/01-run-lifecycle.md`, `docs/learn/02-environment-and-mcp.md`, `docs/learn/04-runner-lease-fencing.md`.
 
@@ -140,12 +144,13 @@ Executable tasks and acceptance criteria: [docs/agents/phase2-tasks.md](docs/age
 
 - **Scope:** H5-1 split [evaluation calibration](docs/evaluation-calibration.md) into analyzer regression gate (six controlled contracts, CI unchanged) and self-labeled agreement study; freeze new binding/hash/strict-mode mechanics; H5-2 ~40 real provider runs, author labels, published confusion matrix and bias notes (minimum 20 if cut line applies).
 - **Acceptance:** CI six-contract gate still passes; public confusion matrix with documented limitations; no new accuracy ceremony code.
-- **Learning deliverable:** `docs/learn/05-analyzer-and-calibration.md` and study artifact in `docs/`.
+- **Status:** H5-1 complete (2026-11-08). H5-2 is the author's own labeling (`ready-for-human`).
+- **Learning deliverable:** `docs/learn/05-analyzer-and-calibration.md` (after labeling) and study artifact in `docs/`.
 
 #### H6 — Packaging (week 12)
 
-- **Scope:** H6-1 README (positioning, Ollama quickstart, architecture, pass^k numbers, why not Langfuse); H6-2 `docs/writeup.md`; H6-3 recorded demo refresh.
-- **Acceptance:** README and write-up match shipped cut line; recorded demo covers harness path.
+- **Scope:** H6-1 README (positioning, Ollama quickstart, architecture, pass^k numbers, why not Langfuse); H6-2 `docs/writeup.md`; H6-3 recorded demo (Recorded E2E for the trial-group section).
+- **Acceptance:** README and write-up match shipped cut line; recorded demo covers harness path. Complete.
 - **Learning deliverable:** README + `docs/writeup.md` (H6-1, H6-2).
 
 ### Cut line

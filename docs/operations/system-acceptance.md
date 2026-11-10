@@ -43,7 +43,7 @@ The first closeout smoke used the wrong executable name `agentops-runner` and ex
 
 ## Claims that remain separate
 
-- **Delivery baseline:** local validation/commit is not publication or hosted CI. Hosted CI passed on `b32da25` (run `41445179266`); that is not a release. The old intentional contract-index delta was committed and the unchanged gate passed; it is not a current blocker.
+- **Delivery baseline:** local validation/commit is not publication or hosted CI. Hosted CI passed on `b32da25` (run `41445179266`) for H1; the latest verified run is `dd99253` (run `42615843713`, 2026-11-09). Neither is a release. The old intentional contract-index delta was committed and the unchanged gate passed; it is not a current blocker.
 - **Real model:** H1-5 is locally accepted with direct persisted success/failure traces and analysis. Four sampled host Runs and one image Run are finite integration evidence, not a pass-rate or universal compatibility claim. Order's diagnostic error-word signals remain visible despite authoritative outcome success; accuracy is not established.
 - **Research:** calibration mechanics cannot support representative accuracy; H5 is future work.
 - **Safety/platform:** trusted single-host operation is not public/multi-user security, malicious Agent sandboxing, Windows-native Runner support, or exhaustive parser/scheduling equivalence.

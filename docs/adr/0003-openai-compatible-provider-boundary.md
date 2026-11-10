@@ -34,7 +34,10 @@ the deterministic Golden path.
   actions.
 - Timeout and retry are bounded, and `asyncio.CancelledError` propagates to the
   Runner so normal process cancellation semantics still apply. Safe structured
-  provider errors are emitted as existing `process_output` events.
+  provider errors are emitted as existing `process_output` events. (Phase 1
+  in-process path. 2026-11-10 note: in the split Environment/Agent path the
+  Runner discards Agent stdout; only an allowlisted `agent_error_code` is
+  reported, see ADR-0009 2026-11-09 amendment.)
 - FastAPI projects only latest-attempt model identity, latency, request count,
   prompt/completion usage, and safe provider error fields into Run metrics. A
   generic failed child exit is replaced with `CODE: message` when an emitted

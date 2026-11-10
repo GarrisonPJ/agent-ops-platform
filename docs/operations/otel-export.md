@@ -21,6 +21,10 @@ Set these on the **API** process. The Runner does not export.
 | `OTEL_EXPORTER_OTLP_HEADERS` | Optional, e.g. Langfuse `Authorization=Basic …`; keep it in a private secret source |
 | `OTEL_EXPORTER_OTLP_PROTOCOL` | Unset or `http/protobuf`; other protocols are refused |
 
+Phoenix note: the pinned Phoenix image enables auth for non-loopback listeners
+and answers OTLP with 401; for a local collector start it with
+`PHOENIX_ENABLE_AUTH=false` and bind `127.0.0.1:6006` only.
+
 The Compose file lists API variables explicitly. To export from the Compose
 stack, add these variables to the `api` service in an invocation-owned
 override file; do not edit the committed Compose file for one collector.

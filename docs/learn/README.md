@@ -10,7 +10,7 @@
 | 2 | [Environment、最终状态与 MCP 边界](02-environment-and-mcp.md) | 当前 Environment/MCP、final-check 与订单边界 |
 | 3 | [接入你自己的 Agent](03-plug-in-your-agent.md) | 当前外部 Agent 契约、pi 适配器与失败分布 |
 | 4 | [04-runner-lease-fencing.md](04-runner-lease-fencing.md) | 当前 lease/fencing、capability 与 ACK 清理 |
-| 5 | `05-analyzer-and-calibration.md` | H5 完成时 |
+| 5 | `05-analyzer-and-calibration.md` | 待 H5 标注完成后再写（尚未存在；校准流程见 [evaluation-calibration.md](../evaluation-calibration.md)） |
 | 6 | [Trial group 与 pass^k](06-pass-k.md) | 当前 trial group、估计量、发布规则与组级验证 |
 | 7 | [OTel GenAI 映射](07-otel-mapping.md) | 当前 span 映射、固定的规范 commit |
 

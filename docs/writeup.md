@@ -82,7 +82,7 @@ The installed llama.cpp service pins a default sampler seed (42). A direct check
 | reference | checkout | 0/5 | 0.0 | 0.0 | 1 |
 | reference | order | 5/5 | 1.0 | 1.0 | 1 |
 
-pi, run with the same settings on 2026-11-05 (the batch was interrupted after two groups): research 5/5, pass^1 1.0, pass^5 1.0, 1 trajectory; fault 1/5, pass^1 0.2, pass^5 0.0, 2 trajectories. pi checkout and order were not run with a per-Run seed.
+pi, run with the same settings on 2026-11-05 (the batch was interrupted after two groups): research 5/5, pass^1 1.0, pass^5 1.0, 1 trajectory; fault 1/5, pass^1 0.2, pass^5 0.0, 2 trajectories. On 2026-11-08 pi was run with `AGENTOPS_PROVIDER_SEED=per-run` ([record](history/h3-pi-per-run-seed-2026-11-08.md)): checkout 0/5 and order 5/5, with only small trajectory divergence. One checkout trial ended `internal_failure`; whether the Runner bug described under Limitations caused it was not re-run, so it is unknown.
 
 With a per-Run seed the reference fault trials diverged into 3 trajectories; before, at temperature 0 and at temperature 1 with the pinned seed, the group was 0/5 with 1 trajectory. Research, checkout and order still produced one trajectory per group under independent sampling, so on those tasks the model's choices are stable rather than copies caused by the seed. Fault shows pass^1 0.4 against pass^5 0.0: occasional success is not reliable success. This is still one model, one Environment seed and n = 5, not a pass rate.
 
@@ -91,8 +91,7 @@ With a per-Run seed the reference fault trials diverged into 3 trajectories; bef
 Status is taken from [phase2-tasks](agents/phase2-tasks.md).
 
 - **H2-2 (OpenAI Agents SDK), H2-3 (Codex CLI), H2-5 (Claude Code) adapters.** Optional, status `ready-for-agent`, not built. The cut line allows deferring them ([ROADMAP](../ROADMAP.md), Cut line). So pi is the only external adapter that was exercised.
-- **H5 calibration study.** H5-2, the self-labeled agreement study on about 40 real runs (minimum 20), is `ready-for-human` because the labeling must be done by a person ([phase2-tasks](agents/phase2-tasks.md), H5-2). The six-contract CI regression gate is unchanged. Calibration stays `provisional_mechanics` with `publishable_accuracy=false` ([ROADMAP](../ROADMAP.md), Current state). Any later study must state that the author labeled the runs.
-- **H6-3 recorded demo refresh.** Status `ready-for-agent`. The H1 refresh already covers a real checkout v2 Recorded Preview ([phase2-tasks](agents/phase2-tasks.md), H6-3).
+- **H5 calibration study.** H5-2, the self-labeled agreement study on about 40 real runs (minimum 20), is `ready-for-human` because the labeling must be done by a person; its review status is `author_self_labeled` and the result stays `provisional_mechanics`. The H5 learn chapter waits on it ([phase2-tasks](agents/phase2-tasks.md), H5-2). The six-contract CI regression gate is unchanged. Calibration stays `provisional_mechanics` with `publishable_accuracy=false` ([ROADMAP](../ROADMAP.md), Current state). Any later study must state that the author labeled the runs.
 - **H0-1 and H0-2.** The MIT LICENSE is in the repository. Setting the GitHub About text and topics, and choosing a public name, need a human ([phase2-tasks](agents/phase2-tasks.md), H0-1, H0-2). Neither blocks H1 ([ROADMAP](../ROADMAP.md), H0).
 - **Non-goals and deferred.** Kubernetes, containerised agents, LLM-as-judge, multi-tenancy, training export and automatic policy activation stay out of scope ([ROADMAP](../ROADMAP.md), Non-goals and Deferred). A safety gate is required before side-effecting tools, untrusted users or shared operation ([ROADMAP](../ROADMAP.md), Conditional safety gate).
 
@@ -113,7 +112,7 @@ Run IDs, trial group IDs, the model file hash and the build fingerprint are in t
 ## Limitations
 
 - **Scope of the evidence.** All live evidence comes from one 27B IQ3_XXS quantized local model with an 8192-token context, at n = 5-scale samples. The conclusions are about mechanism, not general policy efficacy.
-- **Seed divergence demonstrated once.** Per-Run seed divergence was shown only on the reference agent's fault-injection scenario ([H3 per-Run seed record](history/h3-pass-k-seed-2026-11-07.md)).
+- **Seed divergence is thin.** Clear per-Run seed divergence was shown only on the reference agent's fault-injection scenario ([H3 per-Run seed record](history/h3-pass-k-seed-2026-11-07.md)); pi's per-Run seed run diverged little ([record](history/h3-pi-per-run-seed-2026-11-08.md)).
 - **Calibration is single-author.** Labels come from the project author alone, with no inter-rater agreement; the status is `provisional_mechanics`, and `publishable` needs an independent second labeler ([evaluation-calibration](evaluation-calibration.md)).
 
 - **No pass rate.** The records say the sampled Runs are not a pass-rate estimate ([H1 record](history/h1-live-model-acceptance-2026-11-01.md), "Acceptance conclusion and limits"; [H3 record](history/h3-pass-k-live-2026-11-04.md), "Limits").
@@ -124,4 +123,6 @@ Run IDs, trial group IDs, the model file hash and the build fingerprint are in t
 - **Failures stay failures.** The checkout and fault failures were not repaired. No tool arguments were fixed and no world rules were changed to obtain success ([H1 record](history/h1-live-model-acceptance-2026-11-01.md)).
 - **Delivery boundary.** Hosted CI covers the fixture and fake-provider gates only. Release, cold-cache, cross-platform and live-model claims are outside it ([system-acceptance](operations/system-acceptance.md)).
 - **Single trusted host.** There is no public or multi-user security, no sandbox for a malicious agent, and no Windows-native Runner support ([system-acceptance](operations/system-acceptance.md)). The roadmap names a safety gate for those cases ([ROADMAP](../ROADMAP.md)).
+- **A wire-contract bug survived until live runs.** The Rust Runner's `RunResponse` lacked `trial_group_id` and `trial_index`. Under `deny_unknown_fields` every completion ack failed to parse from H3 onward, and fixture-only tests did not catch it. It was fixed on 2026-11-08 and the Runner wire structs, enums and error-code allowlist now have cross-language contract tests, plus a zod-validated snapshot of real backend responses. The lesson: test the shape both sides actually exchange, not each side alone.
+- **Known gaps.** `tool_priority` is set by candidate Policies but read by no Agent; the golden E2E and calibration capture do not cover order-support; the pi adapter relies on pi 1.3.0 JSONL event names with no runtime version check; order-support successful runs score 0.667 in analysis (see above). Listed in [phase2-tasks](agents/phase2-tasks.md).
 - **Unstable spec.** The OTel GenAI attribute names are at stability Development and may change ([learn/07](learn/07-otel-mapping.md), section 1).

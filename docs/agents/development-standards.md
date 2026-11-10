@@ -8,7 +8,7 @@ bind, including the implemented H1 boundaries. If a task needs to break one, sto
 | Question | Read |
 |---|---|
 | What does this word mean? | `CONTEXT.md`. In prose say Environment; in protocol fields say `scenario_id`. |
-| Why is the boundary this shape? | `docs/adr/`. Accepted is a decision status, not implementation proof: H1 is integrated; H3/H4 decisions remain future. |
+| Why is the boundary this shape? | `docs/adr/`. Accepted is a decision status, not implementation proof: H1–H4 are implemented; check `phase2-tasks.md` for status. |
 | What is in or out of this milestone? | `ROADMAP.md`, then the task in `docs/agents/phase2-tasks.md`. |
 | How does a run actually move? | `docs/learn/00-map.md` (current code), then the ADR for the stage you are in. |
 | How do I add an Environment today? | `docs/agents/scenario-development.md` (current Environment interface and assertions). |
@@ -43,8 +43,8 @@ Do not invent a second tracker.
 ## Frontend state
 
 Server cache → RTK Query. Cross-route UI state → a Redux slice. Page-local
-state → `useState` / `useRef`. The Trace UI is frozen; H3 and H1 may touch
-the Experiment pages only, as their tasks say.
+state → `useState` / `useRef`. The Trace UI is frozen; H3 and H1 touched
+the Experiment pages only, as their tasks said.
 
 ## Vocabulary
 

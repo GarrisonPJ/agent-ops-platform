@@ -50,6 +50,8 @@ You need an **already installed**, operator-managed OpenAI-compatible endpoint; 
    AGENTOPS_PROVIDER_TEMPERATURE=0
    AGENTOPS_PROVIDER_REASONING_EFFORT=none
    AGENTOPS_PROVIDER_PARALLEL_TOOL_CALLS=false
+   # Optional integer, or `per-run` for an independent sampler seed per Run (needed for independent trials).
+   AGENTOPS_PROVIDER_SEED=per-run
    ```
 
 2. Restart the Runner so it picks them up.
@@ -136,7 +138,7 @@ Langfuse, Phoenix, Braintrust and similar products already store and render trac
 
 H1 provides separate Environment/MCP and fixture/reference Agent processes, Rust supervision with lease/Attempt fencing, an operator TOML Agent registry, CP-owned scoring/completion, and four built-in Environments. Protocol v1 retains `scenario_id`; the three canonical worlds use **v2**, while `order-support.v1` keeps its own identity. Retired world v1 IDs are rejected, not aliased or migrated.
 
-**H1 local engineering and real-model integration acceptance are complete**: the installed Windows llama.cpp service completed research and stateful order Runs through the reference Agent; checkout/fault failures are retained. Hosted CI passed on `b32da25`. This is not universal model compatibility, release, cold-cache, cross-platform, or public-deployment acceptance. **H2-1 is complete** (`pi-coding-agent.v1`). **H3 is complete** (trial groups with pass^k on the Experiment page, `POST /api/experiments/{id}/trials`). **H4 is complete** (optional OTel GenAI span export, verified against a local Phoenix). H5 model-distribution accuracy studies and the other optional external adapters are not done and are not features of this checkout. Calibration is a deterministic six-contract mechanics gate, **not a published accuracy result**. See [tasks](docs/agents/phase2-tasks.md), [milestones](ROADMAP.md), [ADR-0011](docs/adr/0011-otel-genai-export.md) for interoperability, and [acceptance boundaries](docs/operations/system-acceptance.md).
+**H1 local engineering and real-model integration acceptance are complete**: the installed Windows llama.cpp service completed research and stateful order Runs through the reference Agent; checkout/fault failures are retained. Hosted CI passed on `b32da25` for H1; the latest verified hosted CI run is `dd99253` (run `42615843713`, 2026-11-09). This is not universal model compatibility, release, cold-cache, cross-platform, or public-deployment acceptance. **H2-1 is complete** (`pi-coding-agent.v1`). **H3 is complete** (trial groups with pass^k on the Experiment page, `POST /api/experiments/{id}/trials`). **H4 is complete** (optional OTel GenAI span export, verified against a local Phoenix). The H5 self-labeled agreement study is not done: the labeling is a human step, so calibration stays a deterministic six-contract mechanics gate (`provisional_mechanics`), **not a published accuracy result**. The other optional external adapters (H2-2/H2-3/H2-5) are not built. Open human items: GitHub About and the public name (H0-1, H0-2). Known gaps are listed at the end of the [tasks](docs/agents/phase2-tasks.md) file. See [tasks](docs/agents/phase2-tasks.md), [milestones](ROADMAP.md), [ADR-0011](docs/adr/0011-otel-genai-export.md) for interoperability, and [acceptance boundaries](docs/operations/system-acceptance.md).
 
 ## Recorded Preview
 
@@ -166,6 +168,8 @@ cd frontend && npm run e2e:recorded
 ```
 
 Use Linux Node 22, Python 3.12, Rust 1.96, PostgreSQL 16, and locked dependencies for the CI baseline. PostgreSQL tests require fresh owned databases; SQLite/skips are not concurrency evidence. The [runbook](docs/operations/reliability-and-local-validation.md) covers toolchain, proxies, recursive Runner dependency admission, calibration/restore, and evidence limits.
+
+Contract guards: the backend tests pin every Runner wire struct, enum and the agent error-code allowlist against the Rust side (`backend/phase1_tests/test_runner_protocol_contract.py`), and a snapshot of real backend responses is validated by zod in the frontend (`frontend/src/test/contract/`; regenerate with `UPDATE_CONTRACT_SNAPSHOT=1`).
 
 `make check-contracts` exports then compares schemas to Git's index. Keep this gate unchanged and rerun it before delivery; do not revert v2 or stage generated differences merely to hide drift.
 

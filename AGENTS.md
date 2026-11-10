@@ -12,7 +12,7 @@ Five canonical roles: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-fo
 
 ### Domain docs
 
-Single-context layout with `CONTEXT.md` at root. See `docs/agents/domain.md`. ADR-0007..0011 define Phase 2 — Harness; in prose a Scenario is called an Environment while protocol v1 keeps `scenario_id`.
+Single-context layout with `CONTEXT.md` at root. See `docs/agents/domain.md`. ADR-0007..0014 define Phase 2 — Harness (0012..0014 are H1 follow-ups); in prose a Scenario is called an Environment while protocol v1 keeps `scenario_id`.
 
 ### Development standards
 

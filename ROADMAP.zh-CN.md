@@ -12,15 +12,19 @@
 
 到 2026-10，trace UI、数据集版本化、轨迹断言、replay 对比、失败 Run 转回归用例等已在 Langfuse、Phoenix、Braintrust 等产品中商品化；行业在整合而非扩张通用评估平台。对自托管用户仍稀缺的是：可对外部 Agent 可复现运行的 harness、可重置环境上的 pass^k、OTel GenAI 导出，以及确定性失败分类与校准叙事。Phase 1 交付了扎实闭环，但将环境与 Agent 耦合在一个类中，因此只能评估内置 Python Agent。**项目不再以通用评估平台自居。**
 
-## 当前状态（2026-10-31）
+## 当前状态（2026-11-10）
 
 Phase 1 hosted CI 在 `8bd2ef0` 通过，其计数只属于该历史快照。H1 已集成独立 Environment/MCP 与注册 fixture/reference Agent、生产 Rust dispatch/completion、可信 final-check、CP 独占评分、checkout/research/fault v2 与 `order-support.v1`、analyzer-v3 机制，以及真实 Recorded Preview。
 
 本地 host/PostgreSQL、标准 Runner 网络构建、实际 named-volume 替换、受影响回归、exact-payload 检查与 scoped 独立审查已有父执行证据。lock-path 与 exit-boundary 两个 P2 已修复/复审。H1 本地工程与真实模型直连集成验收已完成，hosted CI 已在 `b32da25` 通过（含 `golden-e2e`）；发布、cold-cache 和跨平台声明仍不在此边界内。见[验收边界](docs/operations/system-acceptance.md)。
 
-H1-5 已使用已安装的 Windows llama.cpp 端点完成直连：新建 PostgreSQL 下 research/order 成功、checkout/fault 失败均保留，标准 Runner 镜像 research 也成功。四项 Runner-only 可选生成参数替代临时代理。见[验收记录](docs/history/h1-live-model-acceptance-2026-11-01.md)，不冒称 Ollama/vLLM、稳定通过率或分析器准确率。本轮不下载模型、不改 Windows/网络/防火墙、不公开部署、不启动 H2。
+H1-5 已使用已安装的 Windows llama.cpp 端点完成直连：新建 PostgreSQL 下 research/order 成功、checkout/fault 失败均保留，标准 Runner 镜像 research 也成功。四项 Runner-only 可选生成参数替代临时代理。见[验收记录](docs/history/h1-live-model-acceptance-2026-11-01.md)，不冒称 Ollama/vLLM、稳定通过率或分析器准确率。不下载模型、不改 Windows/网络/防火墙、不公开部署。
 
-H2-1 已完成：`submit_result` 可发现（ADR-0008 H2 修订），`pi-coding-agent.v1` 通过可选外部注册表运行，同一本地模型下 reference 与 pi 已在四个 Environment 各跑一次（[记录](docs/history/h2-pi-live-acceptance-2026-11-03.md)）。H3 已完成：trial group、读时 pass^k 与严格的组级验证；温度 0 下每个真实组都重复同一条轨迹，pass^5 等于 pass^1（[记录](docs/history/h3-pass-k-live-2026-11-04.md)）。温度 1 没有改善：端点固定了默认采样 seed，reference Agent 的 trial 仍是复制（[记录](docs/history/h3-pass-k-temp1-2026-11-05.md)）。可选的 `AGENTOPS_PROVIDER_SEED=per-run` 让每个 Run 使用自己的采样 seed；启用后 reference Agent 的 fault 组分化为 3 条轨迹（2/5，pass^5 为 0.0），其余组仍为一条（[记录](docs/history/h3-pass-k-seed-2026-11-07.md)）。H4 已完成：OTel GenAI 导出，并已用本地 Phoenix 验证（[章节](docs/learn/07-otel-mapping.md)）。尚未实现：可选外部适配器（H2-2/H2-3/H2-5）、H5 真实分布一致性研究。当前校准仍为 `provisional_mechanics`、`publishable_accuracy=false`；后续自标注研究必须披露方法局限。
+H2-1 已完成：`submit_result` 可发现（ADR-0008 H2 修订），`pi-coding-agent.v1` 通过可选外部注册表运行，同一本地模型下 reference 与 pi 已在四个 Environment 各跑一次（[记录](docs/history/h2-pi-live-acceptance-2026-11-03.md)）。H3 已完成：trial group、读时 pass^k 与严格的组级验证；温度 0 下每个真实组都重复同一条轨迹，pass^5 等于 pass^1（[记录](docs/history/h3-pass-k-live-2026-11-04.md)）。温度 1 没有改善：端点固定了默认采样 seed，reference Agent 的 trial 仍是复制（[记录](docs/history/h3-pass-k-temp1-2026-11-05.md)）。可选的 `AGENTOPS_PROVIDER_SEED=per-run` 让每个 Run 使用自己的采样 seed；启用后 reference Agent 的 fault 组分化为 3 条轨迹（2/5，pass^5 为 0.0），其余组仍为一条（[记录](docs/history/h3-pass-k-seed-2026-11-07.md)）。H4 已完成：OTel GenAI 导出，并已用本地 Phoenix 验证（[章节](docs/learn/07-otel-mapping.md)）。2026-11-08 用每 Run seed 重跑了 pi（checkout 0/5、order 5/5，轨迹分化小；[记录](docs/history/h3-pi-per-run-seed-2026-11-08.md)）。H6 已完成，含 trial group 区块的 Recorded E2E。
+
+2026-11-08..10 加固：Rust Runner 的 `RunResponse` 缺 `trial_group_id`/`trial_index`（`deny_unknown_fields`），自 H3 起每个 completion ack 都解析失败；已修复，并由跨语言契约测试守卫（Runner wire 结构/枚举/错误码白名单、Agent spec 一致性、经 zod 校验的后端响应快照）。Runner 在 claim 响应无法解析时以 `internal_failure` 完成 Run，不再泄漏 lease。ADR-0009 新增修订：白名单内的 `agent_error_code` 仅作诊断上报，不影响状态或分数。
+
+尚未实现：可选外部适配器（H2-2/H2-3/H2-5）。H5-2 自标注一致性研究等作者手工标注；校准仍为 `provisional_mechanics`、`publishable_accuracy=false`，评审状态 `author_self_labeled` 记录标注者身份。仍待人工：GitHub About（H0-1）与对外名称（H0-2）。已知缺口见[任务清单](docs/agents/phase2-tasks.md)。
 
 ## 里程碑
 
@@ -32,13 +36,13 @@ H2-1 已完成：`submit_result` 可发现（ADR-0008 H2 修订），`pi-coding-
 | P1 | Phase 1.4 — 场景接入 | 已完成 | 从注册内置 Scenario 中选择；不再局限于硬编码 demo。 |
 | P1 | 闭环深化后续 | 已完成 | 失败 Run 成为可归类、可对比的回归资产并门禁 Policy 激活。 |
 | P1 | 可靠性与校准加固（2026-09 至 2026-10） | 已完成 | CAS/锁顺序修复、analyzer v2、CI 六合同校准门；校准在 Phase 2 H5 重定义。 |
-| P0 | Phase 2 — Harness H0（门面与决策） | 进行中 | ADR、LICENSE、规范、学习地图和[任务清单](docs/agents/phase2-tasks.md)已在仓库内。仍开放：GitHub About、对外名称（H0-2）。 |
+| P0 | Phase 2 — Harness H0（门面与决策） | 工程完成；两项人工待办 | ADR、LICENSE、规范、学习地图和[任务清单](docs/agents/phase2-tasks.md)已在仓库内。`ready-for-human`：GitHub About（H0-1）、对外名称（H0-2）。 |
 | P0 | Phase 2 — Harness H1（Environment/Agent 拆分） | 完成（本地工程 + 真实模型集成） | 独立进程路径、P2 修复、确定性回归、标准镜像/volume 与直连 reference Agent trace/分析已验收。模型失败保留；hosted CI 已在 `b32da25` 通过；发布仍未建立。 |
 | P1 | Phase 2 — Harness H2（外部 Agent） | 必做范围完成（H2-1、H2-4） | pi 适配器及同一模型下 reference 与 pi 的四 Environment 对比（[记录](docs/history/h2-pi-live-acceptance-2026-11-03.md)）；Agents SDK / Codex / Claude Code 可选，未做。 |
 | P1 | Phase 2 — Harness H3（trial 与 pass^k） | 已完成 | Trial group、读时 pass^k、严格的组级策略验证、Experiment 摘要；真实 n = 5、k = 5 温度 0 运行已记录（[记录](docs/history/h3-pass-k-live-2026-11-04.md)）；2026-11-05 的温度 1 运行显示端点固定了默认采样 seed，相同请求仍得到相同 trial（[记录](docs/history/h3-pass-k-temp1-2026-11-05.md)）；可选的每 Run 采样 seed（`AGENTOPS_PROVIDER_SEED=per-run`）提供独立采样，已于 2026-11-07 运行（[记录](docs/history/h3-pass-k-seed-2026-11-07.md)）。 |
 | P2 | Phase 2 — Harness H4（OTel 导出） | 已完成（导出与 Phoenix 验证） | OTLP GenAI 投影，默认关闭（[运维文档](docs/operations/otel-export.md)）；本地 Phoenix 已收到一个 Run 的 trace（[章节](docs/learn/07-otel-mapping.md)）。 |
-| P2 | Phase 2 — Harness H5（校准研究） | 计划中 | 分析器回归门不变；约 40 条真实 Run 的自标注一致性研究。 |
-| P1 | Phase 2 — Harness H6（打包） | 进行中（README 与 write-up 已完成；H6-3 recorded demo 刷新未做） | README、write-up、recorded demo。 |
+| P2 | Phase 2 — Harness H5（校准研究） | H5-1 完成；H5-2 `ready-for-human` | 分析器回归门不变，文档已与代码对齐。约 40 条真实 Run 的自标注一致性研究（评审状态 `author_self_labeled`，结果上限 `provisional_mechanics`）等作者标注；H5 学习章随后。 |
+| P1 | Phase 2 — Harness H6（打包） | 已完成 | README、write-up、Recorded E2E（含 trial group 区块）。 |
 | Gate | 安全门 | 条件触发 | 启用有副作用工具、不可信用户或共享/公网运行前必须完成。 |
 
 时间表：Phase 2 为 2026-10-17 至约 2027-01-09（12 周）。
@@ -84,13 +88,13 @@ flowchart LR
   Otel --> Langfuse[Langfuse / Phoenix]
 ```
 
-此图是完整 Phase 2 目标，不是当前能力清单：H1 实现 Environment/注册 Agent 双进程；外部适配器属于后续阶段；Trials、pass^k 和 OTel 导出已实现。工具事实由 MCP Environment 采集，Agent 不发可信 JSONL。
+此图是完整 Phase 2 目标，不是当前能力清单：H1 实现 Environment/注册 Agent 双进程；pi 是已实现的外部适配器（其余可选，未做）；Trials、pass^k 和 OTel 导出已实现。工具事实由 MCP Environment 采集，Agent 不发可信 JSONL。
 
 ### 决策
 
 - [ADR-0007](docs/adr/0007-environment-agent-split.md) — 拆分 **Environment**（任务、工具、状态、断言）与 **agent-under-test**（`fixture`、`reference`、`external`）；协议 v1 保留 `scenario_id`。
 - [ADR-0008](docs/adr/0008-environment-mcp-server-and-env-side-capture.md) — `app.env_server` 为 MCP Streamable HTTP，middleware 采集、`submit_result`、Runner 双进程监督。
-- [ADR-0009](docs/adr/0009-agent-registry-trust-boundary.md) — 运维 TOML Agent 注册表、`GET /api/agents`、`EvaluationSpec.agent_id`；Runner 只执行已注册 argv。
+- [ADR-0009](docs/adr/0009-agent-registry-trust-boundary.md) — 运维 TOML Agent 注册表、`GET /api/agents`、`EvaluationSpec.agent_id`；Runner 只执行已注册 argv。2026-11-09 修订：Runner 可上报白名单内的 Agent stderr 行为 `agent_error_code`，仅作诊断。
 - [ADR-0010](docs/adr/0010-trial-groups-and-pass-k.md) — Trial group、组内固定环境 seed、tau-bench 估计 pass^k、组级 Policy 校验。
 - [ADR-0011](docs/adr/0011-otel-genai-export.md) — 未来 H4 OTel GenAI 导出，`RunEvent` 仍为事实源。
 - [ADR-0012](docs/adr/0012-h1-canonical-cutover-and-control-plane-success.md) — H1 规范 v2 不兼容切换、CP 可信证据和 aggregate 成功门；不授权历史迁移、重评分或删除。
@@ -103,15 +107,15 @@ flowchart LR
 
 #### H0 — 门面与决策（第 1 周）
 
-- **范围：** H0-1 LICENSE（MIT）与 GitHub About/topics；H0-2 命名候选（仅决策）；H0-3 ADR-0007–0011、ROADMAP/CONTEXT/README 定位；H0-4 校准文档重定义（文字）；H0-5 任务清单与 `docs/learn/00-map.md`、`glossary.md`。
+- **范围：** H0-1 LICENSE（MIT）与 GitHub About/topics；H0-2 命名候选（仅决策）；H0-3 ADR-0007–0011（H1 后续：ADR-0012–0014）、ROADMAP/CONTEXT/README 定位；H0-4 校准文档重定义（文字）；H0-5 任务清单与 `docs/learn/00-map.md`、`glossary.md`。
 - **验收：** 已接受 ADR 链入 living docs；Phase 1 标完成；Phase 2 可见；H0 不要求新产品代码。剩下的人工步骤：按 H0-1 改 GitHub About，并选定对外名称（H0-2）。两者都不阻塞 H1。
 - **学习交付物：** `docs/learn/00-map.md`、`docs/learn/glossary.md`。
 
 #### H1 — Environment/Agent 拆分（第 2–4 周）
 
-- **范围：** H1-1 从内置 Scenario 抽出 Environment 协议；H1-2 `app.env_server`（MCP、环境侧采集）；H1-3 Runner 双子进程监督与 `env_ready`；H1-4 `agent_id`、注册表、`GET /api/agents`、新建 Experiment 的 Agent 下拉；H1-5 参考 Agent 进程（默认 Ollama `qwen3:8b`，文档化 vLLM）；H1-6 有状态 `order-support.v1`。
+- **范围：** H1-1 从内置 Scenario 抽出 Environment 协议；H1-2 `app.env_server`（MCP、环境侧采集）；H1-3 Runner 双子进程监督与 `env_ready`；H1-4 `agent_id`、注册表、`GET /api/agents`、新建 Experiment 的 Agent 下拉；H1-5 参考 Agent 进程（OpenAI-compatible 端点；验收用 llama.cpp，Ollama/vLLM 未验证）；H1-6 有状态 `order-support.v1`。
 - **工程收尾：** fixture Golden、fake-Provider reference Agent、可信 CP completion、恢复、标准镜像/volume、受影响回归、文档及最终 exact-payload 审查已在本地完成。原契约 gate 已在提交后的 canonical v2 基线上通过；旧 dirty-index 结果作为历史保留。
-- **H1-5 收尾（2026-11-01）：** 真实 llama.cpp 直连、四项有界 Runner-only 生成参数（ADR-0003 修订）、可重复采集命令与 trace/分析已完成。失败不修补，CI 仍只用 fixture/fake Provider，H2 不启动。
+- **H1-5 收尾（2026-11-01）：** 真实 llama.cpp 直连、四项有界 Runner-only 生成参数（ADR-0003 修订）、可重复采集命令与 trace/分析已完成。失败不修补，CI 仍只用 fixture/fake Provider。
 - **P2 修订（ADR-0008）：** lock no-follow/非普通文件拒绝且不修改目标；reader/Agent-exit barrier、残留半行失败和自主回收断言。两个 scoped 复审通过；受影响镜像/runtime 回归及五次边界重复验证已有父执行证据。
 - **学习交付物：** `docs/learn/01-run-lifecycle.md`、`docs/learn/02-environment-and-mcp.md`、`docs/learn/04-runner-lease-fencing.md`。
 
@@ -138,12 +142,13 @@ flowchart LR
 
 - **范围：** H5-1 将 [evaluation calibration](docs/evaluation-calibration.md) 拆为分析器回归门（六受控合同，CI 不变）与自标注一致性研究；冻结新 binding/hash/strict-mode 机制；H5-2 约 40 条真实 Provider Run、作者标注、公开混淆矩阵与偏差说明（切割线下至少 20 条）。
 - **验收：** CI 六合同门仍通过；公开混淆矩阵并说明局限；不新增准确率仪式代码。
-- **学习交付物：** `docs/learn/05-analyzer-and-calibration.md` 与 `docs/` 中的研究产物。
+- **状态：** H5-1 已完成（2026-11-08）。H5-2 是作者自己标注（`ready-for-human`）。
+- **学习交付物：** `docs/learn/05-analyzer-and-calibration.md`（标注完成后）与 `docs/` 中的研究产物。
 
 #### H6 — 打包（第 12 周）
 
-- **范围：** H6-1 README（定位、Ollama quickstart、架构、pass^k 数字、为何不是 Langfuse）；H6-2 `docs/writeup.md`；H6-3 recorded demo 刷新。
-- **验收：** README 与 write-up 与切割线一致；recorded demo 覆盖 harness 路径。
+- **范围：** H6-1 README（定位、Ollama quickstart、架构、pass^k 数字、为何不是 Langfuse）；H6-2 `docs/writeup.md`；H6-3 recorded demo（trial group 区块的 Recorded E2E）。
+- **验收：** README 与 write-up 与切割线一致；recorded demo 覆盖 harness 路径。已完成。
 - **学习交付物：** README + `docs/writeup.md`（H6-1、H6-2）。
 
 ### 切割线

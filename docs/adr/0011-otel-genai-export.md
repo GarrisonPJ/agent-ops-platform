@@ -2,8 +2,9 @@
 
 - Status: Accepted
 - Date: 2026-10-17
-- Implementation: Phase 2 H4. Not in code at `8bd2ef0`. May be deferred past
-  the 12-week cut line (`ROADMAP.md`).
+- Implementation: Phase 2 H4, integrated: `backend/app/otel_export.py`, off
+  unless `AGENTOPS_OTEL_EXPORT=1` (see `docs/learn/07-otel-mapping.md`). Not in
+  code at the historical `8bd2ef0`.
 - Depends on: [ADR-0008](0008-environment-mcp-server-and-env-side-capture.md)
 
 ## Context

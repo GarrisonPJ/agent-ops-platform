@@ -1,6 +1,6 @@
 # Phase 2 任务清单
 
-状态日期：2026-11-01（本地；实际运行时间见 UTC 验收记录）。决策在 `docs/adr/0007`–`0014`。里程碑在 `ROADMAP.md`。
+状态日期：2026-11-10（本地；实际运行时间见各验收记录）。决策在 `docs/adr/0007`–`0014`。里程碑在 `ROADMAP.md`。
 本文件是可执行任务的事实来源。`.scratch/` 只放本地证据，不放交接。
 
 规范：`docs/agents/development-standards.md`。
@@ -11,7 +11,16 @@
 
 **可以降级：** H2-2、H2-3、H2-5、整个 H4、H5-2 至少标注 20 条。
 
-**当前集成状态：** H1-1..H1-6 的工程实现已接入生产 dispatch/completion；组件已分别审查，fixture/fake-Provider、隔离 PostgreSQL、标准 Runner 网络构建、实际 named-volume 替换、受影响回归和 exact-payload 文档收尾均有本地父证据。lock-path 与 exit-boundary 两个 P2 已修复并经只读独立复审。本轮已完成 H1-5：已有 Windows llama.cpp 端点直连，隔离 PostgreSQL 下 reference Agent 的 research/order 成功、checkout/fault 失败均保留，标准 Runner 镜像直连 research 也成功；不修改断言刷绿。976 项后端测试、Rust/前端/Recorded E2E 与原契约 gate 通过。H1 本地工程与真实模型集成边界完成；hosted CI 已在 `b32da25` 全部通过（含 `golden-e2e`，见 [system-acceptance.md](../operations/system-acceptance.md)）。这不等于发布、全模型兼容或准确率证明。H2-1/H2-4 已完成：ADR-0008 发现修订、pi 适配器、真实 llama.cpp 下 reference 与 pi 的四 Environment 对比和 `03` 章；可选 H2-2/H2-3/H2-5 未做。H3 已完成：trial group、读时 pass^k、按组且严格提升的策略验证、Experiment 页展示、`06` 章与真实 n=5 温度 0 运行；温度 1.0 对比已于 2026-11-05 运行，暴露出端点固定采样 seed 的问题（[记录](../history/h3-pass-k-temp1-2026-11-05.md)），2026-11-07 的每 Run seed 运行见[记录](../history/h3-pass-k-seed-2026-11-07.md)。H4 已完成：OTel GenAI 导出与 Phoenix 对端验证（[07 章](../learn/07-otel-mapping.md)）。H0 剩余人工事项不阻塞 H1。
+**当前状态（2026-11-10）：** H1–H4 与 H6 的工程交付已完成；`completed` 不等于发布、全模型兼容或准确率证明。
+
+- H1：Environment/Agent 拆分、Rust 监督、注册表、CP 独占评分与真实模型直连验收完成；hosted CI 在 `b32da25` 通过；最近一次核实的 hosted CI 是 `dd99253`（run `42615843713`，2026-11-09）（[system-acceptance.md](../operations/system-acceptance.md)）。
+- H2：H2-1 pi 适配器与 H2-4 接入章完成；可选 H2-2/H2-3/H2-5 未开工。
+- H3：trial group、读时 pass^k、按组严格提升的策略验证、Experiment 页展示；每 Run 采样 seed（`AGENTOPS_PROVIDER_SEED=per-run`）已落地并有 reference 与 pi 的真实记录（见 H3-3）。
+- H4：OTel GenAI 导出与本地 Phoenix 对端验证。
+- H5：H5-1 文档已按代码修正；H5-2 自标注待人做（`ready-for-human`），H5 学习章等标注完成。
+- H6：README、write-up、Recorded E2E（含 trial group 区块，共 3 个 Recorded E2E 测试）完成。
+- H0：仅剩 H0-1（GitHub About）与 H0-2（命名）两个人工事项，不阻塞其他阶段。
+- 2026-11-08..10 加固：见文末"已知缺口与待办"。
 
 未开工的任务用 `docs/agents/triage-labels.md` 的词。`completed` 表示已经落地，不要重做。
 
@@ -43,7 +52,7 @@
 ### H0-3 决策与活文档
 
 - Status: `completed`
-- ADR-0007..0011 已接受。`CONTEXT.md`、`ROADMAP.md`、`README.md` 与中文对应文件已指向它们。
+- ADR-0007..0011 已接受（H1 后续修订为 ADR-0012..0014）。`CONTEXT.md`、`ROADMAP.md`、`README.md` 与中文对应文件已指向它们。
 - 验收：活文档里的链接能打开。
 
 ### H0-4 校准文档重定义
@@ -140,12 +149,12 @@ H0 剩余只有 H0-1 的 GitHub 点击和 H0-2 的命名。命名未定不阻塞
 - 不改 CP 入口、断言/评分/终态门或校准绑定机制；不回写历史包、不重评分，不提前启动 H5 研究。
 - 验证双断言入口、非空规划反例、usage 覆盖/Attempt 隔离及两类 digest 防篡改；新生成 v3 校准包并独立审查。
 
-### H1-C 工程收尾（本轮唯一活跃工程任务）
+### H1-C 工程收尾
 
 - Status: `completed`（H1 本地工程与真实模型集成边界完成；不授权 H2）
 - ADR-0008 先行修订后修复 capacity/per-Run lock symlink 与非普通文件；拒绝不改写目标。
 - Reader-prefix 与 observed-Agent-exit barrier 证明重构恰好一次；覆盖残留半行、clean/fragment EOF、自然退出、超长输出、final upload/heartbeat 和 Runner 自主回收。
-- 两个 P2 的 scoped 独立复审已通过；父执行 Rust 59 项 Runner 测试/Clippy、五次边界重复、完整后端/前端/Recorded E2E、重建标准镜像、全新 volume replacement 和最终 exact-payload 文档复审均完成。
+- 两个 P2 的 scoped 独立复审已通过；父执行 Runner 测试/Clippy、五次边界重复、完整后端/前端/Recorded E2E、重建标准镜像、全新 volume replacement 和最终 exact-payload 文档复审均完成。
 - 已整理历史 handoff/旧规划引用，保留 ADR ID，并区分 accepted decision、当前实现、父证据与历史记录。规范任务继续只在此维护。
 - 保留 `make check-contracts` 原门禁，已在提交后的 canonical v2 基线上通过；历史 dirty-index exit 2 不再是当前 blocker，没有生成 schema 差异。
 - H1-5 真实模型直连验收现已完成，没有安装模型或改变 Windows/网络/防火墙。原 P2 scoped 复审不冒充本轮增量独立复审；新增增量有确定性测试与父 diff review。最新边界见 [system-acceptance.md](../operations/system-acceptance.md)。
@@ -224,7 +233,7 @@ H0 剩余只有 H0-1 的 GitHub 点击和 H0-2 的命名。命名未定不阻塞
 
 ### H3-3 Experiment 页展示
 
-- Status: `completed`（2026-11-04：`TrialGroupsSection` 与有组/无组页面测试、README 写明 Trace UI 冻结；真实 n=5、k=5 温度 0 运行见[记录](../history/h3-pass-k-live-2026-11-04.md)，温度 1.0 对比已于 2026-11-05 运行，暴露出端点固定采样 seed 的问题，见[记录](../history/h3-pass-k-temp1-2026-11-05.md)；2026-11-07 用 `AGENTOPS_PROVIDER_SEED=per-run` 重跑，见[记录](../history/h3-pass-k-seed-2026-11-07.md)）
+- Status: `completed`（2026-11-04：`TrialGroupsSection` 与有组/无组页面测试、README 写明 Trace UI 冻结；真实 n=5、k=5 温度 0 运行见[记录](../history/h3-pass-k-live-2026-11-04.md)，温度 1.0 对比已于 2026-11-05 运行，暴露出端点固定采样 seed 的问题，见[记录](../history/h3-pass-k-temp1-2026-11-05.md)；2026-11-07 用 `AGENTOPS_PROVIDER_SEED=per-run` 重跑，见[记录](../history/h3-pass-k-seed-2026-11-07.md)；2026-11-08 pi 的每 Run seed 运行见[记录](../history/h3-pi-per-run-seed-2026-11-08.md)：checkout 0/5、order 5/5，轨迹分化小）
 - 只改 Experiment 详情：pass^1、pass^k、每个 trial 的状态。
 - Trace / Analysis / Improve 的信息架构不新增视图。在 README 写明 Trace UI 冻结。
 - 验收：前端单测覆盖有组与无组两种 Experiment。
@@ -270,7 +279,7 @@ H0 剩余只有 H0-1 的 GitHub 点击和 H0-2 的命名。命名未定不阻塞
 
 ### H5 学习交付
 
-- `docs/learn/05-analyzer-and-calibration.md`
+- `docs/learn/05-analyzer-and-calibration.md`（等 H5-2 标注完成后再写；尚未存在）
 
 ---
 
@@ -288,8 +297,8 @@ H0 剩余只有 H0-1 的 GitHub 点击和 H0-2 的命名。命名未定不阻塞
 
 ### H6-3 Recorded demo
 
-- Status: `ready-for-agent`
-- H1 已刷新真实 checkout v2 Recorded Preview（ADR-0014）；H6 只补后续实际交付能力的演示，不重复造数据。公网托管不是验收条件。
+- Status: `completed`（2026-11-09：trial group 区块有 Recorded E2E，Recorded E2E 共 3 个测试；见 `frontend/tests/phase1-recorded.spec.ts`）
+- H1 已刷新真实 checkout v2 Recorded Preview（ADR-0014）。公网托管不是验收条件。
 
 ---
 
@@ -298,3 +307,23 @@ H0 剩余只有 H0-1 的 GitHub 点击和 H0-2 的命名。命名未定不阻塞
 Trace UI 新功能、annotation queue、数据集管理、多租户、Kubernetes、把 CLI agent 放进容器、LLM-as-judge、训练数据导出、新的校准绑定机制。
 
 计划外工作：先改 ADR 和 `ROADMAP.md`，再写代码。
+
+---
+
+## 已知缺口与待办
+
+不进 `.scratch/`，也不是 issue；要做时先按 development-standards 开任务。
+
+- `tool_priority` patch 字段由候选 Policy 设置，但没有任何 Agent 读取它。
+- `golden_e2e` 与受控校准采集都不覆盖 order-support。
+- pi 适配器依赖 pi 1.3.0 的 JSONL 事件名，运行时没有版本检查。
+- order-support 成功 Run 得分 0.667：分析器关键词匹配命中了 ledger 文本。H5-2 标注前有意不改。
+- 2026-11-08 pi 记录里 checkout 第 4 个 trial 的 `internal_failure` 是否由下述已修 Runner bug 引起未知，未重跑。
+
+## 2026-11-08..10 加固（已完成）
+
+- 修复：Rust Runner 的 `RunResponse` 缺 `trial_group_id`/`trial_index`，在 `deny_unknown_fields` 下自 H3 起每个 completion ack 都解析失败。以契约测试修复。教训：只测一侧序列化不够，所有 wire 结构都要有跨语言守卫。
+- Runner：claim 响应解析失败时以 `internal_failure` 完成 Run，不再泄漏 lease；错误分类写日志；`RUNNER_TOKEN` 去首尾空白；`AGENTOPS_RUNNER_ID` 校验 1..100。
+- [ADR-0009](../adr/0009-agent-registry-trust-boundary.md) 修订（2026-11-09）：Runner 只上报 Agent 最后一行 stderr 中在白名单内的 `agent_error_code`，仅作诊断（provider、environment_connection、agent_startup、agent_behavior 四类），不影响状态或分数。
+- 契约守卫：`backend/phase1_tests/test_runner_protocol_contract.py`（全部 Runner wire 结构、枚举与错误码白名单）、`test_agent_spec_parity.py`、`test_frontend_contract_snapshot.py` 加 `frontend/src/test/contract/`（真实后端响应快照，经 zod 校验；`UPDATE_CONTRACT_SNAPSHOT=1` 重新生成）。
+- 前端 Run 详情：process output 显示 `content`；超时 Run 显示 Timed out。

@@ -50,6 +50,8 @@ make down      # 停止栈，保留 named volumes
    AGENTOPS_PROVIDER_TEMPERATURE=0
    AGENTOPS_PROVIDER_REASONING_EFFORT=none
    AGENTOPS_PROVIDER_PARALLEL_TOOL_CALLS=false
+   # 可选整数，或 `per-run`：每个 Run 使用独立采样 seed（独立 trial 需要它）。
+   AGENTOPS_PROVIDER_SEED=per-run
    ```
 
 2. 重启 Runner 使其生效。
@@ -136,7 +138,7 @@ Langfuse、Phoenix、Braintrust 等产品已经能很好地存储和展示 trace
 
 H1 已实现独立的 Environment/MCP 与 fixture/reference Agent 进程、Rust 租约/Attempt fencing 监督、运维 TOML Agent 注册表、CP 独占评分/完成裁决，以及四个内置 Environment。协议 v1 仍用 `scenario_id`；三个规范世界使用 **v2**，`order-support.v1` 保持自己的身份。旧世界 v1 ID 被拒绝，不提供别名或迁移。
 
-**H1 本地工程与真实模型集成验收已完成**：已安装的 Windows llama.cpp 经 reference Agent 完成 research 和有状态订单 Run；checkout/fault 失败如实保留。hosted CI 已在 `b32da25` 通过。这不等于所有模型兼容、发布、cold-cache、跨平台或公开部署验收。**H2-1 已完成**（`pi-coding-agent.v1`）。**H3 已完成**（trial group 与 Experiment 页的 pass^k，`POST /api/experiments/{id}/trials`）。**H4 已完成**（可选 OTel GenAI span 导出，已用本地 Phoenix 验证）。H5 模型分布准确率研究和其他可选外部适配器尚未完成，不是当前功能。校准是六合同确定性机制门，**不是已发布的准确率结论**。参见[任务清单](docs/agents/phase2-tasks.md)、[里程碑](ROADMAP.zh-CN.md)、互操作用的 [ADR-0011](docs/adr/0011-otel-genai-export.md)与[验收边界](docs/operations/system-acceptance.md)。
+**H1 本地工程与真实模型集成验收已完成**：已安装的 Windows llama.cpp 经 reference Agent 完成 research 和有状态订单 Run；checkout/fault 失败如实保留。hosted CI 在 H1 时于 `b32da25` 通过；最近一次核实的 hosted CI 是 `dd99253`（run `42615843713`，2026-11-09）。这不等于所有模型兼容、发布、cold-cache、跨平台或公开部署验收。**H2-1 已完成**（`pi-coding-agent.v1`）。**H3 已完成**（trial group 与 Experiment 页的 pass^k，`POST /api/experiments/{id}/trials`）。**H4 已完成**（可选 OTel GenAI span 导出，已用本地 Phoenix 验证）。H5 自标注一致性研究未完成：标注必须由人做，所以校准仍是六合同确定性机制门（`provisional_mechanics`），**不是已发布的准确率结论**。其他可选外部适配器（H2-2/H2-3/H2-5）未做。仍待人工处理：GitHub About 与对外名称（H0-1、H0-2）。已知缺口见[任务清单](docs/agents/phase2-tasks.md)末尾。参见[任务清单](docs/agents/phase2-tasks.md)、[里程碑](ROADMAP.zh-CN.md)、互操作用的 [ADR-0011](docs/adr/0011-otel-genai-export.md)与[验收边界](docs/operations/system-acceptance.md)。
 
 ## Recorded Preview
 
@@ -166,6 +168,8 @@ cd frontend && npm run e2e:recorded
 ```
 
 CI 基线为 Linux Node 22、Python 3.12、Rust 1.96、PostgreSQL 16 与锁定依赖。PostgreSQL 专项必须用全新独占库；SQLite/skip 不能替代并发证据。[本地 runbook](docs/operations/reliability-and-local-validation.md)说明工具链、代理、Runner 递归依赖验证、校准/恢复和证据边界。
+
+契约守卫：后端测试把每个 Runner wire 结构、枚举和 Agent 错误码白名单与 Rust 侧对齐（`backend/phase1_tests/test_runner_protocol_contract.py`），前端用 zod 校验真实后端响应快照（`frontend/src/test/contract/`；用 `UPDATE_CONTRACT_SNAPSHOT=1` 重新生成）。
 
 `make check-contracts` 导出 schema 后与 Git index 对比。保持该 gate 不变并在交付前重跑；不要为隐藏 drift 回退 v2 或 stage 生成差异。
 
